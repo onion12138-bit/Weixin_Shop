@@ -1,0 +1,12 @@
+{
+  "appid": "touristappid",
+  "projectname": "diy-bracelet-mall",
+  "miniprogramRoot": "miniprogram/",
+  "compileType": "miniprogram",
+  "setting": {
+    "es6": true,
+    "minified": false,
+    "urlCheck": false,
+    "useCompilerPlugins": ["typescript"]
+  }
+}

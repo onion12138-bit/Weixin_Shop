@@ -1,0 +1,10 @@
+<!-- 首屏结构保持轻量，确保开发者工具导入后无需后端即可看到完整页面。 -->
+<view class="page-shell">
+  <text class="eyebrow">DIY BRACELET</text>
+  <text class="title">{{ title }}</text>
+  <text class="summary">{{ summary }}</text>
+  <view class="card">
+    <text class="card-title">工程基础已就绪</text>
+    <text class="card-copy">下一阶段将接入真实商品目录和珠子素材。</text>
+  </view>
+</view>

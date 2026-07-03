@@ -1,0 +1,10 @@
+{
+  "pages": ["pages/home/index"],
+  "window": {
+    "navigationBarTitleText": "DIY 手串",
+    "navigationBarBackgroundColor": "#f8f4f0",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f8f4f0"
+  },
+  "sitemapLocation": "sitemap.json"
+}

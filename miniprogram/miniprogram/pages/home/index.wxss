@@ -1,0 +1,51 @@
+.page-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 96rpx 48rpx;
+}
+
+.eyebrow {
+  color: #8a5c69;
+  font-size: 24rpx;
+  font-weight: 700;
+  letter-spacing: 6rpx;
+}
+
+.title {
+  margin-top: 24rpx;
+  font-size: 54rpx;
+  font-weight: 700;
+}
+
+.summary {
+  margin-top: 24rpx;
+  color: #6e6268;
+  font-size: 30rpx;
+}
+
+/* 独立卡片为后续商品推荐区预留一致的视觉容器。 */
+.card {
+  margin-top: 72rpx;
+  padding: 40rpx;
+  border: 1rpx solid #e4d7d2;
+  border-radius: 28rpx;
+  background: #fff;
+}
+
+.card-title,
+.card-copy {
+  display: block;
+}
+
+.card-title {
+  font-size: 34rpx;
+  font-weight: 700;
+}
+
+.card-copy {
+  margin-top: 18rpx;
+  color: #6e6268;
+  line-height: 1.7;
+}
