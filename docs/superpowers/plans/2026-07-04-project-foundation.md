@@ -8,6 +8,8 @@
 
 **Tech Stack:** JDK 17, Spring Boot 3.2.12, Maven, Vue 3, TypeScript, Vite, Vitest, native WeChat mini program, Jest, MySQL 8, Redis 7, Docker Compose
 
+**Execution status:** Completed on 2026-07-04 in branch `codex/project-foundation`; prerequisite checks, repository verification, Vue production build, and MySQL/Redis health checks passed.
+
 ---
 
 ## Scope and prerequisites
