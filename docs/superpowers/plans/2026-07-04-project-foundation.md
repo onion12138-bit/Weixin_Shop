@@ -18,7 +18,7 @@ This is the first implementation plan from the approved design specification:
 - Project root: `/Users/onion/Desktop/AI_Testing/Weixin_Shop`
 - Current machine state: JDK 8 is installed; Maven and Docker are not installed; Node.js 23 and pnpm 11 are installed.
 
-Before Task 2, install JDK 17 and Maven. Before Task 6, install a Docker-compatible runtime. Installation requires explicit user approval because it changes the host environment.
+Before Task 2, the user manually installs JDK 17 and Maven. Before Task 7, the user manually installs Docker Desktop. Codex only verifies the installed versions and does not run software installers.
 
 ## Target file structure
 
@@ -405,18 +405,18 @@ chmod +x scripts/check-prerequisites.sh
 
 Expected before installing prerequisites: exit code 1, reporting JDK 17, Maven, and Docker requirements.
 
-- [ ] **Step 3: Install approved prerequisites**
+- [ ] **Step 3: Verify manually installed prerequisites**
 
-After explicit user approval, run:
+Install these Apple Silicon packages from their official pages:
 
-```bash
-brew install --cask temurin@17
-brew install maven
-brew install --cask docker
-open -a Docker
-```
+- Eclipse Temurin JDK `17.0.19+10`, macOS AArch64 JDK package:
+  `https://adoptium.net/temurin/releases/?arch=aarch64&os=mac&version=17`
+- Apache Maven `3.9.16` binary distribution:
+  `https://maven.apache.org/download.cgi`
+- Docker Desktop `4.80.0` or a newer stable release, Mac with Apple chip:
+  `https://docs.docker.com/desktop/setup/install/mac-install/`
 
-Wait until Docker Desktop reports that its engine is running, then verify:
+Start Docker Desktop and wait until it reports that the engine is running. Open a new terminal, then run:
 
 Run again:
 
@@ -428,7 +428,7 @@ docker compose version
 ./scripts/check-prerequisites.sh
 ```
 
-Expected: Java reports version 17, Maven and Docker report versions, and the final command prints `环境检查通过。`
+Expected: Java reports `17.0.19` or another Java 17 security update, Maven reports `3.9.16` or a newer 3.9.x release, Docker Desktop reports `4.80.0` or newer, and the final command prints `环境检查通过。`
 
 - [ ] **Step 4: Commit**
 
