@@ -1,0 +1,60 @@
+:root {
+  color: #2f2430;
+  background: #f8f4f0;
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+}
+
+/* 为后续菜单和内容区保留足够的响应式页面边距。 */
+.page-shell {
+  box-sizing: border-box;
+  min-height: 100vh;
+  padding: 64px clamp(24px, 7vw, 96px);
+}
+
+.eyebrow {
+  color: #8a5c69;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.lead {
+  color: #6e6268;
+  font-size: 18px;
+}
+
+.status-panel {
+  max-width: 720px;
+  margin-top: 40px;
+  padding: 24px;
+  border: 1px solid #e4d7d2;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.status-panel ul {
+  display: grid;
+  gap: 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.status-panel li {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid #f0e8e4;
+}
+
+.status-panel li:last-child {
+  border-bottom: 0;
+}
+
+.status-panel span {
+  color: #8a5c69;
+}
