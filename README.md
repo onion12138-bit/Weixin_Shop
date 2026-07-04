@@ -47,8 +47,9 @@ docker compose up -d
 
 ## 文档总览
 
-[`docs/overview.md`](docs/overview.md) 是文档入口。需求、架构、数据模型、API、开发、启动、部署和测试文档均保存在
-`docs/`，文件内容只维护当前有效版本。
+[`docs/overview.md`](docs/overview.md) 是文档入口，
+[`docs/progress.md`](docs/progress.md) 是当前完成进度的唯一权威记录。需求、架构、
+数据模型、API、开发、启动、部署和测试文档均保存在 `docs/`，文件内容只维护当前有效版本。
 
 ## 设计与计划
 

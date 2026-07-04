@@ -35,6 +35,7 @@
 
 | 文档 | 内容 |
 | --- | --- |
+| [progress.md](progress.md) | 模块完成度、状态、验证结果、待办和阶段记录 |
 | [requirements.md](requirements.md) | 完整产品范围、阶段和验收标准 |
 | [architecture.md](architecture.md) | 三端架构、模块边界与可替换能力 |
 | [data-model.md](data-model.md) | 已落地表结构、约束和关系 |
