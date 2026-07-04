@@ -13,7 +13,7 @@ echo "[1/3] 后端测试"
 echo "[2/3] 管理后台测试与构建"
 (cd "${project_root}/admin-web" && pnpm test && pnpm build)
 
-echo "[3/3] 小程序逻辑测试"
-(cd "${project_root}/miniprogram" && pnpm test)
+echo "[3/3] 小程序类型检查与逻辑测试"
+(cd "${project_root}/miniprogram" && pnpm typecheck && pnpm test)
 
 echo "全仓验证通过。"

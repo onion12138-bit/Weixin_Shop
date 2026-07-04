@@ -1,0 +1,286 @@
+.catalog-page {
+  min-height: 100vh;
+  padding-bottom: 70rpx;
+  background: #faf6f3;
+}
+
+.catalog-hero {
+  padding: 52rpx 36rpx 42rpx;
+  background:
+    radial-gradient(circle at 92% 8%, #efd9e0 0, transparent 42%),
+    #fffaf7;
+}
+
+.eyebrow {
+  display: block;
+  color: #9b687a;
+  font-size: 18rpx;
+  font-weight: 700;
+  letter-spacing: 5rpx;
+}
+
+.title {
+  display: block;
+  margin-top: 14rpx;
+  color: #33292d;
+  font-family: "Songti SC", serif;
+  font-size: 52rpx;
+  font-weight: 700;
+}
+
+.subtitle {
+  display: block;
+  margin-top: 12rpx;
+  color: #897d82;
+  font-size: 24rpx;
+}
+
+.search-box {
+  display: flex;
+  height: 82rpx;
+  margin-top: 34rpx;
+  overflow: hidden;
+  border: 1rpx solid #e6dad6;
+  border-radius: 41rpx;
+  background: #fff;
+  box-shadow: 0 10rpx 28rpx rgba(77, 45, 57, .06);
+}
+
+.search-box input {
+  flex: 1;
+  height: 82rpx;
+  padding-left: 30rpx;
+  font-size: 25rpx;
+}
+
+.search-box button {
+  width: 130rpx;
+  height: 82rpx;
+  border-radius: 0;
+  color: #fff;
+  font-size: 24rpx;
+  line-height: 82rpx;
+  background: #754657;
+}
+
+.tabs {
+  display: flex;
+  padding: 0 36rpx;
+  border-bottom: 1rpx solid #eadfdb;
+  background: #fff;
+}
+
+.tab {
+  position: relative;
+  flex: 1;
+  padding: 28rpx 0 24rpx;
+  color: #9a8f93;
+  font-size: 27rpx;
+  text-align: center;
+}
+
+.tab.active {
+  color: #603748;
+  font-weight: 700;
+}
+
+.tab.active::after {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 46rpx;
+  height: 5rpx;
+  border-radius: 3rpx;
+  background: #754657;
+  content: "";
+  transform: translateX(-50%);
+}
+
+.categories {
+  display: flex;
+  width: 100%;
+  padding: 26rpx 32rpx;
+  box-sizing: border-box;
+  white-space: nowrap;
+}
+
+.category {
+  display: inline-flex;
+  height: 60rpx;
+  align-items: center;
+  margin-right: 16rpx;
+  padding: 0 28rpx;
+  border: 1rpx solid #e5dad6;
+  border-radius: 30rpx;
+  color: #786d71;
+  font-size: 23rpx;
+  background: #fff;
+}
+
+.category.active {
+  border-color: #754657;
+  color: #fff;
+  background: #754657;
+}
+
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20rpx;
+  padding: 0 28rpx;
+}
+
+.product-card {
+  overflow: hidden;
+  border: 1rpx solid #ece2de;
+  border-radius: 24rpx;
+  background: #fff;
+  box-shadow: 0 12rpx 30rpx rgba(69, 44, 53, .05);
+}
+
+.product-image {
+  width: 100%;
+  height: 294rpx;
+  background: #eee3e6;
+}
+
+.product-body {
+  padding: 22rpx;
+}
+
+.tag-row {
+  display: flex;
+  gap: 8rpx;
+  min-height: 32rpx;
+}
+
+.tag-row text {
+  padding: 4rpx 10rpx;
+  border-radius: 8rpx;
+  color: #865c6d;
+  font-size: 17rpx;
+  background: #f5e9ed;
+}
+
+.product-title,
+.specification,
+.price,
+.package-title,
+.package-description {
+  display: block;
+}
+
+.product-title {
+  margin-top: 15rpx;
+  color: #3c3236;
+  font-size: 27rpx;
+  font-weight: 700;
+}
+
+.specification {
+  margin-top: 8rpx;
+  overflow: hidden;
+  color: #93878c;
+  font-size: 20rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.price {
+  margin-top: 17rpx;
+  color: #713f52;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.package-list {
+  display: flex;
+  flex-direction: column;
+  gap: 22rpx;
+  padding: 28rpx;
+}
+
+.package-card {
+  display: grid;
+  grid-template-columns: 220rpx 1fr;
+  gap: 24rpx;
+  padding: 20rpx;
+  border: 1rpx solid #ece2de;
+  border-radius: 24rpx;
+  background: #fff;
+}
+
+.package-card image {
+  width: 220rpx;
+  height: 220rpx;
+  border-radius: 18rpx;
+  background: #eee3e6;
+}
+
+.package-title {
+  margin-top: 12rpx;
+  color: #3c3236;
+  font-size: 30rpx;
+  font-weight: 700;
+}
+
+.package-description {
+  display: -webkit-box;
+  margin-top: 14rpx;
+  overflow: hidden;
+  color: #897d82;
+  font-size: 22rpx;
+  line-height: 1.6;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.state-card {
+  display: flex;
+  min-height: 320rpx;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: 28rpx;
+  border: 1rpx dashed #ddcfca;
+  border-radius: 24rpx;
+  color: #8d8186;
+  background: rgba(255, 255, 255, .7);
+}
+
+.state-title {
+  color: #5a4d52;
+  font-size: 29rpx;
+  font-weight: 700;
+}
+
+.state-copy {
+  margin-top: 12rpx;
+  font-size: 22rpx;
+}
+
+.error-state button,
+.load-more {
+  width: 210rpx;
+  margin-top: 24rpx;
+  border: 1rpx solid #754657;
+  border-radius: 36rpx;
+  color: #754657;
+  font-size: 23rpx;
+  background: #fff;
+}
+
+.loading,
+.list-end {
+  display: block;
+  padding: 38rpx;
+  color: #a09398;
+  font-size: 21rpx;
+  text-align: center;
+}
+
+.load-more {
+  display: block;
+  margin-right: auto;
+  margin-left: auto;
+}

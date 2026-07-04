@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320">
+  <defs>
+    <radialGradient id="bg" cx="35%" cy="25%">
+      <stop offset="0" stop-color="#fff8f4"/>
+      <stop offset="1" stop-color="#eadadd"/>
+    </radialGradient>
+    <radialGradient id="bead" cx="32%" cy="24%">
+      <stop offset="0" stop-color="#fff" stop-opacity=".94"/>
+      <stop offset=".28" stop-color="#dbaab9"/>
+      <stop offset="1" stop-color="#875266"/>
+    </radialGradient>
+  </defs>
+  <rect width="320" height="320" rx="48" fill="url(#bg)"/>
+  <circle cx="160" cy="160" r="84" fill="url(#bead)"/>
+  <circle cx="160" cy="160" r="24" fill="#6b4050" opacity=".72"/>
+  <circle cx="130" cy="122" r="15" fill="#fff" opacity=".56"/>
+</svg>

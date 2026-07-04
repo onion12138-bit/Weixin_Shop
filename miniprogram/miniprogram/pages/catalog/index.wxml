@@ -1,0 +1,88 @@
+<view class="catalog-page">
+  <view class="catalog-hero">
+    <text class="eyebrow">CURATED MATERIALS</text>
+    <text class="title">挑选你的灵感</text>
+    <text class="subtitle">每颗珠子都可以成为设计的起点</text>
+    <view class="search-box">
+      <input
+        value="{{keyword}}"
+        placeholder="搜索水晶、颜色或材质"
+        confirm-type="search"
+        bindinput="onKeywordInput"
+        bindconfirm="search"
+      />
+      <button bindtap="search">搜索</button>
+    </view>
+  </view>
+
+  <view class="tabs">
+    <view class="tab {{activeTab === 'beads' ? 'active' : ''}}" data-tab="beads" bindtap="switchTab">散珠素材</view>
+    <view class="tab {{activeTab === 'packages' ? 'active' : ''}}" data-tab="packages" bindtap="switchTab">成品搭配</view>
+  </view>
+
+  <scroll-view wx:if="{{activeTab === 'beads'}}" class="categories" scroll-x enable-flex>
+    <view class="category {{activeCategoryId === 0 ? 'active' : ''}}" data-id="0" bindtap="chooseCategory">全部</view>
+    <view
+      wx:for="{{categories}}"
+      wx:key="id"
+      class="category {{activeCategoryId === item.id ? 'active' : ''}}"
+      data-id="{{item.id}}"
+      bindtap="chooseCategory"
+    >
+      {{item.name}}
+    </view>
+  </scroll-view>
+
+  <view wx:if="{{errorMessage}}" class="state-card error-state">
+    <text>{{errorMessage}}</text>
+    <button bindtap="retry">重新加载</button>
+  </view>
+
+  <view wx:elif="{{activeTab === 'beads' && beadCards.length}}" class="product-grid">
+    <view
+      wx:for="{{beadCards}}"
+      wx:key="id"
+      class="product-card"
+      data-id="{{item.id}}"
+      data-type="bead"
+      bindtap="openDetail"
+    >
+      <image class="product-image" src="{{item.imageUrl}}" mode="aspectFill" />
+      <view class="product-body">
+        <view class="tag-row">
+          <text wx:for="{{item.tags}}" wx:for-item="tag" wx:key="*this">{{tag}}</text>
+        </view>
+        <text class="product-title">{{item.title}}</text>
+        <text class="specification">{{item.specification}}</text>
+        <text class="price">{{item.priceText}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view wx:elif="{{activeTab === 'packages' && packageCards.length}}" class="package-list">
+    <view
+      wx:for="{{packageCards}}"
+      wx:key="id"
+      class="package-card"
+      data-id="{{item.id}}"
+      data-type="package"
+      bindtap="openDetail"
+    >
+      <image src="{{item.imageUrl}}" mode="aspectFill" />
+      <view>
+        <text class="package-title">{{item.title}}</text>
+        <text class="package-description">{{item.description}}</text>
+        <text class="price">{{item.priceText}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view wx:elif="{{!loading}}" class="state-card">
+    <text class="state-title">暂时没有商品</text>
+    <text class="state-copy">换个分类或关键词再看看</text>
+  </view>
+
+  <view wx:if="{{loading}}" class="loading">正在挑选好看的珠子…</view>
+  <button wx:if="{{hasMore && !loading}}" class="load-more" bindtap="loadMore">查看更多</button>
+  <text wx:if="{{!hasMore && total > 0}}" class="list-end">— 已展示全部 {{total}} 件商品 —</text>
+</view>

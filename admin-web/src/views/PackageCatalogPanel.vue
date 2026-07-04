@@ -1,0 +1,472 @@
+<script setup lang="ts">
+import { computed, onMounted, reactive, ref } from 'vue'
+import { ApiError, resolveApiResourceUrl } from '../api/http'
+import {
+  changePackageStatus,
+  createAdminPackage,
+  getAdminPackage,
+  listAdminBeads,
+  listAdminPackages,
+  updateAdminPackage,
+  uploadCatalogFile,
+  type BeadSku,
+  type CatalogStatus,
+  type ProductPackage,
+  type SavePackageRequest,
+} from '../api/catalog'
+
+const packages = ref<ProductPackage[]>([])
+const availableBeads = ref<BeadSku[]>([])
+const total = ref(0)
+const loading = ref(false)
+const saving = ref(false)
+const editorLoading = ref(false)
+const coverUploading = ref(false)
+const showForm = ref(false)
+const editingId = ref<number | null>(null)
+const errorMessage = ref('')
+const successMessage = ref('')
+const coverPreviewUrl = ref('')
+
+const filters = reactive({
+  keyword: '',
+  status: '' as CatalogStatus | '',
+  page: 1,
+  size: 20,
+})
+
+const form = reactive<SavePackageRequest>({
+  packageCode: '',
+  name: '',
+  description: '',
+  salePrice: 0,
+  coverAssetId: null,
+  status: 'DRAFT',
+  items: [],
+})
+
+const totalPages = computed(() =>
+  Math.max(1, Math.ceil(total.value / filters.size)),
+)
+
+function statusLabel(status: CatalogStatus): string {
+  return {
+    DRAFT: '草稿',
+    ON_SALE: '已上架',
+    OFF_SALE: '已下架',
+  }[status]
+}
+
+function readableError(error: unknown): string {
+  if (error instanceof ApiError) {
+    return error.traceId
+      ? `${error.message}（追踪号：${error.traceId}）`
+      : error.message
+  }
+  return '套餐操作失败，请确认后端服务已启动'
+}
+
+async function loadPackages(): Promise<void> {
+  loading.value = true
+  errorMessage.value = ''
+  try {
+    const result = await listAdminPackages(filters)
+    packages.value = result.items
+    total.value = result.total
+  } catch (error) {
+    errorMessage.value = readableError(error)
+  } finally {
+    loading.value = false
+  }
+}
+
+async function loadEditorBeads(): Promise<void> {
+  const result = await listAdminBeads({ page: 1, size: 100 })
+  availableBeads.value = result.items
+}
+
+function emptyItem(): { beadSkuId: number; quantity: number } {
+  return {
+    beadSkuId: availableBeads.value[0]?.id || 0,
+    quantity: 1,
+  }
+}
+
+async function openCreate(): Promise<void> {
+  editingId.value = null
+  editorLoading.value = true
+  errorMessage.value = ''
+  try {
+    await loadEditorBeads()
+    Object.assign(form, {
+      packageCode: '',
+      name: '',
+      description: '',
+      salePrice: 0,
+      coverAssetId: null,
+      status: 'DRAFT',
+      items: [emptyItem()],
+    })
+    coverPreviewUrl.value = ''
+    showForm.value = true
+  } catch (error) {
+    errorMessage.value = readableError(error)
+  } finally {
+    editorLoading.value = false
+  }
+}
+
+/**
+ * 套餐详情与可选散珠并行加载；明细按照后端 sortOrder 返回顺序写入表单。
+ * 提交时后端会在一个事务中整体替换明细，避免出现半旧半新的搭配。
+ */
+async function openEdit(item: ProductPackage): Promise<void> {
+  editingId.value = item.id
+  editorLoading.value = true
+  errorMessage.value = ''
+  try {
+    const [detail] = await Promise.all([
+      getAdminPackage(item.id),
+      loadEditorBeads(),
+    ])
+    Object.assign(form, {
+      packageCode: detail.packageCode,
+      name: detail.name,
+      description: detail.description,
+      salePrice: Number(detail.salePrice),
+      coverAssetId: detail.coverAssetId,
+      status: detail.status,
+      items: detail.items.map((packageItem) => ({
+        beadSkuId: packageItem.beadSkuId,
+        quantity: packageItem.quantity,
+      })),
+    })
+    coverPreviewUrl.value = ''
+    showForm.value = true
+  } catch (error) {
+    errorMessage.value = readableError(error)
+  } finally {
+    editorLoading.value = false
+  }
+}
+
+function addItem(): void {
+  form.items.push(emptyItem())
+}
+
+function removeItem(index: number): void {
+  if (form.items.length <= 1) return
+  form.items.splice(index, 1)
+}
+
+function moveItem(index: number, offset: -1 | 1): void {
+  const target = index + offset
+  if (target < 0 || target >= form.items.length) return
+  const [current] = form.items.splice(index, 1)
+  form.items.splice(target, 0, current)
+}
+
+async function uploadCover(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  coverUploading.value = true
+  errorMessage.value = ''
+  try {
+    const uploaded = await uploadCatalogFile(file)
+    form.coverAssetId = uploaded.id
+    coverPreviewUrl.value = resolveApiResourceUrl(uploaded.publicUrl)
+  } catch (error) {
+    errorMessage.value = readableError(error)
+    input.value = ''
+  } finally {
+    coverUploading.value = false
+  }
+}
+
+async function submit(): Promise<void> {
+  saving.value = true
+  errorMessage.value = ''
+  successMessage.value = ''
+  try {
+    const payload: SavePackageRequest = {
+      ...form,
+      items: form.items.map((item) => ({
+        beadSkuId: Number(item.beadSkuId),
+        quantity: Number(item.quantity),
+      })),
+    }
+    if (editingId.value) {
+      await updateAdminPackage(editingId.value, payload)
+      successMessage.value = '成品搭配已更新'
+    } else {
+      await createAdminPackage(payload)
+      successMessage.value = '成品搭配已创建'
+    }
+    showForm.value = false
+    await loadPackages()
+  } catch (error) {
+    errorMessage.value = readableError(error)
+  } finally {
+    saving.value = false
+  }
+}
+
+async function toggleStatus(item: ProductPackage): Promise<void> {
+  const nextStatus: CatalogStatus =
+    item.status === 'ON_SALE' ? 'OFF_SALE' : 'ON_SALE'
+  errorMessage.value = ''
+  try {
+    await changePackageStatus(item.id, nextStatus)
+    await loadPackages()
+  } catch (error) {
+    errorMessage.value = readableError(error)
+  }
+}
+
+function search(): void {
+  filters.page = 1
+  void loadPackages()
+}
+
+function changePage(page: number): void {
+  filters.page = Math.min(Math.max(page, 1), totalPages.value)
+  void loadPackages()
+}
+
+onMounted(loadPackages)
+</script>
+
+<template>
+  <section class="catalog-view">
+    <header class="content-header">
+      <div>
+        <p class="section-kicker">CATALOG / PACKAGES</p>
+        <h1>成品搭配</h1>
+        <p class="muted">按顺序组合散珠，维护可直接浏览和后续下单的成品手串。</p>
+      </div>
+      <button
+        class="primary-button"
+        data-test="create-package"
+        :disabled="editorLoading"
+        @click="openCreate"
+      >
+        {{ editorLoading ? '正在准备…' : '＋ 新增搭配' }}
+      </button>
+    </header>
+
+    <div v-if="errorMessage" class="notice error-notice" role="alert">
+      {{ errorMessage }}
+    </div>
+    <div v-if="successMessage" class="notice success-notice">
+      {{ successMessage }}
+    </div>
+
+    <section class="toolbar" aria-label="套餐筛选">
+      <label class="search-field">
+        <span class="sr-only">搜索套餐</span>
+        <input
+          v-model="filters.keyword"
+          placeholder="搜索套餐编码或名称"
+          @keyup.enter="search"
+        />
+      </label>
+      <label>
+        <span class="sr-only">套餐状态</span>
+        <select v-model="filters.status" @change="search">
+          <option value="">全部状态</option>
+          <option value="DRAFT">草稿</option>
+          <option value="ON_SALE">已上架</option>
+          <option value="OFF_SALE">已下架</option>
+        </select>
+      </label>
+      <button class="secondary-button" @click="search">查询</button>
+      <span class="result-count">共 {{ total }} 个搭配</span>
+    </section>
+
+    <section class="table-card">
+      <div v-if="loading" class="empty-state">正在读取成品搭配…</div>
+      <div v-else-if="packages.length === 0" class="empty-state">
+        <strong>还没有符合条件的成品搭配</strong>
+        <span>创建后，小程序套餐页会展示已上架的数据。</span>
+      </div>
+      <div v-else class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>搭配</th>
+              <th>说明</th>
+              <th>销售价</th>
+              <th>状态</th>
+              <th class="align-right">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in packages" :key="item.id">
+              <td>
+                <strong>{{ item.name }}</strong>
+                <code>{{ item.packageCode }}</code>
+              </td>
+              <td><span class="cell-detail package-description">{{ item.description }}</span></td>
+              <td class="money">¥ {{ Number(item.salePrice).toFixed(2) }}</td>
+              <td>
+                <span class="status-pill" :class="`status-${item.status.toLowerCase()}`">
+                  {{ statusLabel(item.status) }}
+                </span>
+              </td>
+              <td class="align-right">
+                <button class="text-button" @click="openEdit(item)">编辑</button>
+                <button class="text-button" @click="toggleStatus(item)">
+                  {{ item.status === 'ON_SALE' ? '下架' : '上架' }}
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <footer class="pagination">
+        <button
+          class="page-button"
+          :disabled="filters.page <= 1"
+          @click="changePage(filters.page - 1)"
+        >
+          上一页
+        </button>
+        <span>第 {{ filters.page }} / {{ totalPages }} 页</span>
+        <button
+          class="page-button"
+          :disabled="filters.page >= totalPages"
+          @click="changePage(filters.page + 1)"
+        >
+          下一页
+        </button>
+      </footer>
+    </section>
+
+    <div v-if="showForm" class="modal-backdrop" @click.self="showForm = false">
+      <section class="drawer" aria-labelledby="package-form-title">
+        <header>
+          <div>
+            <p class="section-kicker">
+              {{ editingId ? 'EDIT PACKAGE' : 'NEW PACKAGE' }}
+            </p>
+            <h2 id="package-form-title">
+              {{ editingId ? '编辑成品搭配' : '新增成品搭配' }}
+            </h2>
+          </div>
+          <button class="icon-button" aria-label="关闭" @click="showForm = false">×</button>
+        </header>
+
+        <form class="catalog-form" @submit.prevent="submit">
+          <div class="form-grid">
+            <label>
+              <span>搭配名称</span>
+              <input v-model="form.name" required maxlength="120" />
+            </label>
+            <label>
+              <span>套餐编码</span>
+              <input
+                v-model="form.packageCode"
+                required
+                maxlength="64"
+                pattern="[A-Z0-9]+(?:-[A-Z0-9]+)*"
+                placeholder="PACKAGE-CALM-001"
+              />
+            </label>
+            <label>
+              <span>销售价（元）</span>
+              <input v-model.number="form.salePrice" type="number" min="0" step="0.01" required />
+            </label>
+            <label>
+              <span>状态</span>
+              <select v-model="form.status">
+                <option value="DRAFT">草稿</option>
+                <option value="ON_SALE">直接上架</option>
+                <option value="OFF_SALE">已下架</option>
+              </select>
+            </label>
+          </div>
+          <label>
+            <span>搭配说明</span>
+            <textarea v-model="form.description" required maxlength="1000" rows="3" />
+          </label>
+
+          <section class="package-items-editor">
+            <header>
+              <div>
+                <strong>散珠明细</strong>
+                <small>列表顺序就是小程序展示和生产明细顺序。</small>
+              </div>
+              <button type="button" class="secondary-button" @click="addItem">＋ 添加散珠</button>
+            </header>
+            <div
+              v-for="(packageItem, index) in form.items"
+              :key="index"
+              class="package-item-row"
+            >
+              <span class="item-order">{{ index + 1 }}</span>
+              <select v-model.number="packageItem.beadSkuId" required>
+                <option
+                  v-for="bead in availableBeads"
+                  :key="bead.id"
+                  :value="bead.id"
+                >
+                  {{ bead.name }}（{{ bead.skuCode }}）
+                </option>
+              </select>
+              <label>
+                <span class="sr-only">数量</span>
+                <input
+                  v-model.number="packageItem.quantity"
+                  type="number"
+                  min="1"
+                  max="999"
+                  required
+                  title="数量"
+                />
+              </label>
+              <div class="item-actions">
+                <button type="button" class="icon-button" title="上移" @click="moveItem(index, -1)">↑</button>
+                <button type="button" class="icon-button" title="下移" @click="moveItem(index, 1)">↓</button>
+                <button
+                  type="button"
+                  class="icon-button danger-icon"
+                  title="移除"
+                  :disabled="form.items.length <= 1"
+                  @click="removeItem(index)"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <label class="cover-upload">
+            <span>封面图片（PNG / JPEG / WebP，最大 5 MiB）</span>
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              @change="uploadCover"
+            />
+            <small v-if="coverUploading">正在上传封面…</small>
+            <small v-else-if="form.coverAssetId">
+              素材 #{{ form.coverAssetId }} 已选择
+            </small>
+            <img v-if="coverPreviewUrl" :src="coverPreviewUrl" alt="成品搭配封面预览" />
+          </label>
+
+          <footer>
+            <button type="button" class="secondary-button" @click="showForm = false">取消</button>
+            <button
+              class="primary-button"
+              :disabled="saving || coverUploading || availableBeads.length === 0"
+            >
+              {{ saving ? '正在保存…' : editingId ? '保存修改' : '创建搭配' }}
+            </button>
+          </footer>
+        </form>
+      </section>
+    </div>
+  </section>
+</template>

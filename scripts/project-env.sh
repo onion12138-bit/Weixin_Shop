@@ -25,4 +25,12 @@ JAVA_HOME="$(/usr/libexec/java_home -v 17)"
 export MAVEN_HOME="${tool_root}/apache-maven-3.9.16"
 export PATH="${JAVA_HOME}/bin:${MAVEN_HOME}/bin:/Applications/Docker.app/Contents/Resources/bin:${PATH}"
 
+# `.env` 同时供 Docker Compose 和本地 Java/Node 进程使用。通过 set -a
+# 自动导出其中变量，避免用户修改了密码或端口但后端仍读取默认值。
+if [[ -f "${project_root}/.env" ]]; then
+  set -a
+  source "${project_root}/.env"
+  set +a
+fi
+
 echo "项目环境已启用：Java 17、Maven 3.9.16、Docker Desktop CLI"

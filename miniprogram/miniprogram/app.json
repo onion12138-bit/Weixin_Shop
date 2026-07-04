@@ -1,10 +1,14 @@
 {
-  "pages": ["pages/home/index"],
+  "pages": [
+    "pages/home/index",
+    "pages/catalog/index",
+    "pages/catalog/detail"
+  ],
   "window": {
     "navigationBarTitleText": "DIY 手串",
-    "navigationBarBackgroundColor": "#f8f4f0",
+    "navigationBarBackgroundColor": "#faf6f3",
     "navigationBarTextStyle": "black",
-    "backgroundColor": "#f8f4f0"
+    "backgroundColor": "#faf6f3"
   },
   "sitemapLocation": "sitemap.json"
 }

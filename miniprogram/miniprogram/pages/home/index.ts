@@ -1,12 +1,16 @@
-/**
- * 小程序首页。
- *
- * 当前展示完整客户旅程和工程状态。商品目录阶段落地后，本页将通过公开目录接口
- * 加载真实商品、珠子素材和推荐 DIY 方案。
- */
 Page({
   data: {
-    title: 'DIY 手串定制商城',
-    summary: '选珠 · DIY · 保存 · 下单 · 生产',
+    orbitBeads: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    features: [
+      { value: '40+', label: '精选材质' },
+      { value: '自由', label: '搭配顺序' },
+      { value: '可存', label: '设计方案' },
+    ],
+  },
+
+  openCatalog() {
+    wx.navigateTo({
+      url: '/pages/catalog/index',
+    })
   },
 })

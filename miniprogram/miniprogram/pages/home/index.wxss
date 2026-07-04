@@ -1,51 +1,220 @@
 .page-shell {
-  display: flex;
-  flex-direction: column;
   min-height: 100vh;
-  box-sizing: border-box;
-  padding: 96rpx 48rpx;
+  padding-bottom: 64rpx;
+  background: #faf6f3;
 }
 
-.eyebrow {
-  color: #8a5c69;
-  font-size: 24rpx;
+.hero {
+  position: relative;
+  overflow: hidden;
+  min-height: 780rpx;
+  padding: 88rpx 48rpx 56rpx;
+  color: #fff;
+  background:
+    linear-gradient(145deg, rgba(54, 29, 39, .98), rgba(118, 61, 81, .94)),
+    #623849;
+}
+
+.hero::after {
+  position: absolute;
+  right: -180rpx;
+  bottom: -230rpx;
+  width: 680rpx;
+  height: 680rpx;
+  border: 1rpx solid rgba(255, 255, 255, .14);
+  border-radius: 50%;
+  content: "";
+}
+
+.hero-copy {
+  position: relative;
+  z-index: 2;
+}
+
+.eyebrow,
+.section-kicker {
+  display: block;
+  color: #e7c6d1;
+  font-size: 20rpx;
   font-weight: 700;
   letter-spacing: 6rpx;
 }
 
 .title {
-  margin-top: 24rpx;
-  font-size: 54rpx;
-  font-weight: 700;
+  display: block;
+  width: 620rpx;
+  margin-top: 30rpx;
+  font-family: "Songti SC", serif;
+  font-size: 70rpx;
+  font-weight: 600;
+  line-height: 1.28;
 }
 
 .summary {
-  margin-top: 24rpx;
-  color: #6e6268;
-  font-size: 30rpx;
-}
-
-/* 独立卡片为后续商品推荐区预留一致的视觉容器。 */
-.card {
-  margin-top: 72rpx;
-  padding: 40rpx;
-  border: 1rpx solid #e4d7d2;
-  border-radius: 28rpx;
-  background: #fff;
-}
-
-.card-title,
-.card-copy {
   display: block;
+  width: 570rpx;
+  margin-top: 30rpx;
+  color: #eadde2;
+  font-size: 27rpx;
+  line-height: 1.8;
 }
 
-.card-title {
-  font-size: 34rpx;
+.hero-button {
+  width: 230rpx;
+  height: 84rpx;
+  margin: 38rpx 0 0;
+  border-radius: 42rpx;
+  color: #613647;
+  font-size: 27rpx;
+  font-weight: 700;
+  line-height: 84rpx;
+  background: #f4e5e9;
+}
+
+.bracelet-art {
+  position: absolute;
+  z-index: 1;
+  right: -112rpx;
+  bottom: -86rpx;
+  width: 480rpx;
+  height: 480rpx;
+}
+
+.orbit {
+  position: absolute;
+  inset: 0;
+  border: 2rpx solid rgba(255, 255, 255, .22);
+  border-radius: 50%;
+}
+
+.bead {
+  position: absolute;
+  width: 70rpx;
+  height: 70rpx;
+  border: 8rpx solid rgba(255, 255, 255, .26);
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 25%, #fff, #c98ca1 35%, #704052);
+  box-shadow: 0 10rpx 20rpx rgba(27, 13, 19, .25);
+}
+
+.bead-1 { left: 205rpx; top: -34rpx; }
+.bead-2 { right: 42rpx; top: 22rpx; }
+.bead-3 { right: -22rpx; top: 142rpx; }
+.bead-4 { right: -10rpx; bottom: 110rpx; }
+.bead-5 { right: 78rpx; bottom: -10rpx; }
+.bead-6 { left: 122rpx; bottom: -28rpx; }
+.bead-7 { left: 8rpx; bottom: 50rpx; }
+.bead-8 { left: -34rpx; top: 190rpx; }
+.bead-9 { left: 8rpx; top: 64rpx; }
+.bead-10 { left: 96rpx; top: -12rpx; }
+
+.center-seal {
+  position: absolute;
+  top: 190rpx;
+  left: 190rpx;
+  display: flex;
+  width: 100rpx;
+  height: 100rpx;
+  align-items: center;
+  justify-content: center;
+  border: 1rpx solid rgba(255, 255, 255, .3);
+  border-radius: 50%;
+  color: #e7c6d1;
+  font-family: "Songti SC", serif;
+  font-size: 25rpx;
+}
+
+.feature-row {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  width: 654rpx;
+  margin: -38rpx auto 0;
+  padding: 28rpx 0;
+  border-radius: 24rpx;
+  background: #fff;
+  box-shadow: 0 20rpx 50rpx rgba(77, 47, 58, .1);
+}
+
+.feature-item {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  border-right: 1rpx solid #eee5e1;
+}
+
+.feature-item:last-child {
+  border-right: 0;
+}
+
+.feature-value {
+  color: #6c3e50;
+  font-family: "Songti SC", serif;
+  font-size: 32rpx;
   font-weight: 700;
 }
 
-.card-copy {
-  margin-top: 18rpx;
-  color: #6e6268;
-  line-height: 1.7;
+.feature-label {
+  margin-top: 7rpx;
+  color: #887d81;
+  font-size: 21rpx;
+}
+
+.journey-card {
+  margin: 54rpx 36rpx 0;
+  padding: 42rpx 36rpx;
+  border: 1rpx solid #ece3df;
+  border-radius: 28rpx;
+  background: #fffdfb;
+}
+
+.journey-card .section-kicker {
+  color: #9a6879;
+  font-size: 18rpx;
+}
+
+.section-title {
+  display: block;
+  margin-top: 12rpx;
+  color: #2f272b;
+  font-family: "Songti SC", serif;
+  font-size: 40rpx;
+  font-weight: 700;
+}
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 28rpx;
+  margin-top: 38rpx;
+}
+
+.step {
+  display: flex;
+  gap: 25rpx;
+  align-items: center;
+}
+
+.step > text {
+  color: #b78a99;
+  font-family: serif;
+  font-size: 28rpx;
+}
+
+.step view {
+  display: flex;
+  flex-direction: column;
+}
+
+.step-title {
+  color: #41373b;
+  font-size: 27rpx;
+  font-weight: 700;
+}
+
+.step view text {
+  margin-top: 6rpx;
+  color: #91858a;
+  font-size: 22rpx;
 }

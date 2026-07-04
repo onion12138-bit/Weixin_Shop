@@ -4,11 +4,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -18,15 +17,17 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>测试使用最小化的临时控制器主动抛出业务异常，避免依赖任何具体业务模块。
  * 这样商品、订单、会员等模块后续都能复用同一套错误响应结构。</p>
  */
-@WebMvcTest
-@Import({
-    GlobalExceptionHandler.class,
-    GlobalExceptionHandlerTest.FailingController.class
-})
 class GlobalExceptionHandlerTest {
 
-    @Autowired
     private MockMvc mockMvc;
+
+    @BeforeEach
+    void setUp() {
+        mockMvc = MockMvcBuilders
+            .standaloneSetup(new FailingController())
+            .setControllerAdvice(new GlobalExceptionHandler())
+            .build();
+    }
 
     /**
      * 业务冲突必须返回 409，并携带稳定业务码、可读消息及非空追踪标识。

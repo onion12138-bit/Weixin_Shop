@@ -1,10 +1,46 @@
-<!-- 首屏结构保持轻量，确保开发者工具导入后无需后端即可看到完整页面。 -->
 <view class="page-shell">
-  <text class="eyebrow">DIY BRACELET</text>
-  <text class="title">{{ title }}</text>
-  <text class="summary">{{ summary }}</text>
-  <view class="card">
-    <text class="card-title">工程基础已就绪</text>
-    <text class="card-copy">下一阶段将接入真实商品目录和珠子素材。</text>
+  <view class="hero">
+    <view class="hero-copy">
+      <text class="eyebrow">HANDMADE FOR YOU</text>
+      <text class="title">一串珠子，\n一种属于你的节奏。</text>
+      <text class="summary">
+        从天然水晶到温润木珠，自由挑选、组合和保存你的手串设计。
+      </text>
+      <button class="hero-button" bindtap="openCatalog">开始选珠</button>
+    </view>
+    <view class="bracelet-art" aria-hidden="true">
+      <view class="orbit">
+        <view wx:for="{{orbitBeads}}" wx:key="*this" class="bead bead-{{item}}" />
+      </view>
+      <view class="center-seal">拾珠</view>
+    </view>
+  </view>
+
+  <view class="feature-row">
+    <view wx:for="{{features}}" wx:key="label" class="feature-item">
+      <text class="feature-value">{{item.value}}</text>
+      <text class="feature-label">{{item.label}}</text>
+    </view>
+  </view>
+
+  <view class="journey-card">
+    <view>
+      <text class="section-kicker">HOW IT WORKS</text>
+      <text class="section-title">三步做出你的手串</text>
+    </view>
+    <view class="steps">
+      <view class="step">
+        <text>01</text>
+        <view><text class="step-title">挑选珠子</text><text>按材质、颜色和尺寸浏览</text></view>
+      </view>
+      <view class="step">
+        <text>02</text>
+        <view><text class="step-title">自由搭配</text><text>调整顺序并查看实时价格</text></view>
+      </view>
+      <view class="step">
+        <text>03</text>
+        <view><text class="step-title">保存方案</text><text>确认后进入订单与制作</text></view>
+      </view>
+    </view>
   </view>
 </view>

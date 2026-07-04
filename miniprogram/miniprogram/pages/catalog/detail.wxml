@@ -1,0 +1,53 @@
+<view class="detail-page">
+  <view wx:if="{{loading}}" class="detail-state">正在加载详情…</view>
+  <view wx:elif="{{errorMessage}}" class="detail-state">
+    <text>{{errorMessage}}</text>
+    <button bindtap="retry">重新加载</button>
+  </view>
+
+  <block wx:elif="{{type === 'bead' && bead}}">
+    <image class="hero-image" src="{{bead.imageUrl}}" mode="aspectFill" />
+    <view class="detail-card">
+      <view class="tag-row">
+        <text wx:for="{{bead.tags}}" wx:key="*this">{{item}}</text>
+      </view>
+      <text class="detail-title">{{bead.title}}</text>
+      <text class="detail-spec">{{bead.specification}}</text>
+      <text class="detail-price">{{bead.priceText}}</text>
+      <view class="divider" />
+      <text class="copy-title">适合你的搭配方式</text>
+      <text class="copy">
+        可将这颗散珠加入后续 DIY 设计器，自由调整颗数与排列顺序。页面展示价格为单颗售价。
+      </text>
+    </view>
+  </block>
+
+  <block wx:elif="{{type === 'package' && packageCard}}">
+    <image class="hero-image" src="{{packageCard.imageUrl}}" mode="aspectFill" />
+    <view class="detail-card">
+      <text class="detail-title">{{packageCard.title}}</text>
+      <text class="detail-price">{{packageCard.priceText}}</text>
+      <text class="copy">{{packageCard.description}}</text>
+      <view class="divider" />
+      <text class="copy-title">搭配组成</text>
+      <view class="composition-list">
+        <view wx:for="{{packageDetail.items}}" wx:key="id" class="composition-item">
+          <view class="mini-bead" />
+          <view>
+            <text>{{item.bead.name}}</text>
+            <text>{{item.bead.material}} · {{item.bead.diameterMm}}mm</text>
+          </view>
+          <text class="composition-quantity">× {{item.quantity}}</text>
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <view wx:if="{{!loading && !errorMessage}}" class="bottom-bar">
+    <view>
+      <text>下一步</text>
+      <text class="bottom-title">开始你的专属搭配</text>
+    </view>
+    <button bindtap="startDesign">加入 DIY</button>
+  </view>
+</view>
