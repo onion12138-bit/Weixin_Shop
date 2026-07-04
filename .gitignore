@@ -8,6 +8,7 @@
 !.env.example
 
 .worktrees/
+.superpowers/
 apache-maven-*/
 apache-maven-*-bin.tar.gz
 
