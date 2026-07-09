@@ -84,4 +84,29 @@ public interface BeadSkuMapper extends BaseMapper<BeadSku> {
             @Param("categoryId") Long categoryId,
             @Param("keyword") String keyword
     );
+
+    /**
+     * 批量查询可参与 DIY 计价的上架散珠。
+     *
+     * <p>SQL 同时校验分类上架和 SKU 上架，避免已下架或分类不可见的珠子进入权威报价。
+     * 调用方在 ID 集合为空时不应调用本方法，防止生成空 {@code in ()}。</p>
+     *
+     * @param ids 待查询的 SKU 主键集合
+     * @return 当前可售的 SKU
+     */
+    @Select("""
+            <script>
+            select bead.*
+            from bead_sku bead
+            inner join category category
+              on category.id = bead.category_id
+             and category.status = 'ON_SALE'
+            where bead.status = 'ON_SALE'
+              and bead.id in
+              <foreach collection="ids" item="id" open="(" separator="," close=")">
+                #{id}
+              </foreach>
+            </script>
+            """)
+    List<BeadSku> selectSellableForDiy(@Param("ids") List<Long> ids);
 }
