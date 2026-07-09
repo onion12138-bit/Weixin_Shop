@@ -8,6 +8,8 @@ import com.diybracelet.mall.file.domain.AssetFile;
 import com.diybracelet.mall.file.domain.FileStorage;
 import com.diybracelet.mall.file.domain.StoredFile;
 import com.diybracelet.mall.file.infrastructure.AssetFileMapper;
+import com.diybracelet.mall.identity.infrastructure.CustomerJwtAuthenticationFilter;
+import com.diybracelet.mall.identity.infrastructure.CustomerJwtService;
 import com.diybracelet.mall.shared.error.BusinessException;
 import com.diybracelet.mall.shared.error.ErrorCode;
 import com.diybracelet.mall.shared.error.GlobalExceptionHandler;
@@ -49,13 +51,19 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         FileStorageService.class,
         JwtService.class,
         JwtAuthenticationFilter.class,
+        CustomerJwtService.class,
+        CustomerJwtAuthenticationFilter.class,
         SecurityConfiguration.class,
         FileControllerTest.StorageTestConfiguration.class
 })
 @TestPropertySource(properties = {
         "app.auth.jwt-secret=01234567890123456789012345678901",
         "app.auth.jwt-ttl=PT8H",
-        "app.auth.jwt-issuer=diy-bracelet-test"
+        "app.auth.jwt-issuer=diy-bracelet-test",
+        "app.customer-auth.jwt-secret=customer-test-secret-0123456789012345",
+        "app.customer-auth.jwt-ttl=P30D",
+        "app.customer-auth.jwt-issuer=diy-customer-test",
+        "app.customer-auth.identity-pepper=identity-test-pepper-0123456789012"
 })
 class FileControllerTest {
 

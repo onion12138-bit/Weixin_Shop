@@ -3,6 +3,7 @@ package com.diybracelet.mall.auth.infrastructure;
 import com.diybracelet.mall.shared.api.ApiResponse;
 import com.diybracelet.mall.shared.error.ErrorCode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.diybracelet.mall.identity.infrastructure.CustomerJwtAuthenticationFilter;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -29,8 +30,9 @@ import java.util.UUID;
 /**
  * 后端 HTTP 接口的无状态安全策略。
  *
- * <p>公开目录、公开文件、登录与健康检查允许匿名访问；所有后台接口要求
- * {@code ROLE_ADMIN}。认证与授权失败都返回项目统一 JSON 结构。</p>
+ * <p>公开目录、公开文件、登录、访客会话与健康检查允许匿名访问；后台接口要求
+ * {@code ROLE_ADMIN}，小程序业务接口要求 {@code ROLE_CUSTOMER}。认证与授权失败都返回项目
+ * 统一 JSON 结构。</p>
  */
 @Configuration
 public class SecurityConfiguration {
@@ -51,6 +53,7 @@ public class SecurityConfiguration {
     SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             JwtAuthenticationFilter jwtAuthenticationFilter,
+            CustomerJwtAuthenticationFilter customerJwtAuthenticationFilter,
             ObjectMapper objectMapper
     ) throws Exception {
         http
@@ -63,9 +66,11 @@ public class SecurityConfiguration {
                         .requestMatchers(
                                 "/api/public/**",
                                 "/api/admin/auth/login",
+                                "/api/app/session/guest",
                                 "/actuator/health"
                         ).permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/api/app/**").hasRole("CUSTOMER")
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(exceptions -> exceptions
@@ -85,6 +90,10 @@ public class SecurityConfiguration {
                                         "无权访问该资源"
                                 )
                         )
+                )
+                .addFilterBefore(
+                        customerJwtAuthenticationFilter,
+                        UsernamePasswordAuthenticationFilter.class
                 )
                 .addFilterBefore(
                         jwtAuthenticationFilter,

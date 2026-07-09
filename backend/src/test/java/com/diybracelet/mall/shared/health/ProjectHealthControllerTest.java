@@ -3,6 +3,8 @@ package com.diybracelet.mall.shared.health;
 import com.diybracelet.mall.auth.infrastructure.JwtAuthenticationFilter;
 import com.diybracelet.mall.auth.infrastructure.JwtService;
 import com.diybracelet.mall.auth.infrastructure.SecurityConfiguration;
+import com.diybracelet.mall.identity.infrastructure.CustomerJwtAuthenticationFilter;
+import com.diybracelet.mall.identity.infrastructure.CustomerJwtService;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -21,12 +23,18 @@ import org.springframework.test.web.servlet.MockMvc;
 @Import({
     JwtService.class,
     JwtAuthenticationFilter.class,
+    CustomerJwtService.class,
+    CustomerJwtAuthenticationFilter.class,
     SecurityConfiguration.class
 })
 @TestPropertySource(properties = {
     "app.auth.jwt-secret=01234567890123456789012345678901",
     "app.auth.jwt-ttl=PT8H",
-    "app.auth.jwt-issuer=diy-bracelet-test"
+    "app.auth.jwt-issuer=diy-bracelet-test",
+    "app.customer-auth.jwt-secret=customer-test-secret-0123456789012345",
+    "app.customer-auth.jwt-ttl=P30D",
+    "app.customer-auth.jwt-issuer=diy-customer-test",
+    "app.customer-auth.identity-pepper=identity-test-pepper-0123456789012"
 })
 class ProjectHealthControllerTest {
 

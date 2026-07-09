@@ -1,6 +1,7 @@
 package com.diybracelet.mall.auth.infrastructure;
 
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,6 +22,8 @@ import java.util.List;
  */
 @Service
 public class JwtService {
+
+    private static final String TOKEN_TYPE = "ADMIN";
 
     private final SecretKey signingKey;
     private final Duration ttl;
@@ -63,6 +66,7 @@ public class JwtService {
                 .issuer(issuer)
                 .issuedAt(Date.from(issuedAt))
                 .expiration(Date.from(expiresAt))
+                .claim("tokenType", TOKEN_TYPE)
                 .claim("roles", List.of("ROLE_ADMIN"))
                 .signWith(signingKey)
                 .compact();
@@ -81,6 +85,10 @@ public class JwtService {
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
+        String tokenType = claims.get("tokenType", String.class);
+        if (!TOKEN_TYPE.equals(tokenType)) {
+            throw new JwtException("Invalid admin token type");
+        }
         return claims.getSubject();
     }
 

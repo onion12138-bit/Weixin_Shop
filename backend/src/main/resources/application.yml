@@ -23,6 +23,11 @@ app:
     jwt-secret: ${JWT_SECRET:local-development-only-secret-change-me-32-bytes}
     jwt-ttl: ${JWT_TTL:PT8H}
     jwt-issuer: ${JWT_ISSUER:diy-bracelet-mall}
+  customer-auth:
+    jwt-secret: ${CUSTOMER_JWT_SECRET:local-customer-secret-change-me-32-bytes}
+    jwt-ttl: ${CUSTOMER_JWT_TTL:P30D}
+    jwt-issuer: ${CUSTOMER_JWT_ISSUER:diy-bracelet-customer}
+    identity-pepper: ${CUSTOMER_IDENTITY_PEPPER:local-identity-pepper-change-me-32-bytes}
   file-storage:
     max-size-bytes: ${FILE_STORAGE_MAX_SIZE_BYTES:5242880}
     local:
