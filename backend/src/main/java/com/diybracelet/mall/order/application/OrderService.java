@@ -12,10 +12,14 @@ import com.diybracelet.mall.inventory.application.InventoryReservationService;
 import com.diybracelet.mall.order.api.dto.CreateOrderRequest;
 import com.diybracelet.mall.order.api.dto.OrderResponse;
 import com.diybracelet.mall.order.domain.CustomerOrder;
+import com.diybracelet.mall.order.domain.FulfillmentTask;
 import com.diybracelet.mall.order.domain.OrderItem;
 import com.diybracelet.mall.order.domain.OrderStatus;
+import com.diybracelet.mall.order.domain.PaymentRecord;
 import com.diybracelet.mall.order.infrastructure.mapper.CustomerOrderMapper;
+import com.diybracelet.mall.order.infrastructure.mapper.FulfillmentTaskMapper;
 import com.diybracelet.mall.order.infrastructure.mapper.OrderItemMapper;
+import com.diybracelet.mall.order.infrastructure.mapper.PaymentRecordMapper;
 import com.diybracelet.mall.shared.error.BusinessException;
 import com.diybracelet.mall.shared.error.ErrorCode;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -56,6 +60,8 @@ public class OrderService {
     private final BeadSkuMapper beadSkuMapper;
     private final CustomerOrderMapper orderMapper;
     private final OrderItemMapper itemMapper;
+    private final PaymentRecordMapper paymentMapper;
+    private final FulfillmentTaskMapper fulfillmentMapper;
     private final InventoryReservationService inventoryReservationService;
     private final ObjectMapper objectMapper;
 
@@ -66,6 +72,8 @@ public class OrderService {
             BeadSkuMapper beadSkuMapper,
             CustomerOrderMapper orderMapper,
             OrderItemMapper itemMapper,
+            PaymentRecordMapper paymentMapper,
+            FulfillmentTaskMapper fulfillmentMapper,
             InventoryReservationService inventoryReservationService,
             ObjectMapper objectMapper
     ) {
@@ -75,6 +83,8 @@ public class OrderService {
         this.beadSkuMapper = beadSkuMapper;
         this.orderMapper = orderMapper;
         this.itemMapper = itemMapper;
+        this.paymentMapper = paymentMapper;
+        this.fulfillmentMapper = fulfillmentMapper;
         this.inventoryReservationService = inventoryReservationService;
         this.objectMapper = objectMapper;
     }
@@ -118,6 +128,140 @@ public class OrderService {
         inventoryReservationService.reserve(order.getId(), quantities);
         CustomerOrder saved = orderMapper.selectById(order.getId());
         return toResponse(saved, itemMapper.selectByOrderId(order.getId()));
+    }
+
+    /**
+     * 模拟完成订单支付。
+     *
+     * <p>先锁定当前顾客的订单行。已支付订单直接返回当前结果，避免重复扣库存、
+     * 重复写支付流水和重复创建制作任务。</p>
+     */
+    @Transactional
+    public OrderResponse mockPay(Long orderId) {
+        CustomerOrder order = requireOwnedOrderForUpdate(orderId);
+        List<OrderItem> items = itemMapper.selectByOrderId(orderId);
+        if (order.getStatus() == OrderStatus.PAID) {
+            return toResponse(order, items);
+        }
+        if (order.getStatus() != OrderStatus.PENDING_PAYMENT) {
+            throw new BusinessException(
+                    ErrorCode.COMMON_CONFLICT,
+                    "当前订单状态不能支付"
+            );
+        }
+
+        LocalDateTime paidAt = LocalDateTime.now();
+        inventoryReservationService.confirmSale(
+                orderId,
+                itemQuantities(items)
+        );
+        createPaymentRecord(order, paidAt);
+        createFulfillmentTask(orderId, items);
+        if (orderMapper.markPaid(orderId, paidAt) != 1) {
+            throw new BusinessException(
+                    ErrorCode.COMMON_CONFLICT,
+                    "订单支付状态更新失败"
+            );
+        }
+        return currentResponse(orderId);
+    }
+
+    /**
+     * 取消待支付订单并释放全部预占库存。
+     */
+    @Transactional
+    public OrderResponse cancel(Long orderId) {
+        CustomerOrder order = requireOwnedOrderForUpdate(orderId);
+        List<OrderItem> items = itemMapper.selectByOrderId(orderId);
+        if (order.getStatus() == OrderStatus.CANCELLED) {
+            return toResponse(order, items);
+        }
+        if (order.getStatus() != OrderStatus.PENDING_PAYMENT) {
+            throw new BusinessException(
+                    ErrorCode.COMMON_CONFLICT,
+                    "当前订单状态不能取消"
+            );
+        }
+
+        inventoryReservationService.release(orderId, itemQuantities(items));
+        if (orderMapper.markCancelled(orderId, LocalDateTime.now()) != 1) {
+            throw new BusinessException(
+                    ErrorCode.COMMON_CONFLICT,
+                    "订单取消状态更新失败"
+            );
+        }
+        return currentResponse(orderId);
+    }
+
+    private CustomerOrder requireOwnedOrderForUpdate(Long orderId) {
+        Long customerId = identityResolver.requireCustomerIdentityId();
+        CustomerOrder order = orderMapper.selectOwnedByIdForUpdate(
+                orderId,
+                customerId
+        );
+        if (order == null) {
+            throw new BusinessException(
+                    ErrorCode.COMMON_NOT_FOUND,
+                    "订单不存在"
+            );
+        }
+        return order;
+    }
+
+    private Map<Long, Integer> itemQuantities(List<OrderItem> items) {
+        Map<Long, Integer> quantities = new LinkedHashMap<>();
+        for (OrderItem item : items) {
+            quantities.put(item.getBeadSkuId(), item.getQuantity());
+        }
+        return quantities;
+    }
+
+    private void createPaymentRecord(
+            CustomerOrder order,
+            LocalDateTime paidAt
+    ) {
+        PaymentRecord payment = new PaymentRecord();
+        payment.setOrderId(order.getId());
+        payment.setPaymentNo("MOCK"
+                + paidAt.format(ORDER_TIME)
+                + UUID.randomUUID().toString()
+                .replace("-", "")
+                .substring(0, 8));
+        payment.setChannel("MOCK");
+        payment.setStatus("SUCCESS");
+        payment.setAmount(order.getTotalAmount());
+        payment.setPaidAt(paidAt);
+        payment.setRawResponseJson(writeJson(Map.of(
+                "provider", "LOCAL_MOCK",
+                "result", "SUCCESS"
+        )));
+        paymentMapper.insert(payment);
+    }
+
+    private void createFulfillmentTask(
+            Long orderId,
+            List<OrderItem> items
+    ) {
+        List<Map<String, Object>> bom = items.stream()
+                .map(item -> Map.<String, Object>of(
+                        "skuId", item.getBeadSkuId(),
+                        "skuCode", item.getSkuCode(),
+                        "name", item.getName(),
+                        "quantity", item.getQuantity()
+                ))
+                .toList();
+        FulfillmentTask task = new FulfillmentTask();
+        task.setOrderId(orderId);
+        task.setStatus("PENDING");
+        task.setBomJson(writeJson(bom));
+        fulfillmentMapper.insert(task);
+    }
+
+    private OrderResponse currentResponse(Long orderId) {
+        return toResponse(
+                orderMapper.selectById(orderId),
+                itemMapper.selectByOrderId(orderId)
+        );
     }
 
     private DiyScheme requireOwnedScheme(Long schemeId, Long customerId) {

@@ -40,4 +40,36 @@ public interface InventoryBalanceMapper
             @Param("skuId") Long skuId,
             @Param("quantity") Integer quantity
     );
+
+    /**
+     * 支付成功后，把订单预占量转入已售量。
+     */
+    @Update("""
+            update inventory_balance
+            set reserved_qty = reserved_qty - #{quantity},
+                sold_qty = sold_qty + #{quantity},
+                version = version + 1
+            where bead_sku_id = #{skuId}
+              and reserved_qty >= #{quantity}
+            """)
+    int confirmSale(
+            @Param("skuId") Long skuId,
+            @Param("quantity") Integer quantity
+    );
+
+    /**
+     * 支付前取消订单时，把预占量退回可用量。
+     */
+    @Update("""
+            update inventory_balance
+            set available_qty = available_qty + #{quantity},
+                reserved_qty = reserved_qty - #{quantity},
+                version = version + 1
+            where bead_sku_id = #{skuId}
+              and reserved_qty >= #{quantity}
+            """)
+    int release(
+            @Param("skuId") Long skuId,
+            @Param("quantity") Integer quantity
+    );
 }

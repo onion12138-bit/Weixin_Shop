@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -41,5 +42,31 @@ public class AppOrderController {
                         orderService.create(request),
                         UUID.randomUUID().toString()
                 ));
+    }
+
+    /**
+     * 本地模拟支付。重复请求已支付订单时返回相同业务结果。
+     */
+    @PostMapping("/{orderId}/mock-pay")
+    public ApiResponse<OrderResponse> mockPay(
+            @PathVariable Long orderId
+    ) {
+        return ApiResponse.success(
+                orderService.mockPay(orderId),
+                UUID.randomUUID().toString()
+        );
+    }
+
+    /**
+     * 取消待支付订单并释放库存预占。
+     */
+    @PostMapping("/{orderId}/cancel")
+    public ApiResponse<OrderResponse> cancel(
+            @PathVariable Long orderId
+    ) {
+        return ApiResponse.success(
+                orderService.cancel(orderId),
+                UUID.randomUUID().toString()
+        );
     }
 }

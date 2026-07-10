@@ -161,12 +161,143 @@ class AppOrderControllerTest extends MySqlIntegrationTest {
                 .containsEntry("sold_qty", 0);
     }
 
+    @Test
+    void shouldMockPayAndConvertReservedInventoryToSold() throws Exception {
+        String token = customerToken("d3e5939f-70ea-4a02-a2d6-2bd3a0cbe1af");
+        Long schemeId = createScheme(token, sequence(12, 9));
+        Long orderId = createOrder(token, schemeId).path("id").asLong();
+
+        mockMvc.perform(post("/api/app/orders/{orderId}/mock-pay", orderId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(orderId))
+                .andExpect(jsonPath("$.data.status").value("PAID"));
+
+        assertThat(inventory(2001L))
+                .containsEntry("available_qty", 188)
+                .containsEntry("reserved_qty", 0)
+                .containsEntry("sold_qty", 12);
+        assertThat(inventory(2002L))
+                .containsEntry("available_qty", 191)
+                .containsEntry("reserved_qty", 0)
+                .containsEntry("sold_qty", 9);
+        assertThat(count(
+                "select count(*) from payment_record "
+                        + "where order_id = ? and channel = 'MOCK' "
+                        + "and status = 'SUCCESS'",
+                orderId
+        )).isEqualTo(1);
+        assertThat(count(
+                "select count(*) from fulfillment_task "
+                        + "where order_id = ? and status = 'PENDING'",
+                orderId
+        )).isEqualTo(1);
+        assertThat(count(
+                "select count(*) from inventory_ledger "
+                        + "where order_id = ? and change_type = 'PAY_CONFIRM'",
+                orderId
+        )).isEqualTo(2);
+    }
+
+    @Test
+    void shouldKeepRepeatedMockPaymentIdempotent() throws Exception {
+        String token = customerToken("a0484d07-1818-4bc7-b46e-889065ea190a");
+        Long schemeId = createScheme(token, sequence(12, 9));
+        Long orderId = createOrder(token, schemeId).path("id").asLong();
+
+        mockPay(token, orderId);
+        mockPay(token, orderId);
+
+        assertThat(inventory(2001L))
+                .containsEntry("available_qty", 188)
+                .containsEntry("reserved_qty", 0)
+                .containsEntry("sold_qty", 12);
+        assertThat(count(
+                "select count(*) from payment_record where order_id = ?",
+                orderId
+        )).isEqualTo(1);
+        assertThat(count(
+                "select count(*) from fulfillment_task where order_id = ?",
+                orderId
+        )).isEqualTo(1);
+        assertThat(count(
+                "select count(*) from inventory_ledger "
+                        + "where order_id = ? and change_type = 'PAY_CONFIRM'",
+                orderId
+        )).isEqualTo(2);
+    }
+
+    @Test
+    void shouldCancelPendingOrderAndReleaseReservedInventory()
+            throws Exception {
+        String token = customerToken("fa44c17d-95af-4677-b5fc-a542cff83f43");
+        Long schemeId = createScheme(token, sequence(12, 9));
+        Long orderId = createOrder(token, schemeId).path("id").asLong();
+
+        mockMvc.perform(post("/api/app/orders/{orderId}/cancel", orderId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(orderId))
+                .andExpect(jsonPath("$.data.status").value("CANCELLED"));
+
+        assertThat(inventory(2001L))
+                .containsEntry("available_qty", 200)
+                .containsEntry("reserved_qty", 0)
+                .containsEntry("sold_qty", 0);
+        assertThat(inventory(2002L))
+                .containsEntry("available_qty", 200)
+                .containsEntry("reserved_qty", 0)
+                .containsEntry("sold_qty", 0);
+        assertThat(count(
+                "select count(*) from inventory_ledger "
+                        + "where order_id = ? and change_type = 'RELEASE'",
+                orderId
+        )).isEqualTo(2);
+        assertThat(count(
+                "select count(*) from payment_record where order_id = ?",
+                orderId
+        )).isZero();
+        assertThat(count(
+                "select count(*) from fulfillment_task where order_id = ?",
+                orderId
+        )).isZero();
+    }
+
     private Map<String, Object> inventory(Long skuId) {
         return jdbcTemplate.queryForMap("""
                 select available_qty, reserved_qty, sold_qty
                 from inventory_balance
                 where bead_sku_id = ?
                 """, skuId);
+    }
+
+    private Integer count(String sql, Long orderId) {
+        return jdbcTemplate.queryForObject(sql, Integer.class, orderId);
+    }
+
+    private JsonNode createOrder(String token, Long schemeId)
+            throws Exception {
+        String responseBody = mockMvc.perform(post("/api/app/orders")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "schemeId", schemeId,
+                                "contactName", "王五",
+                                "contactPhone", "13700000000",
+                                "addressDetail", "上海市静安区演示路 3 号"
+                        ))))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        return objectMapper.readTree(responseBody).path("data");
+    }
+
+    private void mockPay(String token, Long orderId) throws Exception {
+        mockMvc.perform(post("/api/app/orders/{orderId}/mock-pay", orderId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("PAID"));
     }
 
     private Long createScheme(String token, List<Long> sequence)
