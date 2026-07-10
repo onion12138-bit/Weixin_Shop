@@ -4,9 +4,10 @@ import { useAuthStore } from './stores/auth'
 import CatalogView from './views/CatalogView.vue'
 import DiySettingsView from './views/DiySettingsView.vue'
 import LoginView from './views/LoginView.vue'
+import OrderView from './views/OrderView.vue'
 
 const auth = useAuthStore()
-type AdminView = 'catalog' | 'diy'
+type AdminView = 'catalog' | 'diy' | 'orders'
 const activeView = ref<AdminView>('catalog')
 </script>
 
@@ -41,10 +42,13 @@ const activeView = ref<AdminView>('catalog')
           <small>尺寸 / 工艺费 / 绳材</small>
         </button>
         <p>交易履约</p>
-        <button class="disabled" disabled>
+        <button
+          :class="{ active: activeView === 'orders' }"
+          @click="activeView = 'orders'"
+        >
           <span>▤</span>
           订单管理
-          <small>下一阶段</small>
+          <small>制作 / 发货 / 完成</small>
         </button>
       </nav>
 
@@ -62,7 +66,8 @@ const activeView = ref<AdminView>('catalog')
 
     <main class="admin-content">
       <CatalogView v-if="activeView === 'catalog'" />
-      <DiySettingsView v-else />
+      <DiySettingsView v-else-if="activeView === 'diy'" />
+      <OrderView v-else />
     </main>
   </div>
 </template>
