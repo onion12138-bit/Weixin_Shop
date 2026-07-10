@@ -31,6 +31,9 @@ public enum ErrorCode {
     /** 当前 DIY 设计不可报价，不能进入需要确定价格的后续流程。 */
     DIY_DESIGN_NOT_QUOTABLE(HttpStatus.UNPROCESSABLE_ENTITY),
 
+    /** 下单所需 SKU 库存不足。 */
+    INVENTORY_INSUFFICIENT(HttpStatus.CONFLICT),
+
     /** 服务端发生未预期错误。 */
     COMMON_INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR);
 
