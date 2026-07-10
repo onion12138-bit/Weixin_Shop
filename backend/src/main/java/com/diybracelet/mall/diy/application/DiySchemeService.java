@@ -170,6 +170,28 @@ public class DiySchemeService {
         return true;
     }
 
+    /**
+     * 将已上传的图片素材绑定为当前顾客方案的预览图。
+     *
+     * <p>绑定失败时不删除已上传文件，避免本地存储和未来对象存储的补偿逻辑不一致。
+     * 后续可通过素材清理任务回收未被业务引用的文件。</p>
+     */
+    @Transactional
+    public DiySchemeResponse bindPreview(Long id, Long previewAssetId) {
+        Long customerId = identityResolver.requireCustomerIdentityId();
+        requireOwnedScheme(id, customerId);
+        requireActiveAsset(previewAssetId);
+        int updated = schemeMapper.bindPreviewOwned(
+                id,
+                customerId,
+                previewAssetId
+        );
+        if (updated == 0) {
+            ensureOwnedSchemeExists(id, customerId);
+        }
+        return getOwnedResponse(id, customerId);
+    }
+
     private DiyScheme toEntity(
             Long customerId,
             SaveDiySchemeRequest request
@@ -263,6 +285,7 @@ public class DiySchemeService {
                 quotedValue(evaluation, evaluation.totalAmount()),
                 evaluation.quotable() ? evaluation.quoteFingerprint() : null,
                 scheme.getPreviewAssetId(),
+                previewUrl(scheme.getPreviewAssetId()),
                 scheme.getVersion(),
                 scheme.getCreatedAt(),
                 scheme.getUpdatedAt()
@@ -287,6 +310,26 @@ public class DiySchemeService {
                 scheme.getQuoteFingerprint(),
                 evaluation.quoteFingerprint()
         ) ? QuoteStatus.VALID : QuoteStatus.STALE;
+    }
+
+    private void requireActiveAsset(Long assetId) {
+        AssetFile assetFile = assetFileMapper.selectById(assetId);
+        if (assetFile == null || !"ACTIVE".equals(assetFile.getStatus())) {
+            throw new BusinessException(
+                    ErrorCode.COMMON_NOT_FOUND,
+                    "预览图不存在"
+            );
+        }
+    }
+
+    private String previewUrl(Long assetId) {
+        if (assetId == null) {
+            return null;
+        }
+        AssetFile assetFile = assetFileMapper.selectById(assetId);
+        return assetFile != null && "ACTIVE".equals(assetFile.getStatus())
+                ? assetFile.getPublicUrl()
+                : null;
     }
 
     private List<CatalogSnapshot> snapshotCatalog(List<Long> sequence) {

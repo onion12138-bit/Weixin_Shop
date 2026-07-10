@@ -16,6 +16,7 @@ import java.util.Map;
  * @param sequence 原始 SKU 顺序数组，用于恢复用户排列
  * @param catalogSnapshot 保存时的商品展示快照，用于下架/改名后的恢复展示
  * @param quoteStatus 当前重新评估后的报价状态
+ * @param previewUrl 方案预览图公开地址；未上传或文件不可用时为 {@code null}
  */
 public record DiySchemeResponse(
         Long id,
@@ -38,6 +39,7 @@ public record DiySchemeResponse(
         BigDecimal totalAmount,
         String quoteFingerprint,
         Long previewAssetId,
+        String previewUrl,
         Long version,
         LocalDateTime createdAt,
         LocalDateTime updatedAt

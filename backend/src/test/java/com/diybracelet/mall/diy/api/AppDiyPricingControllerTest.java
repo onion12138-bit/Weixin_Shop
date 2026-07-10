@@ -39,6 +39,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "app.customer-auth.identity-pepper=identity-test-pepper-0123456789012"
 })
 @Sql(statements = {
+        "delete from diy_scheme",
         "delete from craft_fee_rule",
         "delete from cord_option",
         "delete from diy_rule_config",

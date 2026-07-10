@@ -93,4 +93,21 @@ public interface DiySchemeMapper extends BaseMapper<DiyScheme> {
             @Param("id") Long id,
             @Param("customerId") Long customerId
     );
+
+    /**
+     * 为当前顾客拥有的方案绑定预览素材。
+     */
+    @Update("""
+            update diy_scheme
+            set preview_asset_id = #{previewAssetId},
+                version = version + 1
+            where id = #{id}
+              and customer_identity_id = #{customerId}
+              and status = 'ACTIVE'
+            """)
+    int bindPreviewOwned(
+            @Param("id") Long id,
+            @Param("customerId") Long customerId,
+            @Param("previewAssetId") Long previewAssetId
+    );
 }

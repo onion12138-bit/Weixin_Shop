@@ -3,10 +3,13 @@ package com.diybracelet.mall.diy.api;
 import com.diybracelet.mall.diy.api.dto.DiySchemeResponse;
 import com.diybracelet.mall.diy.api.dto.SaveDiySchemeRequest;
 import com.diybracelet.mall.diy.application.DiySchemeService;
+import com.diybracelet.mall.file.api.UploadedFileResponse;
+import com.diybracelet.mall.file.application.FileStorageService;
 import com.diybracelet.mall.shared.api.ApiResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -16,7 +19,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.UUID;
@@ -30,9 +35,14 @@ import java.util.UUID;
 public class AppDiySchemeController {
 
     private final DiySchemeService schemeService;
+    private final FileStorageService fileStorageService;
 
-    public AppDiySchemeController(DiySchemeService schemeService) {
+    public AppDiySchemeController(
+            DiySchemeService schemeService,
+            FileStorageService fileStorageService
+    ) {
         this.schemeService = schemeService;
+        this.fileStorageService = fileStorageService;
     }
 
     @PostMapping
@@ -67,6 +77,18 @@ public class AppDiySchemeController {
             @PathVariable @Min(1) Long id
     ) {
         return created(schemeService.copy(id));
+    }
+
+    @PostMapping(
+            value = "/{id}/preview",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+    )
+    public ResponseEntity<ApiResponse<DiySchemeResponse>> uploadPreview(
+            @PathVariable @Min(1) Long id,
+            @RequestParam("file") MultipartFile file
+    ) {
+        UploadedFileResponse uploaded = fileStorageService.store(file);
+        return created(schemeService.bindPreview(id, uploaded.id()));
     }
 
     @DeleteMapping("/{id}")
