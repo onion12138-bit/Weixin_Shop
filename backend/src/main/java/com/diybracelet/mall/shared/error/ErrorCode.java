@@ -25,6 +25,12 @@ public enum ErrorCode {
     /** 请求与资源当前状态发生冲突。 */
     COMMON_CONFLICT(HttpStatus.CONFLICT),
 
+    /** DIY 方案更新版本与服务端当前版本不一致。 */
+    DIY_SCHEME_VERSION_CONFLICT(HttpStatus.CONFLICT),
+
+    /** 当前 DIY 设计不可报价，不能进入需要确定价格的后续流程。 */
+    DIY_DESIGN_NOT_QUOTABLE(HttpStatus.UNPROCESSABLE_ENTITY),
+
     /** 服务端发生未预期错误。 */
     COMMON_INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR);
 

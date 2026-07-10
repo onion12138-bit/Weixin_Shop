@@ -1,0 +1,273 @@
+package com.diybracelet.mall.diy.api;
+
+import com.diybracelet.mall.support.MySqlIntegrationTest;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.jdbc.Sql;
+import org.springframework.test.web.servlet.MockMvc;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+/**
+ * 小程序 DIY 方案生命周期接口集成测试。
+ *
+ * <p>方案只保存 SKU 顺序数组和报价快照，不保存“单颗珠子”业务记录。每次读取方案时，
+ * 服务端都会根据当前商品、尺寸、工艺费和绳材配置重新评估报价状态。</p>
+ */
+@AutoConfigureMockMvc
+@TestPropertySource(properties = {
+        "app.auth.admin.username=admin",
+        "app.auth.admin.password=Admin@123",
+        "app.auth.jwt-secret=01234567890123456789012345678901",
+        "app.auth.jwt-ttl=PT8H",
+        "app.auth.jwt-issuer=diy-bracelet-test",
+        "app.customer-auth.jwt-secret=customer-test-secret-0123456789012345",
+        "app.customer-auth.jwt-ttl=P30D",
+        "app.customer-auth.jwt-issuer=diy-customer-test",
+        "app.customer-auth.identity-pepper=identity-test-pepper-0123456789012"
+})
+@Sql(statements = {
+        "delete from diy_scheme",
+        "delete from customer_identity",
+        "delete from craft_fee_rule",
+        "delete from cord_option",
+        "delete from diy_rule_config",
+        "update bead_sku set sale_price = 12.80, status = 'ON_SALE' where id = 2001",
+        "update bead_sku set sale_price = 16.80, status = 'ON_SALE' where id = 2002",
+        """
+        insert into diy_rule_config (
+            id,
+            min_wrist_mm,
+            max_wrist_mm,
+            snug_allowance_mm,
+            standard_allowance_mm,
+            loose_allowance_mm,
+            tolerance_mm,
+            max_bead_count,
+            config_version
+        ) values (1, 120.00, 250.00, 5.00, 10.00, 15.00, 4.00, 60, 1);
+        """,
+        """
+        insert into craft_fee_rule (
+            id,
+            min_bead_count,
+            max_bead_count,
+            fee,
+            status,
+            sort_order,
+            rule_version
+        ) values (5001, 1, 60, 10.00, 'ENABLED', 10, 1);
+        """,
+        """
+        insert into cord_option (
+            id,
+            code,
+            name,
+            color_hex,
+            extra_fee,
+            status,
+            sort_order,
+            option_version
+        ) values
+            (6001, 'ELASTIC-CLEAR', '透明弹力绳', '#E8E4DC', 0.00, 'ENABLED', 10, 1),
+            (6002, 'ELASTIC-BLACK', '黑色弹力绳', '#272523', 0.00, 'ENABLED', 20, 1),
+            (6003, 'ELASTIC-BROWN', '棕色弹力绳', '#72513C', 0.00, 'ENABLED', 30, 1);
+        """
+})
+class AppDiySchemeControllerTest extends MySqlIntegrationTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @Test
+    void shouldCreateReadUpdateAndRejectStaleVersion() throws Exception {
+        String customerToken = customerToken(
+                "3f6f7816-0f1a-4aa0-870f-f34f9195a2ec"
+        );
+        List<Long> sequence = sequence(12, 9);
+
+        Long schemeId = createScheme(customerToken, "我的第一串", sequence)
+                .path("id")
+                .asLong();
+
+        mockMvc.perform(get("/api/app/diy/schemes/{id}", schemeId)
+                        .header("Authorization", "Bearer " + customerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sequence[0]").value(2001))
+                .andExpect(jsonPath("$.data.sequence[12]").value(2002))
+                .andExpect(jsonPath("$.data.beadCount").value(21))
+                .andExpect(jsonPath("$.data.quoteStatus").value("VALID"))
+                .andExpect(jsonPath("$.data.totalAmount").value(314.80));
+
+        mockMvc.perform(put("/api/app/diy/schemes/{id}", schemeId)
+                        .header("Authorization", "Bearer " + customerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload("我的第一串-修改", sequence(11, 10), 0)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.version").value(1))
+                .andExpect(jsonPath("$.data.sequence[10]").value(2001))
+                .andExpect(jsonPath("$.data.sequence[11]").value(2002));
+
+        mockMvc.perform(put("/api/app/diy/schemes/{id}", schemeId)
+                        .header("Authorization", "Bearer " + customerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload("旧版本提交", sequence, 0)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code")
+                        .value("DIY_SCHEME_VERSION_CONFLICT"));
+    }
+
+    @Test
+    void shouldHideOtherCustomerSchemeAsNotFound() throws Exception {
+        String ownerToken = customerToken(
+                "3f6f7816-0f1a-4aa0-870f-f34f9195a2ec"
+        );
+        String otherToken = customerToken(
+                "7b46d459-489d-45c8-8d08-d46aa9f592e5"
+        );
+        Long schemeId = createScheme(ownerToken, "我的第一串", sequence(12, 9))
+                .path("id")
+                .asLong();
+
+        mockMvc.perform(get("/api/app/diy/schemes/{id}", schemeId)
+                        .header("Authorization", "Bearer " + otherToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("COMMON_NOT_FOUND"));
+    }
+
+    @Test
+    void shouldCopyAndSoftDeleteOwnedScheme() throws Exception {
+        String customerToken = customerToken(
+                "3f6f7816-0f1a-4aa0-870f-f34f9195a2ec"
+        );
+        Long schemeId = createScheme(customerToken, "我的第一串", sequence(12, 9))
+                .path("id")
+                .asLong();
+
+        mockMvc.perform(post("/api/app/diy/schemes/{id}/copies", schemeId)
+                        .header("Authorization", "Bearer " + customerToken))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.name").value("我的第一串 副本"))
+                .andExpect(jsonPath("$.data.version").value(0))
+                .andExpect(jsonPath("$.data.quoteStatus").value("VALID"));
+
+        mockMvc.perform(get("/api/app/diy/schemes")
+                        .header("Authorization", "Bearer " + customerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2));
+
+        mockMvc.perform(delete("/api/app/diy/schemes/{id}", schemeId)
+                        .header("Authorization", "Bearer " + customerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").value(true));
+
+        mockMvc.perform(get("/api/app/diy/schemes/{id}", schemeId)
+                        .header("Authorization", "Bearer " + customerToken))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(get("/api/app/diy/schemes")
+                        .header("Authorization", "Bearer " + customerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1));
+    }
+
+    @Test
+    void shouldMarkSavedSchemeStaleWhenCurrentPriceChanges()
+            throws Exception {
+        String customerToken = customerToken(
+                "3f6f7816-0f1a-4aa0-870f-f34f9195a2ec"
+        );
+        Long schemeId = createScheme(customerToken, "会变价的手串", sequence(12, 9))
+                .path("id")
+                .asLong();
+
+        jdbcTemplate.update(
+                "update bead_sku set sale_price = 13.80 where id = 2001"
+        );
+
+        mockMvc.perform(get("/api/app/diy/schemes/{id}", schemeId)
+                        .header("Authorization", "Bearer " + customerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.quoteStatus").value("STALE"))
+                .andExpect(jsonPath("$.data.totalAmount").value(326.80));
+    }
+
+    private JsonNode createScheme(
+            String customerToken,
+            String name,
+            List<Long> sequence
+    ) throws Exception {
+        String responseBody = mockMvc.perform(post("/api/app/diy/schemes")
+                        .header("Authorization", "Bearer " + customerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload(name, sequence, 0)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.version").value(0))
+                .andExpect(jsonPath("$.data.quoteStatus").value("VALID"))
+                .andExpect(jsonPath("$.data.sequence[0]").value(2001))
+                .andExpect(jsonPath("$.data.beadCount").value(21))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        return objectMapper.readTree(responseBody).path("data");
+    }
+
+    private String payload(
+            String name,
+            List<Long> sequence,
+            long version
+    ) throws Exception {
+        return objectMapper.writeValueAsString(Map.of(
+                "name", name,
+                "wristCircumferenceMm", 160,
+                "fitType", "STANDARD",
+                "cordOptionId", 6001,
+                "sequence", sequence,
+                "version", version
+        ));
+    }
+
+    private List<Long> sequence(int whiteCrystalCount, int amethystCount) {
+        List<Long> sequence = new ArrayList<>();
+        sequence.addAll(Collections.nCopies(whiteCrystalCount, 2001L));
+        sequence.addAll(Collections.nCopies(amethystCount, 2002L));
+        return sequence;
+    }
+
+    private String customerToken(String installationId) throws Exception {
+        String responseBody = mockMvc.perform(post("/api/app/session/guest")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "installationId",
+                                installationId
+                        ))))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        JsonNode response = objectMapper.readTree(responseBody);
+        return response.path("data").path("accessToken").asText();
+    }
+}
