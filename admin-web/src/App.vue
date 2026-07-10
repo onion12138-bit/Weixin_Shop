@@ -1,9 +1,13 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { useAuthStore } from './stores/auth'
 import CatalogView from './views/CatalogView.vue'
+import DiySettingsView from './views/DiySettingsView.vue'
 import LoginView from './views/LoginView.vue'
 
 const auth = useAuthStore()
+type AdminView = 'catalog' | 'diy'
+const activeView = ref<AdminView>('catalog')
 </script>
 
 <template>
@@ -20,17 +24,28 @@ const auth = useAuthStore()
 
       <nav aria-label="主导航">
         <p>商品中心</p>
-        <a class="active" href="#">
+        <button
+          :class="{ active: activeView === 'catalog' }"
+          @click="activeView = 'catalog'"
+        >
           <span>◉</span>
           商品目录
           <small>分类 / 散珠 / 搭配</small>
-        </a>
+        </button>
+        <button
+          :class="{ active: activeView === 'diy' }"
+          @click="activeView = 'diy'"
+        >
+          <span>◎</span>
+          DIY 规则
+          <small>尺寸 / 工艺费 / 绳材</small>
+        </button>
         <p>交易履约</p>
-        <a class="disabled" href="#" aria-disabled="true">
+        <button class="disabled" disabled>
           <span>▤</span>
           订单管理
           <small>下一阶段</small>
-        </a>
+        </button>
       </nav>
 
       <div class="sidebar-footer">
@@ -46,7 +61,8 @@ const auth = useAuthStore()
     </aside>
 
     <main class="admin-content">
-      <CatalogView />
+      <CatalogView v-if="activeView === 'catalog'" />
+      <DiySettingsView v-else />
     </main>
   </div>
 </template>
