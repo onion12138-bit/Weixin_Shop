@@ -31,6 +31,17 @@ public interface CustomerOrderMapper extends BaseMapper<CustomerOrder> {
     );
 
     /**
+     * 后台履约操作按主键锁定订单，不附加顾客归属条件。
+     */
+    @Select("""
+            select *
+            from customer_order
+            where id = #{orderId}
+            for update
+            """)
+    CustomerOrder selectByIdForUpdate(@Param("orderId") Long orderId);
+
+    /**
      * 把待支付订单标记为已支付。
      */
     @Update("""
@@ -60,5 +71,49 @@ public interface CustomerOrderMapper extends BaseMapper<CustomerOrder> {
     int markCancelled(
             @Param("orderId") Long orderId,
             @Param("cancelledAt") LocalDateTime cancelledAt
+    );
+
+    /**
+     * 已支付订单进入制作中。
+     */
+    @Update("""
+            update customer_order
+            set status = 'IN_PRODUCTION',
+                version = version + 1
+            where id = #{orderId}
+              and status = 'PAID'
+            """)
+    int markInProduction(@Param("orderId") Long orderId);
+
+    /**
+     * 制作中订单完成发货。
+     */
+    @Update("""
+            update customer_order
+            set status = 'SHIPPED',
+                shipped_at = #{shippedAt},
+                version = version + 1
+            where id = #{orderId}
+              and status = 'IN_PRODUCTION'
+            """)
+    int markShipped(
+            @Param("orderId") Long orderId,
+            @Param("shippedAt") LocalDateTime shippedAt
+    );
+
+    /**
+     * 已发货订单标记为完成。
+     */
+    @Update("""
+            update customer_order
+            set status = 'COMPLETED',
+                completed_at = #{completedAt},
+                version = version + 1
+            where id = #{orderId}
+              and status = 'SHIPPED'
+            """)
+    int markCompleted(
+            @Param("orderId") Long orderId,
+            @Param("completedAt") LocalDateTime completedAt
     );
 }
