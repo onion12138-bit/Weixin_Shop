@@ -1,0 +1,177 @@
+.schemes-page {
+  min-height: 100vh;
+  padding: 34rpx 26rpx 64rpx;
+  background: #faf6f3;
+  box-sizing: border-box;
+}
+
+.schemes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 30rpx;
+}
+
+.header-kicker,
+.header-title,
+.scheme-title,
+.scheme-meta text,
+.preview-pending {
+  display: block;
+}
+
+.header-kicker {
+  color: #a87587;
+  font-size: 19rpx;
+  font-weight: 700;
+  letter-spacing: 5rpx;
+}
+
+.header-title {
+  margin-top: 10rpx;
+  color: #2f272b;
+  font-family: "Songti SC", serif;
+  font-size: 44rpx;
+  font-weight: 700;
+}
+
+.schemes-header button {
+  width: 180rpx;
+  height: 70rpx;
+  border-radius: 35rpx;
+  color: #fff;
+  font-size: 24rpx;
+  line-height: 70rpx;
+  background: #754657;
+}
+
+.page-state,
+.empty-card {
+  display: flex;
+  min-height: 520rpx;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #8d8186;
+  font-size: 26rpx;
+}
+
+.error-state {
+  color: #a04d59;
+}
+
+.empty-card {
+  min-height: 420rpx;
+  border-radius: 30rpx;
+  background: #fff;
+}
+
+.empty-card button {
+  width: 210rpx;
+  height: 70rpx;
+  margin-top: 28rpx;
+  border-radius: 35rpx;
+  color: #fff;
+  font-size: 24rpx;
+  line-height: 70rpx;
+  background: #754657;
+}
+
+.scheme-list {
+  display: flex;
+  flex-direction: column;
+  gap: 22rpx;
+}
+
+.scheme-card {
+  overflow: hidden;
+  border-radius: 28rpx;
+  background: #fffdfb;
+  box-shadow: 0 16rpx 44rpx rgba(87, 54, 66, .08);
+}
+
+.scheme-preview {
+  width: 100%;
+  height: 360rpx;
+  background: #eadde1;
+}
+
+.scheme-body {
+  padding: 28rpx;
+}
+
+.scheme-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.scheme-title {
+  flex: 1;
+  color: #3b3036;
+  font-size: 30rpx;
+  font-weight: 700;
+}
+
+.status {
+  padding: 7rpx 16rpx;
+  border-radius: 999rpx;
+  color: #fff;
+  font-size: 20rpx;
+  background: #8d8086;
+}
+
+.status.valid {
+  background: #548b72;
+}
+
+.status.stale {
+  background: #b58445;
+}
+
+.status.invalid {
+  background: #a04d59;
+}
+
+.status.not-quoted {
+  background: #8d8086;
+}
+
+.scheme-meta {
+  display: flex;
+  gap: 24rpx;
+  margin-top: 18rpx;
+}
+
+.scheme-meta text {
+  color: #8a7c82;
+  font-size: 22rpx;
+}
+
+.preview-pending {
+  margin-top: 16rpx;
+  color: #a04d59;
+  font-size: 21rpx;
+}
+
+.scheme-actions {
+  display: flex;
+  gap: 14rpx;
+  margin-top: 24rpx;
+}
+
+.scheme-actions button {
+  flex: 1;
+  height: 64rpx;
+  border-radius: 32rpx;
+  color: #754657;
+  font-size: 22rpx;
+  line-height: 64rpx;
+  background: #f3e6eb;
+}
+
+.scheme-actions button:first-child {
+  color: #fff;
+  background: #754657;
+}

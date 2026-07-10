@@ -59,16 +59,39 @@
   line-height: 1.8;
 }
 
-.hero-button {
+.hero-actions {
+  display: flex;
+  gap: 18rpx;
+  align-items: center;
+  margin-top: 38rpx;
+}
+
+.hero-button,
+.hero-link {
+  display: block;
+  box-sizing: border-box;
   width: 230rpx;
   height: 84rpx;
-  margin: 38rpx 0 0;
+  margin: 0;
   border-radius: 42rpx;
   color: #613647;
   font-size: 27rpx;
   font-weight: 700;
+  text-align: center;
   line-height: 84rpx;
   background: #f4e5e9;
+}
+
+.hero-link {
+  width: 180rpx;
+  border: 1rpx solid rgba(244, 229, 233, .58);
+  color: #f7e8ed;
+  font-size: 24rpx;
+  background: rgba(255, 255, 255, .08);
+}
+
+.hero-link.secondary {
+  width: 160rpx;
 }
 
 .bracelet-art {

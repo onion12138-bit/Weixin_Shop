@@ -6,7 +6,11 @@
       <text class="summary">
         从天然水晶到温润木珠，自由挑选、组合和保存你的手串设计。
       </text>
-      <button class="hero-button" bindtap="openCatalog">开始选珠</button>
+      <view class="hero-actions">
+        <button class="hero-button" bindtap="openCatalog">开始选珠</button>
+        <navigator class="hero-link" url="/pages/diy/editor">直接 DIY</navigator>
+        <navigator class="hero-link secondary" url="/pages/diy/schemes">我的方案</navigator>
+      </view>
     </view>
     <view class="bracelet-art" aria-hidden="true">
       <view class="orbit">

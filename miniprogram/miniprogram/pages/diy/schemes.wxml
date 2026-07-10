@@ -1,0 +1,40 @@
+<view class="schemes-page">
+  <view class="schemes-header">
+    <view>
+      <text class="header-kicker">MY DESIGNS</text>
+      <text class="header-title">我的 DIY 方案</text>
+    </view>
+    <button bindtap="createScheme">新建设计</button>
+  </view>
+
+  <view wx:if="{{loading}}" class="page-state">正在加载方案…</view>
+  <view wx:elif="{{errorMessage}}" class="page-state error-state">{{errorMessage}}</view>
+
+  <view wx:elif="{{!schemes.length}}" class="empty-card">
+    <text>还没有保存过方案</text>
+    <button bindtap="createScheme">开始 DIY</button>
+  </view>
+
+  <view wx:else class="scheme-list">
+    <view wx:for="{{schemes}}" wx:key="id" class="scheme-card">
+      <image class="scheme-preview" src="{{item.previewUrl}}" mode="aspectFill" />
+      <view class="scheme-body">
+        <view class="scheme-title-row">
+          <text class="scheme-title">{{item.name}}</text>
+          <text class="status {{item.statusClass}}">{{item.statusText}}</text>
+        </view>
+        <view class="scheme-meta">
+          <text>{{item.beadCountText}}</text>
+          <text>{{item.amountText}}</text>
+          <text>{{item.updatedAtText}}</text>
+        </view>
+        <text wx:if="{{item.previewPending}}" class="preview-pending">预览图待重试，不影响方案恢复</text>
+        <view class="scheme-actions">
+          <button data-id="{{item.id}}" bindtap="openScheme">继续编辑</button>
+          <button data-id="{{item.id}}" bindtap="copyScheme">复制</button>
+          <button data-id="{{item.id}}" bindtap="deleteScheme">删除</button>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>

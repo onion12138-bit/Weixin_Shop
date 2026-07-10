@@ -2,7 +2,9 @@
   "pages": [
     "pages/home/index",
     "pages/catalog/index",
-    "pages/catalog/detail"
+    "pages/catalog/detail",
+    "pages/diy/editor",
+    "pages/diy/schemes"
   ],
   "window": {
     "navigationBarTitleText": "DIY 手串",

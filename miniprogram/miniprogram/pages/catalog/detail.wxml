@@ -48,6 +48,6 @@
       <text>下一步</text>
       <text class="bottom-title">开始你的专属搭配</text>
     </view>
-    <button bindtap="startDesign">加入 DIY</button>
+    <button bindtap="startDesign">开始 DIY</button>
   </view>
 </view>

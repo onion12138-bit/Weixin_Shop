@@ -1,0 +1,93 @@
+<view class="diy-page">
+  <view wx:if="{{loading}}" class="page-state">正在加载 DIY 设计器…</view>
+  <view wx:elif="{{errorMessage}}" class="page-state error-state">
+    <text>{{errorMessage}}</text>
+  </view>
+
+  <block wx:else>
+    <view class="configuration-strip">
+      <picker range="{{wristOptionLabels}}" value="{{wristOptionIndex}}" bindchange="changeWrist">
+        <button>腕围 {{wristCircumferenceText}}</button>
+      </picker>
+      <picker range="{{fitTypeLabels}}" value="{{fitTypeIndex}}" bindchange="changeFitType">
+        <button>{{fitTypeLabels[fitTypeIndex]}}</button>
+      </picker>
+      <picker range="{{cordOptionNames}}" value="{{cordOptionIndex}}" bindchange="changeCord">
+        <button>{{cordOptionNames[cordOptionIndex]}}</button>
+      </picker>
+    </view>
+
+    <view class="canvas-panel">
+      <canvas
+        id="bracelet-canvas"
+        type="2d"
+        class="bracelet-canvas"
+        bindtouchstart="onCanvasTouchStart"
+        bindtouchmove="onCanvasTouchMove"
+        bindtouchend="onCanvasTouchEnd"
+      />
+      <view class="history-actions">
+        <button disabled="{{!canUndo}}" bindtap="undo">↶</button>
+        <button disabled="{{!canRedo}}" bindtap="redo">↷</button>
+      </view>
+      <view class="editor-summary">
+        <text>{{countText}}</text>
+        <text>{{lengthText}}</text>
+        <text>{{sizeText}}</text>
+      </view>
+    </view>
+
+    <view class="price-strip">
+      <text class="price-badge">{{priceBadge}}</text>
+      <text>{{priceText}}</text>
+    </view>
+
+    <view wx:if="{{selectedIndex >= 0}}" class="selected-actions">
+      <text>第 {{selectedNumber}} 颗</text>
+      <button bindtap="decreaseSelectedSku">−</button>
+      <button bindtap="increaseSelectedSku">＋</button>
+      <button bindtap="replaceSelected">替换</button>
+      <button bindtap="removeSelected">删除</button>
+    </view>
+
+    <scroll-view scroll-x class="category-tabs">
+      <button class="{{categoryId === 0 ? 'active' : ''}}" data-id="0" bindtap="chooseCategory">全部</button>
+      <button
+        wx:for="{{categories}}"
+        wx:key="id"
+        class="{{categoryId === item.id ? 'active' : ''}}"
+        data-id="{{item.id}}"
+        bindtap="chooseCategory"
+      >
+        {{item.name}}
+      </button>
+    </scroll-view>
+
+    <view class="bead-search">
+      <input value="{{keyword}}" bindinput="onKeywordInput" placeholder="搜索珠子" />
+      <button bindtap="searchCatalog">搜索</button>
+    </view>
+
+    <scroll-view scroll-x class="bead-tray">
+      <button
+        wx:for="{{catalog}}"
+        wx:key="id"
+        data-id="{{item.id}}"
+        bindtap="addCatalogBead"
+      >
+        <view class="tray-bead" style="background: {{item.colorHex}};" />
+        <text>{{item.name}}</text>
+      </button>
+    </scroll-view>
+
+    <view wx:if="{{quoteIssues.length}}" class="quote-issues">
+      <text wx:for="{{quoteIssues}}" wx:key="code">{{item.message}}</text>
+    </view>
+
+    <view class="editor-actions">
+      <button bindtap="goSchemes">我的方案</button>
+      <button loading="{{saving}}" bindtap="saveDraft">保存草稿</button>
+      <button loading="{{quoting}}" bindtap="confirmQuote">确认报价</button>
+    </view>
+  </block>
+</view>

@@ -9,12 +9,38 @@ declare namespace WechatMiniprogram {
     currentTarget: {
       dataset: Record<string, string | number | boolean | undefined>
     }
+    touches: Array<{
+      x: number
+      y: number
+    }>
+    changedTouches: Array<{
+      x: number
+      y: number
+    }>
   }
 
   interface Input {
     detail: {
       value: string
     }
+  }
+
+  interface PickerChange {
+    detail: {
+      value: string
+    }
+  }
+
+  interface SelectorQuery {
+    select(selector: string): SelectorQueryNode
+    exec(callback?: () => void): void
+  }
+
+  interface SelectorQueryNode {
+    fields(
+      fields: Record<string, boolean>,
+      callback: (result: unknown) => void,
+    ): SelectorQuery
   }
 }
 
@@ -56,6 +82,8 @@ declare const wx: {
 
   setStorageSync(key: string, value: string): void
 
+  removeStorageSync(key: string): void
+
   getRandomValues?(array: Uint8Array): Uint8Array
 
   navigateTo(options: { url: string }): void
@@ -67,15 +95,27 @@ declare const wx: {
     icon?: 'success' | 'error' | 'loading' | 'none'
   }): void
 
-  createSelectorQuery(): {
-    select(selector: string): {
-      fields(
-        fields: Record<string, boolean>,
-        callback: (result: unknown) => void,
-      ): unknown
-    }
-    exec(callback?: () => void): void
+  showModal(options: {
+    title: string
+    content: string
+    confirmText?: string
+    cancelText?: string
+    success(response: { confirm: boolean; cancel: boolean }): void
+    fail?(error: { errMsg: string }): void
+  }): void
+
+  showLoading(options: {
+    title: string
+    mask?: boolean
+  }): void
+
+  hideLoading(): void
+
+  getSystemInfoSync(): {
+    pixelRatio: number
   }
+
+  createSelectorQuery(): WechatMiniprogram.SelectorQuery
 
   canvasToTempFilePath(options: {
     canvas?: unknown

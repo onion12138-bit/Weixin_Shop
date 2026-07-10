@@ -57,9 +57,11 @@ Page({
   },
 
   startDesign() {
-    wx.showToast({
-      title: 'DIY 设计器即将开放',
-      icon: 'none',
+    const parameter = this.data.type === 'package'
+      ? `packageId=${this.data.id}`
+      : `skuId=${this.data.id}`
+    wx.navigateTo({
+      url: `/pages/diy/editor?${parameter}`,
     })
   },
 })
