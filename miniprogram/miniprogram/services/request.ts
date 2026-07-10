@@ -1,3 +1,8 @@
+import {
+  ensureGuestToken,
+  refreshGuestToken,
+} from './session'
+
 interface ApiEnvelope<T> {
   code: string
   message: string
@@ -7,7 +12,14 @@ interface ApiEnvelope<T> {
 
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
-  data?: Record<string, unknown>
+  data?: unknown
+}
+
+interface UploadEnvelope<T> {
+  code: string
+  message: string
+  data: T
+  traceId: string
 }
 
 /**
@@ -50,12 +62,14 @@ export function absolutePublicUrl(url: string | null): string | null {
 export function request<T>(
   path: string,
   options: RequestOptions = {},
+  retried = false,
 ): Promise<T> {
-  return new Promise((resolve, reject) => {
+  return customerHeader(path).then((header) => new Promise<T>((resolve, reject) => {
     wx.request<ApiEnvelope<T>>({
       url: `${apiBaseUrl()}${path}`,
       method: options.method || 'GET',
       data: options.data,
+      header,
       timeout: 10000,
       success(response) {
         const envelope = response.data
@@ -65,6 +79,16 @@ export function request<T>(
           envelope.code === 'OK'
         ) {
           resolve(envelope.data)
+          return
+        }
+        if (
+          response.statusCode === 401 &&
+          !retried &&
+          needsCustomerToken(path)
+        ) {
+          refreshGuestToken()
+            .then(() => request<T>(path, options, true))
+            .then(resolve, reject)
           return
         }
         reject(
@@ -79,5 +103,66 @@ export function request<T>(
         reject(new ApiError(error.errMsg || '网络连接失败', 'NETWORK_ERROR'))
       },
     })
-  })
+  }))
+}
+
+export function upload<T>(
+  path: string,
+  filePath: string,
+  name = 'file',
+): Promise<T> {
+  return ensureGuestToken().then((token) => new Promise<T>((resolve, reject) => {
+    wx.uploadFile({
+      url: `${apiBaseUrl()}${path}`,
+      filePath,
+      name,
+      header: { Authorization: `Bearer ${token}` },
+      success(response) {
+        handleUploadEnvelope<T>(response, resolve, reject)
+      },
+      fail(error) {
+        reject(new ApiError(error.errMsg || '网络连接失败', 'NETWORK_ERROR'))
+      },
+    })
+  }))
+}
+
+function needsCustomerToken(path: string): boolean {
+  return !path.startsWith('/public/')
+}
+
+function customerHeader(path: string): Promise<Record<string, string>> {
+  if (!needsCustomerToken(path)) return Promise.resolve({})
+  return ensureGuestToken().then((token) => ({
+    Authorization: `Bearer ${token}`,
+  }))
+}
+
+function handleUploadEnvelope<T>(
+  response: { data: string; statusCode: number },
+  resolve: (value: T) => void,
+  reject: (reason: unknown) => void,
+): void {
+  let envelope: UploadEnvelope<T> | null = null
+  try {
+    envelope = JSON.parse(response.data) as UploadEnvelope<T>
+  } catch {
+    reject(new ApiError('上传响应格式不合法', 'COMMON_INTERNAL_ERROR'))
+    return
+  }
+  if (
+    response.statusCode >= 200 &&
+    response.statusCode < 300 &&
+    envelope.code === 'OK'
+  ) {
+    resolve(envelope.data)
+    return
+  }
+  reject(
+    new ApiError(
+      envelope.message || '上传失败',
+      envelope.code || 'COMMON_INTERNAL_ERROR',
+      envelope.traceId,
+    ),
+  )
 }

@@ -8,6 +8,8 @@
   },
   "include": [
     "src/**/*.ts",
-    "miniprogram/domain/**/*.ts"
+    "miniprogram/domain/**/*.ts",
+    "miniprogram/services/**/*.ts",
+    "types/**/*.d.ts"
   ]
 }
