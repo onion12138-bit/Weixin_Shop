@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -261,6 +262,41 @@ class AppOrderControllerTest extends MySqlIntegrationTest {
                 "select count(*) from fulfillment_task where order_id = ?",
                 orderId
         )).isZero();
+    }
+
+    @Test
+    void shouldListAndReadOnlyOrdersOwnedByCurrentCustomer()
+            throws Exception {
+        String ownerToken = customerToken(
+                "0f5a1ed6-019b-4be5-bd8d-274af68db16e"
+        );
+        Long ownerSchemeId = createScheme(ownerToken, sequence(12, 9));
+        JsonNode ownerOrder = createOrder(ownerToken, ownerSchemeId);
+        Long ownerOrderId = ownerOrder.path("id").asLong();
+
+        String otherToken = customerToken(
+                "62a91c3a-6caa-4046-b02e-eea8e342e7fc"
+        );
+        Long otherSchemeId = createScheme(otherToken, sequence(12, 9));
+        Long otherOrderId = createOrder(otherToken, otherSchemeId)
+                .path("id").asLong();
+
+        mockMvc.perform(get("/api/app/orders")
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].id").value(ownerOrderId));
+
+        mockMvc.perform(get("/api/app/orders/{orderId}", ownerOrderId)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.orderNo")
+                        .value(ownerOrder.path("orderNo").asText()));
+
+        mockMvc.perform(get("/api/app/orders/{orderId}", otherOrderId)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("COMMON_NOT_FOUND"));
     }
 
     private Map<String, Object> inventory(Long skuId) {

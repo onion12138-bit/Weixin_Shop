@@ -50,6 +50,16 @@ Page({
     wx.navigateTo({ url: `/pages/diy/editor?schemeId=${id}` })
   },
 
+  createOrder(event: WechatMiniprogram.TouchEvent) {
+    const id = Number(event.currentTarget.dataset.id || 0)
+    if (!id) return
+    wx.navigateTo({ url: `/pages/order/confirm?schemeId=${id}` })
+  },
+
+  openOrders() {
+    wx.navigateTo({ url: '/pages/order/list' })
+  },
+
   async copyScheme(event: WechatMiniprogram.TouchEvent) {
     const id = Number(event.currentTarget.dataset.id || 0)
     if (!id) return

@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 顾客订单数据访问入口。
@@ -27,6 +28,33 @@ public interface CustomerOrderMapper extends BaseMapper<CustomerOrder> {
             """)
     CustomerOrder selectOwnedByIdForUpdate(
             @Param("orderId") Long orderId,
+            @Param("customerId") Long customerId
+    );
+
+    /**
+     * 查询顾客拥有的单个订单，不泄露其他顾客订单是否存在。
+     */
+    @Select("""
+            select *
+            from customer_order
+            where id = #{orderId}
+              and customer_identity_id = #{customerId}
+            """)
+    CustomerOrder selectOwnedById(
+            @Param("orderId") Long orderId,
+            @Param("customerId") Long customerId
+    );
+
+    /**
+     * 按创建时间倒序查询当前顾客的全部订单。
+     */
+    @Select("""
+            select *
+            from customer_order
+            where customer_identity_id = #{customerId}
+            order by id desc
+            """)
+    List<CustomerOrder> selectOwnedOrders(
             @Param("customerId") Long customerId
     );
 

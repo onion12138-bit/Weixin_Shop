@@ -1,0 +1,155 @@
+.orders-page {
+  min-height: 100vh;
+  padding: 34rpx 26rpx 64rpx;
+  background: #faf6f3;
+  box-sizing: border-box;
+}
+
+.orders-header,
+.order-top,
+.order-main > view,
+.order-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.header-kicker,
+.header-title,
+.order-no,
+.order-date,
+.item-summary {
+  display: block;
+}
+
+.header-kicker {
+  color: #a87587;
+  font-size: 19rpx;
+  font-weight: 700;
+  letter-spacing: 5rpx;
+}
+
+.header-title {
+  margin-top: 10rpx;
+  font-family: "Songti SC", serif;
+  font-size: 44rpx;
+  font-weight: 700;
+}
+
+.orders-header button {
+  width: 170rpx;
+  border-radius: 34rpx;
+  color: #754657;
+  font-size: 22rpx;
+  background: #f2e6ea;
+}
+
+.page-state,
+.empty-card {
+  display: flex;
+  min-height: 540rpx;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #8d8186;
+  font-size: 25rpx;
+}
+
+.page-state button,
+.empty-card button {
+  margin-top: 24rpx;
+  color: #754657;
+  background: #fff;
+}
+
+.error-state {
+  color: #a04d59;
+}
+
+.order-list {
+  display: flex;
+  flex-direction: column;
+  gap: 22rpx;
+  margin-top: 30rpx;
+}
+
+.order-card {
+  padding: 28rpx;
+  border-radius: 28rpx;
+  background: #fffdfb;
+  box-shadow: 0 14rpx 40rpx rgba(87, 54, 66, .07);
+}
+
+.order-no {
+  color: #3d3237;
+  font-size: 25rpx;
+  font-weight: 700;
+}
+
+.order-date {
+  margin-top: 8rpx;
+  color: #998d92;
+  font-size: 20rpx;
+}
+
+.status {
+  padding: 7rpx 15rpx;
+  border-radius: 99rpx;
+  color: #754657;
+  font-size: 20rpx;
+  background: #f3e7eb;
+}
+
+.status.in-production,
+.status.shipped {
+  color: #9a6928;
+  background: #fbf1df;
+}
+
+.status.completed {
+  color: #3f725c;
+  background: #e9f3ee;
+}
+
+.status.cancelled {
+  color: #867b80;
+  background: #eee9e7;
+}
+
+.order-main {
+  margin-top: 24rpx;
+  padding: 22rpx 0;
+  border-top: 1rpx solid #eee6e2;
+  border-bottom: 1rpx solid #eee6e2;
+}
+
+.item-summary {
+  overflow: hidden;
+  margin-bottom: 18rpx;
+  color: #75696e;
+  font-size: 22rpx;
+  line-height: 1.6;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.order-main view text {
+  color: #93868b;
+  font-size: 21rpx;
+}
+
+.order-main strong {
+  color: #754657;
+  font-size: 30rpx;
+}
+
+.order-footer {
+  margin-top: 20rpx;
+  color: #92858a;
+  font-size: 20rpx;
+}
+
+.order-footer text:last-child {
+  color: #754657;
+  font-weight: 700;
+}

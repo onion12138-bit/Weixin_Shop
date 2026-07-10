@@ -1,0 +1,197 @@
+.order-page {
+  min-height: 100vh;
+  padding: 34rpx 26rpx 190rpx;
+  background: #faf6f3;
+  box-sizing: border-box;
+}
+
+.page-heading,
+.scheme-summary,
+.checkout-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.kicker,
+.title,
+.summary-name,
+.scheme-summary view text,
+.card-title,
+.checkout-bar text,
+.checkout-bar strong {
+  display: block;
+}
+
+.kicker {
+  color: #a87587;
+  font-size: 19rpx;
+  font-weight: 700;
+  letter-spacing: 5rpx;
+}
+
+.title {
+  margin-top: 10rpx;
+  font-family: "Songti SC", serif;
+  font-size: 44rpx;
+  font-weight: 700;
+}
+
+.page-heading button {
+  width: 170rpx;
+  border-radius: 34rpx;
+  color: #754657;
+  font-size: 22rpx;
+  background: #f2e6ea;
+}
+
+.page-state {
+  display: flex;
+  min-height: 600rpx;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #8b7e83;
+  font-size: 25rpx;
+}
+
+.page-state button {
+  margin-top: 24rpx;
+  color: #754657;
+  background: #fff;
+}
+
+.error-state,
+.inline-error {
+  color: #a04d59;
+}
+
+.scheme-summary,
+.address-card,
+.notice-card {
+  margin-top: 28rpx;
+  border-radius: 26rpx;
+  background: #fffdfb;
+  box-shadow: 0 14rpx 40rpx rgba(87, 54, 66, .07);
+}
+
+.scheme-summary {
+  position: relative;
+  justify-content: flex-start;
+  gap: 22rpx;
+  padding: 22rpx;
+}
+
+.scheme-summary image {
+  width: 140rpx;
+  height: 140rpx;
+  border-radius: 22rpx;
+  background: #eadde1;
+}
+
+.scheme-summary view text {
+  margin-top: 8rpx;
+  color: #887a80;
+  font-size: 22rpx;
+}
+
+.scheme-summary .summary-name {
+  margin-top: 0;
+  color: #392f34;
+  font-size: 29rpx;
+  font-weight: 700;
+}
+
+.quote-badge {
+  position: absolute;
+  top: 20rpx;
+  right: 20rpx;
+  padding: 6rpx 12rpx;
+  border-radius: 99rpx;
+  color: #7d4658;
+  font-size: 18rpx;
+  background: #f3e7eb;
+}
+
+.notice-card {
+  padding: 22rpx 26rpx;
+  color: #8a6b52;
+  font-size: 22rpx;
+  line-height: 1.7;
+  background: #fff7e9;
+}
+
+.address-card {
+  padding: 30rpx;
+}
+
+.card-title {
+  margin-bottom: 24rpx;
+  color: #45383e;
+  font-size: 30rpx;
+  font-weight: 700;
+}
+
+.address-card label {
+  display: block;
+  margin-top: 22rpx;
+}
+
+.address-card label > text {
+  display: block;
+  margin-bottom: 10rpx;
+  color: #6f6268;
+  font-size: 23rpx;
+  font-weight: 700;
+}
+
+.address-card input,
+.address-card textarea {
+  width: 100%;
+  padding: 20rpx;
+  border: 1rpx solid #e6dcd8;
+  border-radius: 16rpx;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.address-card textarea {
+  min-height: 150rpx;
+}
+
+.inline-error {
+  margin-top: 20rpx;
+  font-size: 22rpx;
+}
+
+.checkout-bar {
+  position: fixed;
+  z-index: 10;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  padding: 20rpx 30rpx calc(20rpx + env(safe-area-inset-bottom));
+  border-top: 1rpx solid #eadfdb;
+  background: rgba(255, 253, 251, .97);
+}
+
+.checkout-bar text {
+  color: #92858a;
+  font-size: 19rpx;
+}
+
+.checkout-bar strong {
+  margin-top: 5rpx;
+  color: #754657;
+  font-size: 31rpx;
+}
+
+.checkout-bar button {
+  width: 260rpx;
+  height: 80rpx;
+  border-radius: 40rpx;
+  color: #fff;
+  font-size: 25rpx;
+  line-height: 80rpx;
+  background: #754657;
+}

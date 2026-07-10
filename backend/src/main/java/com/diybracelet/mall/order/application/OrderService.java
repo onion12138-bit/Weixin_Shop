@@ -131,6 +131,39 @@ public class OrderService {
     }
 
     /**
+     * 查询当前顾客的订单列表，最新创建的订单排在最前。
+     */
+    @Transactional(readOnly = true)
+    public List<OrderResponse> listOwned() {
+        Long customerId = identityResolver.requireCustomerIdentityId();
+        return orderMapper.selectOwnedOrders(customerId).stream()
+                .map(order -> toResponse(
+                        order,
+                        itemMapper.selectByOrderId(order.getId())
+                ))
+                .toList();
+    }
+
+    /**
+     * 查询当前顾客拥有的订单详情。
+     */
+    @Transactional(readOnly = true)
+    public OrderResponse getOwned(Long orderId) {
+        Long customerId = identityResolver.requireCustomerIdentityId();
+        CustomerOrder order = orderMapper.selectOwnedById(
+                orderId,
+                customerId
+        );
+        if (order == null) {
+            throw new BusinessException(
+                    ErrorCode.COMMON_NOT_FOUND,
+                    "订单不存在"
+            );
+        }
+        return toResponse(order, itemMapper.selectByOrderId(orderId));
+    }
+
+    /**
      * 模拟完成订单支付。
      *
      * <p>先锁定当前顾客的订单行。已支付订单直接返回当前结果，避免重复扣库存、

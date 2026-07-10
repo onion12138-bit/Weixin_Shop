@@ -1,0 +1,242 @@
+.detail-page {
+  min-height: 100vh;
+  padding-bottom: 170rpx;
+  background: #faf6f3;
+}
+
+.page-state {
+  display: flex;
+  min-height: 700rpx;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #8d8186;
+  font-size: 25rpx;
+}
+
+.page-state button {
+  margin-top: 24rpx;
+  color: #754657;
+  background: #fff;
+}
+
+.error-state,
+.inline-error {
+  color: #a04d59;
+}
+
+.status-hero {
+  padding: 48rpx 32rpx 88rpx;
+  color: #fff;
+  background: linear-gradient(135deg, #704253, #9e7080);
+}
+
+.status-hero.in-production,
+.status-hero.shipped {
+  background: linear-gradient(135deg, #8a622d, #bd8d4f);
+}
+
+.status-hero.completed {
+  background: linear-gradient(135deg, #386650, #6f9a82);
+}
+
+.status-hero.cancelled {
+  background: linear-gradient(135deg, #655d60, #91878b);
+}
+
+.kicker,
+.status-title,
+.order-no,
+.order-date,
+.detail-card > text,
+.card-title,
+.bom-row view text {
+  display: block;
+}
+
+.kicker {
+  color: rgba(255, 255, 255, .68);
+  font-size: 18rpx;
+  letter-spacing: 5rpx;
+}
+
+.status-title {
+  margin-top: 14rpx;
+  font-family: "Songti SC", serif;
+  font-size: 54rpx;
+  font-weight: 700;
+}
+
+.order-no {
+  margin-top: 24rpx;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.order-date {
+  margin-top: 7rpx;
+  color: rgba(255, 255, 255, .72);
+  font-size: 20rpx;
+}
+
+.progress-card {
+  display: flex;
+  justify-content: space-between;
+  margin: -42rpx 24rpx 0;
+  padding: 28rpx 18rpx;
+  border-radius: 24rpx;
+  background: #fff;
+  box-shadow: 0 14rpx 40rpx rgba(87, 54, 66, .1);
+}
+
+.step {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  color: #b2a7ab;
+  font-size: 18rpx;
+}
+
+.step-dot {
+  display: flex;
+  width: 42rpx;
+  height: 42rpx;
+  margin-bottom: 9rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #a79ba0;
+  background: #eee9e7;
+}
+
+.step.active {
+  color: #754657;
+  font-weight: 700;
+}
+
+.step.active .step-dot {
+  color: #fff;
+  background: #754657;
+}
+
+.detail-card {
+  margin: 24rpx;
+  padding: 28rpx;
+  border-radius: 24rpx;
+  background: #fffdfb;
+  box-shadow: 0 12rpx 34rpx rgba(87, 54, 66, .06);
+}
+
+.detail-card > text:not(.card-title) {
+  margin-top: 10rpx;
+  color: #7e7176;
+  font-size: 23rpx;
+  line-height: 1.6;
+}
+
+.card-heading,
+.bom-row,
+.amount-card view,
+.action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.card-title {
+  color: #43373c;
+  font-size: 29rpx;
+  font-weight: 700;
+}
+
+.card-heading > text:last-child {
+  color: #8f8187;
+  font-size: 21rpx;
+}
+
+.bom-row {
+  gap: 18rpx;
+  padding: 20rpx 0;
+  border-top: 1rpx solid #eee6e2;
+}
+
+.bom-row:first-of-type {
+  margin-top: 18rpx;
+}
+
+.bom-row view {
+  flex: 1;
+}
+
+.bom-row view text:first-child {
+  color: #4b3e44;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.bom-row view text:last-child {
+  margin-top: 6rpx;
+  color: #9a8e93;
+  font-size: 18rpx;
+}
+
+.bom-row > text {
+  width: 100rpx;
+  color: #76696f;
+  font-size: 22rpx;
+  text-align: right;
+}
+
+.amount-card view {
+  padding: 12rpx 0;
+  color: #786b70;
+  font-size: 23rpx;
+}
+
+.amount-card .total-row {
+  margin-top: 12rpx;
+  padding-top: 22rpx;
+  border-top: 1rpx solid #eee6e2;
+}
+
+.total-row strong {
+  color: #754657;
+  font-size: 34rpx;
+}
+
+.inline-error {
+  margin: 0 28rpx;
+  font-size: 22rpx;
+}
+
+.action-bar {
+  position: fixed;
+  z-index: 10;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  gap: 18rpx;
+  padding: 20rpx 28rpx calc(20rpx + env(safe-area-inset-bottom));
+  border-top: 1rpx solid #eadfdb;
+  background: rgba(255, 253, 251, .97);
+}
+
+.action-bar button {
+  flex: 1;
+  height: 80rpx;
+  border-radius: 40rpx;
+  font-size: 25rpx;
+  line-height: 80rpx;
+}
+
+.secondary-action {
+  border: 1rpx solid #754657;
+  color: #754657;
+  background: #fff;
+}
+
+.primary-action {
+  color: #fff;
+  background: #754657;
+}

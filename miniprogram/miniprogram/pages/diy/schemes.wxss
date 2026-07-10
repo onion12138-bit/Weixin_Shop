@@ -35,6 +35,11 @@
   font-weight: 700;
 }
 
+.header-actions {
+  display: flex;
+  gap: 12rpx;
+}
+
 .schemes-header button {
   width: 180rpx;
   height: 70rpx;
@@ -43,6 +48,11 @@
   font-size: 24rpx;
   line-height: 70rpx;
   background: #754657;
+}
+
+.schemes-header .header-actions button:first-child {
+  color: #754657;
+  background: #f2e6ea;
 }
 
 .page-state,
@@ -157,12 +167,13 @@
 
 .scheme-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 14rpx;
   margin-top: 24rpx;
 }
 
 .scheme-actions button {
-  flex: 1;
+  flex: 1 0 42%;
   height: 64rpx;
   border-radius: 32rpx;
   color: #754657;
@@ -171,7 +182,7 @@
   background: #f3e6eb;
 }
 
-.scheme-actions button:first-child {
+.scheme-actions button.checkout {
   color: #fff;
   background: #754657;
 }

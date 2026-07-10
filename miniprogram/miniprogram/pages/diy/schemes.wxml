@@ -4,7 +4,10 @@
       <text class="header-kicker">MY DESIGNS</text>
       <text class="header-title">我的 DIY 方案</text>
     </view>
-    <button bindtap="createScheme">新建设计</button>
+    <view class="header-actions">
+      <button bindtap="openOrders">我的订单</button>
+      <button bindtap="createScheme">新建设计</button>
+    </view>
   </view>
 
   <view wx:if="{{loading}}" class="page-state">正在加载方案…</view>
@@ -30,6 +33,7 @@
         </view>
         <text wx:if="{{item.previewPending}}" class="preview-pending">预览图待重试，不影响方案恢复</text>
         <view class="scheme-actions">
+          <button class="checkout" data-id="{{item.id}}" bindtap="createOrder">去下单</button>
           <button data-id="{{item.id}}" bindtap="openScheme">继续编辑</button>
           <button data-id="{{item.id}}" bindtap="copyScheme">复制</button>
           <button data-id="{{item.id}}" bindtap="deleteScheme">删除</button>

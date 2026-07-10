@@ -1,0 +1,73 @@
+<view class="detail-page">
+  <view wx:if="{{loading}}" class="page-state">正在加载订单…</view>
+  <view wx:elif="{{errorMessage && !order}}" class="page-state error-state">
+    <text>{{errorMessage}}</text>
+    <button bindtap="loadOrder">重新加载</button>
+  </view>
+
+  <block wx:elif="{{order}}">
+    <view class="status-hero {{order.statusClass}}">
+      <text class="kicker">ORDER STATUS</text>
+      <text class="status-title">{{order.statusText}}</text>
+      <text class="order-no">{{order.orderNo}}</text>
+      <text class="order-date">{{order.createdAtText}} 创建</text>
+    </view>
+
+    <view wx:if="{{order.status !== 'CANCELLED'}}" class="progress-card">
+      <view wx:for="{{steps}}" wx:key="*this" class="step {{index <= order.progressIndex ? 'active' : ''}}">
+        <view class="step-dot">{{index + 1}}</view>
+        <text>{{item}}</text>
+      </view>
+    </view>
+
+    <view class="detail-card">
+      <text class="card-title">收货信息</text>
+      <text>{{order.contactName}} · {{order.contactPhone}}</text>
+      <text>{{order.addressDetail}}</text>
+    </view>
+
+    <view class="detail-card">
+      <view class="card-heading">
+        <text class="card-title">制作清单</text>
+        <text>{{order.beadCountText}}</text>
+      </view>
+      <view wx:for="{{order.items}}" wx:key="skuId" class="bom-row">
+        <view>
+          <text>{{item.name}}</text>
+          <text>{{item.skuCode}}</text>
+        </view>
+        <text>{{item.quantityText}}</text>
+        <text>{{item.totalPriceText}}</text>
+      </view>
+    </view>
+
+    <view class="detail-card amount-card">
+      <view><text>珠子金额</text><text>{{order.beadAmountText}}</text></view>
+      <view><text>工艺费</text><text>{{order.craftFeeText}}</text></view>
+      <view><text>绳材加价</text><text>{{order.cordFeeText}}</text></view>
+      <view class="total-row"><text>订单总额</text><strong>{{order.amountText}}</strong></view>
+    </view>
+
+    <view wx:if="{{errorMessage}}" class="inline-error">{{errorMessage}}</view>
+
+    <view wx:if="{{order.canMockPay || order.canCancel}}" class="action-bar">
+      <button
+        wx:if="{{order.canCancel}}"
+        disabled="{{operating}}"
+        class="secondary-action"
+        bindtap="cancel"
+      >
+        取消订单
+      </button>
+      <button
+        wx:if="{{order.canMockPay}}"
+        loading="{{operating}}"
+        disabled="{{operating}}"
+        class="primary-action"
+        bindtap="mockPay"
+      >
+        模拟支付
+      </button>
+    </view>
+  </block>
+</view>

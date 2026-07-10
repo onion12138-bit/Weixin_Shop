@@ -4,7 +4,10 @@
     "pages/catalog/index",
     "pages/catalog/detail",
     "pages/diy/editor",
-    "pages/diy/schemes"
+    "pages/diy/schemes",
+    "pages/order/confirm",
+    "pages/order/list",
+    "pages/order/detail"
   ],
   "window": {
     "navigationBarTitleText": "DIY 手串",

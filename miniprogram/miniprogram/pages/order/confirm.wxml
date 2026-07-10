@@ -1,0 +1,76 @@
+<view class="order-page">
+  <view class="page-heading">
+    <view>
+      <text class="kicker">CHECKOUT</text>
+      <text class="title">确认专属手串</text>
+    </view>
+    <button bindtap="openOrders">我的订单</button>
+  </view>
+
+  <view wx:if="{{loading}}" class="page-state">正在读取方案…</view>
+  <view wx:elif="{{errorMessage && !scheme}}" class="page-state error-state">
+    <text>{{errorMessage}}</text>
+    <button bindtap="loadScheme">重新加载</button>
+  </view>
+
+  <block wx:elif="{{scheme}}">
+    <view class="scheme-summary">
+      <image src="{{scheme.previewUrl}}" mode="aspectFill" />
+      <view>
+        <text class="summary-name">{{scheme.name}}</text>
+        <text>{{scheme.beadCountText}}</text>
+        <text>{{scheme.amountText}}</text>
+      </view>
+      <text class="quote-badge">后端重算</text>
+    </view>
+
+    <view class="notice-card">
+      页面金额用于确认设计。提交后，系统会按最新 SKU 价格和库存重新计算，
+      不使用小程序自行提交的金额。
+    </view>
+
+    <view class="address-card">
+      <text class="card-title">收货信息</text>
+      <label>
+        <text>收货人</text>
+        <input
+          value="{{contactName}}"
+          data-field="contactName"
+          bindinput="updateField"
+          placeholder="请输入姓名"
+        />
+      </label>
+      <label>
+        <text>联系电话</text>
+        <input
+          value="{{contactPhone}}"
+          data-field="contactPhone"
+          bindinput="updateField"
+          type="number"
+          placeholder="请输入手机号"
+        />
+      </label>
+      <label>
+        <text>详细地址</text>
+        <textarea
+          value="{{addressDetail}}"
+          data-field="addressDetail"
+          bindinput="updateField"
+          placeholder="省市区、街道及门牌号"
+        />
+      </label>
+    </view>
+
+    <view wx:if="{{errorMessage}}" class="inline-error">{{errorMessage}}</view>
+
+    <view class="checkout-bar">
+      <view>
+        <text>方案参考价</text>
+        <strong>{{scheme.amountText}}</strong>
+      </view>
+      <button loading="{{submitting}}" disabled="{{submitting}}" bindtap="submitOrder">
+        创建订单
+      </button>
+    </view>
+  </block>
+</view>

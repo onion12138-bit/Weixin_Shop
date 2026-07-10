@@ -1,0 +1,48 @@
+<view class="orders-page">
+  <view class="orders-header">
+    <view>
+      <text class="header-kicker">MY ORDERS</text>
+      <text class="header-title">我的订单</text>
+    </view>
+    <button bindtap="openSchemes">我的方案</button>
+  </view>
+
+  <view wx:if="{{loading}}" class="page-state">正在加载订单…</view>
+  <view wx:elif="{{errorMessage}}" class="page-state error-state">
+    <text>{{errorMessage}}</text>
+    <button bindtap="loadOrders">重新加载</button>
+  </view>
+  <view wx:elif="{{!orders.length}}" class="empty-card">
+    <text>还没有创建过订单</text>
+    <button bindtap="openSchemes">从 DIY 方案下单</button>
+  </view>
+
+  <view wx:else class="order-list">
+    <view
+      wx:for="{{orders}}"
+      wx:key="id"
+      class="order-card"
+      data-id="{{item.id}}"
+      bindtap="openOrder"
+    >
+      <view class="order-top">
+        <view>
+          <text class="order-no">{{item.orderNo}}</text>
+          <text class="order-date">{{item.createdAtText}}</text>
+        </view>
+        <text class="status {{item.statusClass}}">{{item.statusText}}</text>
+      </view>
+      <view class="order-main">
+        <text class="item-summary">{{item.itemSummary}}</text>
+        <view>
+          <text>{{item.beadCountText}}</text>
+          <strong>{{item.amountText}}</strong>
+        </view>
+      </view>
+      <view class="order-footer">
+        <text>{{item.contactName}} · {{item.contactPhone}}</text>
+        <text>查看详情 ›</text>
+      </view>
+    </view>
+  </view>
+</view>
