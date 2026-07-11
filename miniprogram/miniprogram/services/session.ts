@@ -14,6 +14,7 @@ export interface GuestSession {
 export interface StringStorage {
   get(key: string): string | null
   set(key: string, value: string): void
+  remove(key: string): void
 }
 
 export interface SessionTransport {
@@ -23,6 +24,7 @@ export interface SessionTransport {
 export interface GuestSessionManager {
   ensure(): Promise<string>
   refresh(): Promise<string>
+  invalidate(): void
   currentToken(): string | null
 }
 
@@ -66,6 +68,7 @@ export function createGuestSessionManager(
   return {
     ensure,
     refresh,
+    invalidate: () => storage.remove(CUSTOMER_TOKEN_KEY),
     currentToken: () => storage.get(CUSTOMER_TOKEN_KEY),
   }
 }
@@ -74,6 +77,7 @@ export const guestSessionManager = createGuestSessionManager(
   {
     get: (key) => wx.getStorageSync(key) || null,
     set: (key, value) => wx.setStorageSync(key, value),
+    remove: (key) => wx.removeStorageSync(key),
   },
   {
     exchange: exchangeGuestSession,

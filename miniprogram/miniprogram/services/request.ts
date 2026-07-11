@@ -1,5 +1,6 @@
 import {
   ensureGuestToken,
+  guestSessionManager,
   refreshGuestToken,
 } from './session'
 
@@ -81,11 +82,8 @@ export function request<T>(
           resolve(envelope.data)
           return
         }
-        if (
-          response.statusCode === 401 &&
-          !retried &&
-          needsCustomerToken(path)
-        ) {
+        if (shouldRefreshCustomerSession(path, response.statusCode, retried)) {
+          guestSessionManager.invalidate()
           refreshGuestToken()
             .then(() => request<T>(path, options, true))
             .then(resolve, reject)
@@ -129,6 +127,14 @@ export function upload<T>(
 
 function needsCustomerToken(path: string): boolean {
   return !path.startsWith('/public/')
+}
+
+export function shouldRefreshCustomerSession(
+  path: string,
+  status: number,
+  retried: boolean,
+): boolean {
+  return status === 401 && !retried && needsCustomerToken(path)
 }
 
 function customerHeader(path: string): Promise<Record<string, string>> {
