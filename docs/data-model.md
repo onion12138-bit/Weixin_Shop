@@ -1,6 +1,6 @@
 # 数据模型
 
-最后更新：2026-07-10
+最后更新：2026-07-11
 
 本文件只记录已经通过 Flyway 落地的表。当前迁移：
 
@@ -8,6 +8,7 @@
 - `V2__catalog_seed.sql`：2 个分类、4 个散珠和 1 个套餐演示数据。
 - `V3__diy_identity_pricing_schema.sql`：访客身份、DIY 规则、工艺费、绳材和方案结构。
 - `V4__diy_seed.sql`：默认 DIY 规则、工艺费和绳材演示配置。
+- `V5__commerce_order_inventory_schema.sql`：库存、订单、模拟支付和履约结构及演示库存。
 
 ## 1. 关系
 
@@ -16,6 +17,11 @@ category 1 ── n bead_sku
 asset_file 1 ── n bead_sku/product_package/diy_scheme（可选封面或预览）
 product_package 1 ── n package_item n ── 1 bead_sku
 customer_identity 1 ── n diy_scheme n ── 1 cord_option
+customer_identity 1 ── n customer_order 1 ── n order_item
+diy_scheme 1 ── n customer_order
+bead_sku 1 ── 1 inventory_balance 1 ── n inventory_ledger
+customer_order 1 ── 1 payment_record
+customer_order 1 ── 1 fulfillment_task
 diy_rule_config 1 ── 当前全局 DIY 规则
 craft_fee_rule n ── 按珠数区间匹配工艺费
 ```
@@ -39,7 +45,7 @@ craft_fee_rule n ── 按珠数区间匹配工艺费
 | `name/material/color` | 名称、材质、颜色 |
 | `diameter_mm` | 珠子直径，必须大于 0 |
 | `sale_price/cost_price` | 售价、成本价，非负 |
-| `stock_alert_threshold` | 库存预警阈值，非负；当前尚未实现库存流水 |
+| `stock_alert_threshold` | 库存预警阈值，非负；余额已落地，后台告警任务待实现 |
 | `cover_asset_id` | 可空封面素材外键 |
 | `tags_json` | 标签数组 |
 | `status` | `DRAFT`、`ON_SALE`、`OFF_SALE` |
@@ -102,13 +108,51 @@ craft_fee_rule n ── 按珠数区间匹配工艺费
 - 旧方案读取时重新按当前 SKU 与配置评估，价格变化标记为 `STALE`。
 - 删除为软删除，不物理移除方案记录。
 
-## 6. 查询与约束
+## 6. 库存、订单、支付和履约表
+
+### `inventory_balance` 与 `inventory_ledger`
+
+`inventory_balance` 每个散珠 SKU 只允许一行，保存：
+
+- `available_qty`：可被新订单预占的数量。
+- `reserved_qty`：待支付订单已经占用的数量。
+- `sold_qty`：支付成功确认销售的累计数量。
+- `version`：每次库存流转递增。
+
+`inventory_ledger` 记录每次流转前后的三类余额，类型包括 `INIT`、`RESERVE`、`PAY_CONFIRM`、`RELEASE`、`ADJUST`。下单、支付和取消均先锁定余额行，再执行带数量下限条件的更新；事务失败时余额、流水和订单一起回滚。
+
+### `customer_order` 与 `order_item`
+
+`customer_order` 保存顾客、来源方案、收货信息、方案快照、分项金额、总额、状态和各阶段时间。状态为：
+
+```text
+PENDING_PAYMENT -> PAID -> IN_PRODUCTION -> SHIPPED -> COMPLETED
+PENDING_PAYMENT -> CANCELLED
+```
+
+`scheme_snapshot_json` 保留原始 SKU 顺序和数量统计；`order_item` 按 SKU 聚合保存编码、名称、数量、单价、总价和稳定排序，作为生产 BOM 与历史价格快照。商品后续调价、改名或下架不会改变已有订单。
+
+### `payment_record`
+
+每个订单最多一条支付记录，`order_id` 与 `payment_no` 均唯一。当前渠道只允许 `MOCK`，状态为 `INIT`、`SUCCESS`、`FAILED`，并保存金额、支付时间和原始响应 JSON。唯一约束与订单行锁共同保证模拟支付幂等。
+
+### `fulfillment_task`
+
+支付成功后每个订单创建唯一履约任务。`bom_json` 保存订单 SKU 数量快照；状态为 `PENDING`、`IN_PRODUCTION`、`SHIPPED`、`COMPLETED`。发货保存模拟物流公司、运单号和时间，完成保存完成时间。
+
+### V5 演示库存
+
+SKU `2001`～`2004` 各初始化 200 个可用库存，并写入 `INIT` 流水。该数据只用于本地开发和演示，生产环境必须使用正式库存初始化流程。
+
+## 7. 查询与约束
 
 - 公共散珠索引：`(status, category_id, id)`。
 - 公共套餐索引：`(status, id)`。
 - 工艺费匹配索引：`(status, min_bead_count, max_bead_count)`。
 - 方案列表索引：`(customer_identity_id, status, updated_at)`。
+- 顾客订单索引：`(customer_identity_id, status, updated_at)`；后台订单索引：`(status, updated_at)`。
+- 库存预警索引：`available_qty`；库存流水按 SKU/时间和订单建立索引。
 - 数据库 `check` 约束保证金额、尺寸、数量、状态和文件大小合法。
 - 金额映射为 Java `BigDecimal`，前端仅负责显示，不作为最终计价权威。
 
-库存、订单、支付和履约表尚未落地；实施对应阶段时在新 Flyway 迁移中追加。
+- 订单、支付记录和履约任务均有唯一业务约束，防止重复支付和重复建任务。

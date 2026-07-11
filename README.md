@@ -4,21 +4,21 @@
 
 ## 当前状态
 
-截至 2026-07-10，项目已经实现第一条 DIY 可用产品链路：
+截至 2026-07-11，项目已经实现本地可用的 DIY 商品与模拟交易闭环：
 
-- Spring Boot：Flyway 数据库迁移、商品目录、图片上传、管理员 JWT、访客身份、DIY 配置、权威报价和方案生命周期。
-- Vue 管理后台：管理员登录、分类/散珠/套餐维护、有序明细、封面上传、上下架和 DIY 规则配置。
-- 微信小程序：首页、商品目录、搜索筛选、详情、DIY Canvas 工作台、权威报价、方案保存和“我的方案”列表。
-- 基础设施：MySQL、Redis、本地文件存储、三端自动化验证、商品目录 HTTP 冒烟和 DIY HTTP 冒烟脚本。
+- Spring Boot：Flyway V1～V5、商品目录、图片、双 JWT、DIY 配置/报价/方案、库存余额与流水、订单快照、幂等模拟支付和履约状态机。
+- Vue 管理后台：登录、分类/散珠/套餐/封面维护、DIY 规则配置、订单与 BOM 查询、制作、发货和完成。
+- 微信小程序：首页、目录、详情、DIY Canvas 工作台、方案管理、订单确认、我的订单、详情、模拟支付和取消。
+- 基础设施：MySQL、Redis、本地文件存储、三端自动化验证及商品、DIY、订单三个真实 HTTP 冒烟脚本。
 
-未接入真实微信授权、真实对象存储、推荐、库存、订单、模拟支付和履约。当前版本可用于产品展示和本地演示，但不能完成真实交易收款。项目完整范围与实际进度见 [`docs/overview.md`](docs/overview.md) 和 [`docs/progress.md`](docs/progress.md)。
+未接入真实微信授权、真实对象存储、微信支付、退款售后和规则推荐。当前版本可以完成除真实扣款外的本地产品操作与演示；“模拟支付”不会产生真实交易。项目完整范围与实际进度见 [`docs/overview.md`](docs/overview.md) 和 [`docs/progress.md`](docs/progress.md)。
 
 ## 完整产品规划
 
 - 分类、珠子 SKU、套餐和素材管理（已实现）
 - Canvas 2D DIY 排珠、规则配置、权威计价、方案保存和预览图（已实现）
-- 规则推荐、库存预占、订单、模拟支付和生产 BOM（后续阶段）
-- 管理后台履约、用户和运营配置（后续阶段）
+- 库存预占、订单、模拟支付、生产 BOM 和后台履约（已实现）
+- 规则推荐、用户和运营配置（后续阶段）
 - 微信登录、微信支付和对象存储替换（后续第三方集成）
 
 ## 项目结构
@@ -49,9 +49,10 @@ docker compose up -d
 ./scripts/verify.sh
 ./scripts/catalog-smoke.sh
 ./scripts/diy-smoke.sh
+./scripts/order-smoke.sh
 ```
 
-`catalog-smoke.sh` 和 `diy-smoke.sh` 需要后端已启动。
+三个冒烟脚本都需要后端已启动；订单脚本会写入演示订单、模拟支付和履约数据。
 
 ## 文档总览
 
@@ -62,3 +63,4 @@ docker compose up -d
 - 最新设计：`docs/superpowers/specs/2026-07-04-diy-bracelet-mall-design.md`
 - 商品目录纵向链路计划：`docs/superpowers/plans/2026-07-04-catalog-vertical-slice.md`
 - DIY 编辑器与计价计划：`docs/superpowers/plans/2026-07-04-diy-editor-pricing.md`
+- 库存、订单、模拟支付与履约计划：`docs/superpowers/plans/2026-07-11-commerce-vertical-slice.md`

@@ -14,7 +14,8 @@ import java.util.Map;
  * 库存预占服务。
  *
  * <p>下单阶段只执行预占，支付成功后才转为已售。这样用户放弃支付时可以安全释放库存，
- * 后续接入真实支付也能沿用同一状态流转。</p>
+ * 后续接入真实支付也能沿用同一状态流转。多 SKU 操作统一按 SKU 主键升序锁行，
+ * 避免两笔排列顺序不同的订单以相反顺序持锁而放大死锁概率。</p>
  */
 @Service
 public class InventoryReservationService {
@@ -37,9 +38,13 @@ public class InventoryReservationService {
      * @param quantities SKU 到数量的映射
      */
     public void reserve(Long orderId, Map<Long, Integer> quantities) {
-        for (Map.Entry<Long, Integer> entry : quantities.entrySet()) {
-            reserveOne(orderId, entry.getKey(), entry.getValue());
-        }
+        quantities.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(entry -> reserveOne(
+                        orderId,
+                        entry.getKey(),
+                        entry.getValue()
+                ));
     }
 
     /**
@@ -49,9 +54,14 @@ public class InventoryReservationService {
      * @param quantities SKU 到数量的映射
      */
     public void confirmSale(Long orderId, Map<Long, Integer> quantities) {
-        for (Map.Entry<Long, Integer> entry : quantities.entrySet()) {
-            transferReserved(orderId, entry.getKey(), entry.getValue(), true);
-        }
+        quantities.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(entry -> transferReserved(
+                        orderId,
+                        entry.getKey(),
+                        entry.getValue(),
+                        true
+                ));
     }
 
     /**
@@ -61,9 +71,14 @@ public class InventoryReservationService {
      * @param quantities SKU 到数量的映射
      */
     public void release(Long orderId, Map<Long, Integer> quantities) {
-        for (Map.Entry<Long, Integer> entry : quantities.entrySet()) {
-            transferReserved(orderId, entry.getKey(), entry.getValue(), false);
-        }
+        quantities.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(entry -> transferReserved(
+                        orderId,
+                        entry.getKey(),
+                        entry.getValue(),
+                        false
+                ));
     }
 
     private void transferReserved(

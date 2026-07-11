@@ -1,6 +1,6 @@
 # API 接口文档
 
-最后更新：2026-07-10
+最后更新：2026-07-11
 
 默认后端：`http://localhost:8080`。
 
@@ -25,6 +25,7 @@
 - 参数错误返回 400，未认证 401，不存在 404，业务冲突 409。
 - 商品状态：`DRAFT`、`ON_SALE`、`OFF_SALE`。
 - 方案报价状态：`NOT_QUOTED`、`VALID`、`STALE`、`INVALID`。
+- 订单状态：`PENDING_PAYMENT`、`PAID`、`IN_PRODUCTION`、`SHIPPED`、`COMPLETED`、`CANCELLED`。
 
 ## 2. 认证、访客身份和文件
 
@@ -185,9 +186,67 @@
 
 方案响应包含 `sequence`、`catalogSnapshot`、`quoteStatus`、`version`、`previewUrl` 和报价快照。后端只保存 SKU 顺序数组；展示序号、SKU 数量统计和 Canvas 坐标均由前端派生。
 
-## 8. 健康检查与冒烟
+## 8. 库存、订单、模拟支付与履约
+
+### 8.1 小程序订单
+
+所有路径均需要顾客 JWT。订单查询始终按 `customer_identity_id` 过滤，访问他人订单返回 404。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/api/app/orders` | 基于本人 DIY 方案创建待支付订单并预占库存，成功返回 201 |
+| GET | `/api/app/orders` | 当前顾客订单列表，按创建时间倒序 |
+| GET | `/api/app/orders/{id}` | 当前顾客订单详情与 SKU 聚合明细 |
+| POST | `/api/app/orders/{id}/mock-pay` | 本地模拟支付；重复调用幂等 |
+| POST | `/api/app/orders/{id}/cancel` | 取消待支付订单并释放预占库存 |
+
+创建订单请求：
+
+```json
+{
+  "schemeId": 123,
+  "contactName": "张三",
+  "contactPhone": "13800000000",
+  "addressDetail": "上海市浦东新区演示路 1 号"
+}
+```
+
+创建订单时不接收前端金额。后端重新读取方案、SKU、价格和配置完成权威报价，并在同一事务内写入订单、明细和库存预占。库存不足返回 HTTP 409 与业务码 `INVENTORY_INSUFFICIENT`。
+
+### 8.2 管理后台订单
+
+所有路径均需要管理员 JWT。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/admin/orders` | 分页查询订单；参数为 `status? page size` |
+| GET | `/api/admin/orders/{id}` | 订单、BOM 和履约详情 |
+| POST | `/api/admin/orders/{id}/start-production` | `PAID → IN_PRODUCTION` |
+| POST | `/api/admin/orders/{id}/ship` | `IN_PRODUCTION → SHIPPED`，保存模拟物流 |
+| POST | `/api/admin/orders/{id}/complete` | `SHIPPED → COMPLETED` |
+
+发货请求：
+
+```json
+{
+  "logisticsCompany": "顺丰速运",
+  "trackingNo": "SF-DEMO-20260711"
+}
+```
+
+后台动作接口不允许直接提交任意目标状态。前置状态不匹配返回 HTTP 409 与 `COMMON_CONFLICT`，订单状态和履约任务状态在同一事务内更新。
+
+### 8.3 模拟支付边界
+
+- 当前支付渠道固定为 `MOCK`，不会调用微信支付或产生真实扣款。
+- 支付成功创建唯一 `payment_record` 和唯一 `fulfillment_task`。
+- 同一订单重复模拟支付直接返回当前已支付订单，不重复扣库存。
+- 后续接微信支付时应保持订单、库存和幂等语义不变，通过支付网关适配器接入下单与回调。
+
+## 9. 健康检查与冒烟
 
 - `GET /actuator/health`
 - `GET /api/public/project-health`
 - 商品目录真实 HTTP 冒烟：`./scripts/catalog-smoke.sh`
 - DIY 真实 HTTP 冒烟：`./scripts/diy-smoke.sh`
+- 订单与履约真实 HTTP 冒烟：`./scripts/order-smoke.sh`
