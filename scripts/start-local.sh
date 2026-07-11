@@ -29,7 +29,7 @@ admin_url="http://localhost:5173"
 
 require_command docker
 require_command mvn
-require_command pnpm
+require_command node
 require_command curl
 require_command lsof
 require_command nohup
@@ -111,7 +111,8 @@ start_admin() {
   (
     cd "${project_root}/admin-web" || exit 1
     VITE_API_BASE_URL="http://localhost:${backend_port}/api" \
-      nohup pnpm dev --host localhost --port 5173 --strictPort >>"${admin_log}" 2>&1 &
+      nohup node node_modules/vite/bin/vite.js \
+        --host localhost --port 5173 --strictPort >>"${admin_log}" 2>&1 &
     echo "$!" >"${admin_pid_file}"
   ) || fail "管理后台进程启动失败，日志：${admin_log}"
 }

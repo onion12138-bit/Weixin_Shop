@@ -15,7 +15,7 @@ if [[ ! -x "${command_entry}" ]]; then
   exit 1
 fi
 
-grep -Fq 'exec "${project_root}/scripts/start-local.sh"' "${command_entry}" || {
+grep -Fq '"${project_root}/scripts/start-local.sh"' "${command_entry}" || {
   echo "FAIL: command entry does not delegate to start-local.sh" >&2
   exit 1
 }
@@ -46,9 +46,9 @@ echo "BACKEND_PORT=${BACKEND_PORT:-} mvn $*" >>"${START_LOCAL_TEST_TRACE}"
 exit 0
 EOF
 
-cat >"${fake_bin}/pnpm" <<'EOF'
+cat >"${fake_bin}/node" <<'EOF'
 #!/usr/bin/env bash
-echo "VITE_API_BASE_URL=${VITE_API_BASE_URL:-} pnpm $*" >>"${START_LOCAL_TEST_TRACE}"
+echo "VITE_API_BASE_URL=${VITE_API_BASE_URL:-} node $*" >>"${START_LOCAL_TEST_TRACE}"
 exit 0
 EOF
 
@@ -64,7 +64,7 @@ case "${url}" in
     printf '%s\n' '{"status":"UP"}'
     ;;
   http://localhost:5173/)
-    grep -q 'pnpm dev --host localhost --port 5173 --strictPort' "${START_LOCAL_TEST_TRACE}" || exit 22
+    grep -q 'node node_modules/vite/bin/vite.js --host localhost --port 5173 --strictPort' "${START_LOCAL_TEST_TRACE}" || exit 22
     printf '%s\n' '<html><title>DIY 手串定制商城管理后台</title></html>'
     ;;
   *)
@@ -138,8 +138,41 @@ assert_order() {
 
 assert_contains "docker compose up -d"
 assert_contains "BACKEND_PORT=8081 mvn spring-boot:run"
-assert_contains "VITE_API_BASE_URL=http://localhost:8081/api pnpm dev --host localhost --port 5173 --strictPort"
+assert_contains "VITE_API_BASE_URL=http://localhost:8081/api node node_modules/vite/bin/vite.js --host localhost --port 5173 --strictPort"
 assert_order "docker compose up -d" "BACKEND_PORT=8081 mvn spring-boot:run"
 assert_not_contains "open http://localhost:5173"
+
+finder_node="$({
+  env -i \
+    HOME="${HOME}" \
+    USER="${USER:-}" \
+    TMPDIR="${TMPDIR:-/tmp}" \
+    PATH="/usr/bin:/bin:/usr/sbin:/sbin" \
+    bash -c 'source "$1/scripts/project-env.sh" >/dev/null && command -v node' _ "${project_root}"
+} 2>/dev/null)"
+if [[ -z "${finder_node}" ]]; then
+  echo "FAIL: project environment does not expose node to Finder launches" >&2
+  exit 1
+fi
+
+PATH="${fake_bin}:/usr/bin:/bin:/usr/sbin:/sbin" \
+START_LOCAL_SKIP_ENV=1 \
+START_LOCAL_NO_OPEN=1 \
+START_LOCAL_WAIT_INTERVAL=0.05 \
+START_LOCAL_WAIT_ATTEMPTS=20 \
+START_LOCAL_RUNTIME_DIR="${runtime_dir}" \
+START_LOCAL_TEST_TRACE="${trace_file}" \
+BACKEND_PORT=8080 \
+ADMIN_USERNAME=admin \
+ADMIN_PASSWORD=Admin@123 \
+"${command_entry}" >/dev/null 2>&1 &
+command_pid=$!
+sleep 0.2
+if ! kill -0 "${command_pid}" 2>/dev/null; then
+  echo "FAIL: double-click entry exited instead of keeping services alive" >&2
+  exit 1
+fi
+kill "${command_pid}"
+wait "${command_pid}" 2>/dev/null || true
 
 echo "start-local tests passed"
