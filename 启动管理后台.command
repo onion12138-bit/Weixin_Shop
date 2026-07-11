@@ -2,6 +2,7 @@
 set -u
 
 project_root="$(cd "$(dirname "$0")" && pwd)"
+runtime_dir="${START_LOCAL_RUNTIME_DIR:-${project_root}/.local-run}"
 
 if ! "${project_root}/scripts/start-local.sh"; then
   echo
@@ -9,7 +10,7 @@ if ! "${project_root}/scripts/start-local.sh"; then
   exit 1
 fi
 
-backend_port="$(cat "${project_root}/.local-run/backend.port")"
+backend_port="$(cat "${runtime_dir}/backend.port")"
 trap 'exit 0' INT TERM HUP
 
 echo
@@ -22,6 +23,6 @@ while curl -fsS --max-time 2 "http://localhost:${backend_port}/actuator/health" 
 done
 
 echo
-echo "检测到本地服务已经停止。日志位于 ${project_root}/.local-run/"
+echo "检测到本地服务已经停止。日志位于 ${runtime_dir}/"
 read -r -p "按回车键关闭此窗口..." _
 exit 1
