@@ -3,7 +3,7 @@ set -euo pipefail
 
 # 对已启动的真实后端执行订单与履约闭环检查。脚本只依赖 curl 和 node，
 # 不调用微信支付或真实物流；支付渠道与运单均为本地演示数据。
-base_url="${BACKEND_BASE_URL:-http://localhost:8080}"
+base_url="${BACKEND_BASE_URL:-http://localhost:8081}"
 admin_username="${ADMIN_USERNAME:-admin}"
 admin_password="${ADMIN_PASSWORD:-Admin@123}"
 installation_id="$(node -e 'process.stdout.write(crypto.randomUUID())')"

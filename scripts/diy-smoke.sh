@@ -4,7 +4,7 @@ set -euo pipefail
 # 对真实后端执行 DIY 方案闭环检查。脚本只依赖 curl 和 node：
 # - curl 负责真实 HTTP 请求；
 # - node 负责生成 UUID、构造 JSON 和断言响应结构，避免额外引入 jq。
-base_url="${BACKEND_BASE_URL:-http://localhost:8080}"
+base_url="${BACKEND_BASE_URL:-http://localhost:8081}"
 installation_id="$(node -e 'process.stdout.write(crypto.randomUUID())')"
 sequence_json="$(node -e '
 const sequence = [

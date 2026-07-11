@@ -63,6 +63,10 @@ case "${url}" in
     grep -q 'BACKEND_PORT=8081 mvn spring-boot:run' "${START_LOCAL_TEST_TRACE}" || exit 22
     printf '%s\n' '{"status":"UP"}'
     ;;
+  http://localhost:8082/actuator/health)
+    grep -q 'BACKEND_PORT=8082 mvn spring-boot:run' "${START_LOCAL_TEST_TRACE}" || exit 22
+    printf '%s\n' '{"status":"UP"}'
+    ;;
   http://localhost:5173/)
     grep -q 'node node_modules/vite/bin/vite.js --host localhost --port 5173 --strictPort' "${START_LOCAL_TEST_TRACE}" || exit 22
     printf '%s\n' '<html><title>DIY 手串定制商城管理后台</title></html>'
@@ -76,7 +80,7 @@ EOF
 cat >"${fake_bin}/lsof" <<'EOF'
 #!/usr/bin/env bash
 case " $* " in
-  *" -iTCP:8080 "*) exit 0 ;;
+  *" -iTCP:8081 "*) [[ "${START_LOCAL_TEST_OCCUPY_8081:-0}" == "1" ]] && exit 0 ;;
   *) exit 1 ;;
 esac
 EOF
@@ -88,6 +92,31 @@ EOF
 
 chmod +x "${fake_bin}"/*
 
+occupied_output="${test_root}/occupied-output.log"
+if PATH="${fake_bin}:/usr/bin:/bin:/usr/sbin:/sbin" \
+  START_LOCAL_SKIP_ENV=1 \
+  START_LOCAL_NO_OPEN=1 \
+  START_LOCAL_WAIT_INTERVAL=0.05 \
+  START_LOCAL_WAIT_ATTEMPTS=20 \
+  START_LOCAL_RUNTIME_DIR="${runtime_dir}" \
+  START_LOCAL_TEST_TRACE="${trace_file}" \
+  START_LOCAL_TEST_OCCUPY_8081=1 \
+  BACKEND_PORT=8081 \
+  bash "${startup_script}" >"${occupied_output}" 2>&1; then
+  echo "FAIL: launcher scanned past occupied backend port 8081" >&2
+  cat "${occupied_output}" >&2
+  cat "${trace_file}" >&2
+  exit 1
+fi
+
+if grep -Fq 'BACKEND_PORT=8082 mvn spring-boot:run' "${trace_file}"; then
+  echo "FAIL: launcher started the backend on fallback port 8082" >&2
+  cat "${trace_file}" >&2
+  exit 1
+fi
+
+: >"${trace_file}"
+
 if ! PATH="${fake_bin}:/usr/bin:/bin:/usr/sbin:/sbin" \
   START_LOCAL_SKIP_ENV=1 \
   START_LOCAL_NO_OPEN=1 \
@@ -95,7 +124,6 @@ if ! PATH="${fake_bin}:/usr/bin:/bin:/usr/sbin:/sbin" \
   START_LOCAL_WAIT_ATTEMPTS=20 \
   START_LOCAL_RUNTIME_DIR="${runtime_dir}" \
   START_LOCAL_TEST_TRACE="${trace_file}" \
-  BACKEND_PORT=8080 \
   ADMIN_USERNAME=admin \
   ADMIN_PASSWORD=Admin@123 \
   bash "${startup_script}" >/dev/null; then
@@ -162,7 +190,6 @@ START_LOCAL_WAIT_INTERVAL=0.05 \
 START_LOCAL_WAIT_ATTEMPTS=20 \
 START_LOCAL_RUNTIME_DIR="${runtime_dir}" \
 START_LOCAL_TEST_TRACE="${trace_file}" \
-BACKEND_PORT=8080 \
 ADMIN_USERNAME=admin \
 ADMIN_PASSWORD=Admin@123 \
 "${command_entry}" >/dev/null 2>&1 &
@@ -174,5 +201,18 @@ if ! kill -0 "${command_pid}" 2>/dev/null; then
 fi
 kill "${command_pid}"
 wait "${command_pid}" 2>/dev/null || true
+
+if rg -n "localhost:8080" \
+  "${project_root}/.env.example" \
+  "${project_root}/backend/src/main/resources" \
+  "${project_root}/admin-web/src" \
+  "${project_root}/miniprogram/miniprogram" \
+  "${project_root}/scripts/start-local.sh" \
+  "${project_root}/scripts/catalog-smoke.sh" \
+  "${project_root}/scripts/diy-smoke.sh" \
+  "${project_root}/scripts/order-smoke.sh"; then
+  echo "FAIL: active runtime files still route clients to localhost:8080" >&2
+  exit 1
+fi
 
 echo "start-local tests passed"

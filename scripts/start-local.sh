@@ -52,7 +52,6 @@ port_in_use() {
 
 choose_backend_port() {
   local configured_port="$1"
-  local candidate
 
   if backend_ready "${configured_port}"; then
     echo "${configured_port}"
@@ -63,15 +62,6 @@ choose_backend_port() {
     echo "${configured_port}"
     return 0
   fi
-
-  candidate=8081
-  while [[ "${candidate}" -le 8099 ]]; do
-    if backend_ready "${candidate}" || ! port_in_use "${candidate}"; then
-      echo "${candidate}"
-      return 0
-    fi
-    candidate=$((candidate + 1))
-  done
 
   return 1
 }
@@ -123,18 +113,15 @@ echo "[1/4] 启动 MySQL 和 Redis..."
   docker compose up -d --wait --wait-timeout 90
 ) || fail "Docker 服务启动失败，请确认 Docker Desktop 正在运行"
 
-configured_backend_port="${BACKEND_PORT:-8080}"
+configured_backend_port="${BACKEND_PORT:-8081}"
 backend_port="$(choose_backend_port "${configured_backend_port}")" \
-  || fail "${configured_backend_port} 及 8081-8099 均不可用"
+  || fail "端口 ${configured_backend_port} 已被其他程序占用，且不是健康的项目后端；不会结束占用进程"
 echo "${backend_port}" >"${backend_port_file}"
 
 echo "[2/4] 检查 Spring Boot 后端..."
 if backend_ready "${backend_port}"; then
   echo "复用已运行的项目后端（端口 ${backend_port}）"
 else
-  if [[ "${backend_port}" != "${configured_backend_port}" ]]; then
-    echo "端口 ${configured_backend_port} 已被其他程序占用，本次改用 ${backend_port}，不会结束占用进程。"
-  fi
   start_backend "${backend_port}"
   if ! wait_until "后端服务；请查看 ${backend_log}" backend_ready "${backend_port}"; then
     exit 1

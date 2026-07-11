@@ -34,7 +34,7 @@ app:
       root: ${FILE_STORAGE_LOCAL_ROOT:storage/catalog}
 
 server:
-  port: ${BACKEND_PORT:8080}
+  port: ${BACKEND_PORT:8081}
 
 management:
   endpoints:

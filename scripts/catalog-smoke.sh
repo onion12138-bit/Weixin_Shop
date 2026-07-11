@@ -3,7 +3,7 @@ set -euo pipefail
 
 # 对已经启动的真实后端执行最小产品链路检查。该脚本不创建或修改业务数据，
 # 因此可以在本地重复执行，也可以作为后续部署流水线的就绪探针。
-base_url="${BACKEND_BASE_URL:-http://localhost:8080}"
+base_url="${BACKEND_BASE_URL:-http://localhost:8081}"
 admin_username="${ADMIN_USERNAME:-admin}"
 admin_password="${ADMIN_PASSWORD:-Admin@123}"
 login_payload="$(node -e '
