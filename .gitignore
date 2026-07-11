@@ -25,3 +25,4 @@ storage/*
 coverage/
 playwright-report/
 test-results/
+.local-run/

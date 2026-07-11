@@ -3,11 +3,27 @@ set -euo pipefail
 
 project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 startup_script="${project_root}/scripts/start-local.sh"
+command_entry="${project_root}/启动管理后台.command"
 
 if [[ ! -f "${startup_script}" ]]; then
   echo "FAIL: missing ${startup_script}" >&2
   exit 1
 fi
+
+if [[ ! -x "${command_entry}" ]]; then
+  echo "FAIL: missing executable ${command_entry}" >&2
+  exit 1
+fi
+
+grep -Fq 'exec "${project_root}/scripts/start-local.sh"' "${command_entry}" || {
+  echo "FAIL: command entry does not delegate to start-local.sh" >&2
+  exit 1
+}
+
+grep -Fxq '.local-run/' "${project_root}/.gitignore" || {
+  echo "FAIL: .local-run/ is not ignored" >&2
+  exit 1
+}
 
 test_root="$(mktemp -d "${TMPDIR:-/tmp}/weixin-shop-start-local.XXXXXX")"
 trap 'rm -rf "${test_root}"' EXIT
