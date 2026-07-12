@@ -60,11 +60,36 @@ if ! jq -e '.data[] | select(.id == 1001)' >/dev/null 2>&1 <<< "$category_respon
   exit 1
 fi
 
-beads_response="$(api_call \
-  'list administrator beads' \
-  -H "$auth_header" \
-  "$backend_base_url/api/admin/catalog/beads?page=1&size=100")"
-existing_skus="$(jq -c '[.data.items[].skuCode]' <<< "$beads_response")"
+page=1
+page_size=100
+fetched_count=0
+existing_skus='[]'
+while :; do
+  beads_response="$(api_call \
+    "list administrator beads page $page" \
+    -H "$auth_header" \
+    "$backend_base_url/api/admin/catalog/beads?page=$page&size=$page_size")"
+  if ! jq -e '.data.items | type == "array"' >/dev/null 2>&1 <<< "$beads_response"; then
+    printf 'ERROR: bead catalog page %d did not contain an items array\n' "$page" >&2
+    exit 1
+  fi
+  page_total="$(jq -er '.data.total | select(type == "number" and . >= 0 and floor == .)' <<< "$beads_response")" || {
+    printf 'ERROR: bead catalog page %d did not contain a valid total\n' "$page" >&2
+    exit 1
+  }
+  page_items="$(jq -c '.data.items' <<< "$beads_response")"
+  page_item_count="$(jq 'length' <<< "$page_items")"
+  existing_skus="$(jq -cn \
+    --argjson current "$existing_skus" \
+    --argjson items "$page_items" \
+    '$current + [$items[]?.skuCode | select(type == "string")] | unique')"
+  fetched_count="$((fetched_count + page_item_count))"
+
+  if (( page_item_count == 0 || fetched_count >= page_total )); then
+    break
+  fi
+  page="$((page + 1))"
+done
 
 while IFS='|' read -r sku name material color sale_price cost_price tags_json image_name; do
   if jq -e --arg sku "$sku" 'index($sku) != null' >/dev/null 2>&1 <<< "$existing_skus"; then

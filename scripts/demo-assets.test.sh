@@ -45,9 +45,9 @@ guide_dimensions="$(sips -g pixelWidth -g pixelHeight "$asset_dir/ai-water-guide
 fake_dir="$(mktemp -d)"
 trap 'rm -rf "$fake_dir"' EXIT
 curl_log="$fake_dir/curl.log"
-bead_list_calls="$fake_dir/bead-list.calls"
+created_skus="$fake_dir/created-skus"
 : > "$curl_log"
-: > "$bead_list_calls"
+: > "$created_skus"
 
 cat > "$fake_dir/curl" <<'FAKE_CURL'
 #!/usr/bin/env bash
@@ -60,6 +60,10 @@ if [[ -n "${FAKE_CURL_FAIL_URL:-}" && "$url" == *"$FAKE_CURL_FAIL_URL"* ]]; then
   printf 'simulated curl failure for %s\n' "$url" >&2
   exit 22
 fi
+if [[ -n "${FAKE_API_ERROR_URL:-}" && "$url" == *"$FAKE_API_ERROR_URL"* ]]; then
+  printf '%s\n' '{"code":"CATALOG_FAKE_ERROR","message":"simulated API envelope failure","data":null}'
+  exit 0
+fi
 case "$url" in
   */api/admin/auth/login)
     printf '%s\n' '{"code":"OK","message":"success","data":{"accessToken":"fake-admin-token","tokenType":"Bearer","expiresInSeconds":3600}}'
@@ -68,19 +72,28 @@ case "$url" in
     printf '%s\n' '{"code":"OK","message":"success","data":[{"id":1001,"name":"天然水晶","slug":"natural-crystal","sortOrder":1,"status":"ON_SALE"}]}'
     ;;
   */api/admin/catalog/beads?page=1\&size=100)
-    call_count="$(wc -l < "$FAKE_BEAD_LIST_CALLS" | tr -d ' ')"
-    printf 'called\n' >> "$FAKE_BEAD_LIST_CALLS"
-    if [[ "$call_count" == "0" ]]; then
-      printf '%s\n' '{"code":"OK","message":"success","data":{"items":[],"total":0,"page":1,"size":100}}'
-    else
-      printf '%s\n' '{"code":"OK","message":"success","data":{"items":[{"skuCode":"BEAD-LABRADORITE-8MM"},{"skuCode":"BEAD-GARNET-8MM"},{"skuCode":"BEAD-FLUORITE-8MM"}],"total":3,"page":1,"size":100}}'
-    fi
+    created_count="$(wc -l < "$FAKE_CREATED_SKUS" | tr -d ' ')"
+    items="$(jq -cn '[range(1; 101) | {skuCode:("DUMMY-" + tostring)}]')"
+    jq -cn --argjson items "$items" --argjson total "$((101 + created_count))" \
+      '{code:"OK",message:"success",data:{items:$items,total:$total,page:1,size:100}}'
+    ;;
+  */api/admin/catalog/beads?page=2\&size=100)
+    created="$(jq -Rsc 'split("\n") | map(select(length > 0))' "$FAKE_CREATED_SKUS")"
+    items="$(jq -cn --argjson created "$created" '[{skuCode:"BEAD-LABRADORITE-8MM"}] + ($created | map({skuCode:.}))')"
+    jq -cn --argjson items "$items" --argjson total "$((101 + $(jq 'length' <<< "$created")))" \
+      '{code:"OK",message:"success",data:{items:$items,total:$total,page:2,size:100}}'
     ;;
   */api/admin/files)
     upload_count="$(grep -c '/api/admin/files' "$FAKE_CURL_LOG" || true)"
     printf '{"code":"OK","message":"success","data":{"id":%d,"storageKey":"demo/%d.png","originalName":"demo.png","contentType":"image/png","sizeBytes":100,"publicUrl":"/api/public/files/demo/%d.png"}}\n' "$((9000 + upload_count))" "$upload_count" "$upload_count"
     ;;
   */api/admin/catalog/beads)
+    for argument in "$@"; do
+      if [[ "$argument" == *'"skuCode"'* ]]; then
+        jq -r '.skuCode' <<< "$argument" >> "$FAKE_CREATED_SKUS"
+        break
+      fi
+    done
     printf '%s\n' '{"code":"OK","message":"success","data":{"id":2001}}'
     ;;
   *)
@@ -93,7 +106,7 @@ chmod +x "$fake_dir/curl"
 
 export PATH="$fake_dir:$PATH"
 export FAKE_CURL_LOG="$curl_log"
-export FAKE_BEAD_LIST_CALLS="$bead_list_calls"
+export FAKE_CREATED_SKUS="$created_skus"
 export BACKEND_BASE_URL="http://fake-backend:8081"
 export ADMIN_USERNAME="admin-contract"
 export ADMIN_PASSWORD="contract-password-must-stay-private"
@@ -105,19 +118,26 @@ $second_output"
 
 [[ "$combined_output" != *"$ADMIN_PASSWORD"* ]] || fail "importer leaked the administrator password"
 
-for sku in BEAD-LABRADORITE-8MM BEAD-GARNET-8MM BEAD-FLUORITE-8MM; do
+[[ "$first_output" == *"skipped existing SKU: BEAD-LABRADORITE-8MM"* ]] || fail "first import did not discover the second-page SKU"
+[[ "$curl_log" != *"labradorite-8mm.png"* ]] || fail "second-page SKU was uploaded before being skipped"
+
+labradorite_creates="$(grep -c '\"skuCode\":\"BEAD-LABRADORITE-8MM\"' "$curl_log" || true)"
+[[ "$labradorite_creates" == "0" ]] || fail "second-page SKU was submitted for creation"
+
+for sku in BEAD-GARNET-8MM BEAD-FLUORITE-8MM; do
   count="$(grep -o "\\\"skuCode\\\":\\\"$sku\\\"" "$curl_log" | wc -l | tr -d ' ')"
   [[ "$count" == "1" ]] || fail "expected one create payload for $sku, got $count"
+done
+for sku in BEAD-LABRADORITE-8MM BEAD-GARNET-8MM BEAD-FLUORITE-8MM; do
   [[ "$second_output" == *"skipped existing SKU: $sku"* ]] || fail "second import did not skip $sku"
 done
 
 stock_count="$(grep -o '\"initialStock\":200' "$curl_log" | wc -l | tr -d ' ')"
-[[ "$stock_count" == "3" ]] || fail "expected initialStock 200 in three create payloads, got $stock_count"
+[[ "$stock_count" == "2" ]] || fail "expected initialStock 200 in two create payloads, got $stock_count"
 
 payloads_json="$(grep '^<{.*\"skuCode\"' "$curl_log" | sed 's/^<//; s/>$//' | jq -s '.')"
 if ! jq -e '
   map(del(.coverAssetId)) == [
-    {categoryId:1001,skuCode:"BEAD-LABRADORITE-8MM",name:"拉长石 8mm",material:"天然水晶",color:"灰蓝色",diameterMm:8,salePrice:9.80,costPrice:2.80,stockAlertThreshold:20,tags:["灵感","守护","灰蓝","通勤"],status:"ON_SALE",initialStock:200},
     {categoryId:1001,skuCode:"BEAD-GARNET-8MM",name:"石榴石 8mm",material:"天然水晶",color:"酒红色",diameterMm:8,salePrice:9.50,costPrice:2.50,stockAlertThreshold:20,tags:["活力","热情","红色","日常"],status:"ON_SALE",initialStock:200},
     {categoryId:1001,skuCode:"BEAD-FLUORITE-8MM",name:"萤石 8mm",material:"天然水晶",color:"紫绿色",diameterMm:8,salePrice:8.80,costPrice:1.80,stockAlertThreshold:20,tags:["专注","平衡","紫绿","学习"],status:"ON_SALE",initialStock:200}
   ]
@@ -126,7 +146,10 @@ if ! jq -e '
 fi
 
 upload_count="$(grep -c '/api/admin/files' "$curl_log")"
-[[ "$upload_count" == "3" ]] || fail "expected three uploads across two runs, got $upload_count"
+[[ "$upload_count" == "2" ]] || fail "expected two uploads across two runs, got $upload_count"
+
+page_two_count="$(grep -c '/api/admin/catalog/beads?page=2&size=100' "$curl_log")"
+[[ "$page_two_count" == "2" ]] || fail "expected both imports to fetch catalog page 2, got $page_two_count"
 
 export FAKE_CURL_FAIL_URL="/api/admin/auth/login"
 if failure_output="$(bash "$importer" 2>&1)"; then
@@ -134,5 +157,13 @@ if failure_output="$(bash "$importer" 2>&1)"; then
 fi
 [[ "$failure_output" == *"ERROR: administrator login failed"* ]] || fail "curl failure did not identify the failed operation"
 [[ "$failure_output" != *"$ADMIN_PASSWORD"* ]] || fail "curl failure output leaked the administrator password"
+
+unset FAKE_CURL_FAIL_URL
+export FAKE_API_ERROR_URL="/api/admin/catalog/categories"
+if envelope_output="$(bash "$importer" 2>&1)"; then
+  fail "importer succeeded despite a non-OK API envelope"
+fi
+[[ "$envelope_output" == *"ERROR: list administrator categories returned API error: CATALOG_FAKE_ERROR: simulated API envelope failure"* ]] || fail "API envelope failure did not identify the operation and server error"
+[[ "$envelope_output" != *"$ADMIN_PASSWORD"* ]] || fail "API envelope failure output leaked the administrator password"
 
 printf 'PASS: demo assets and idempotent importer contract\n'
