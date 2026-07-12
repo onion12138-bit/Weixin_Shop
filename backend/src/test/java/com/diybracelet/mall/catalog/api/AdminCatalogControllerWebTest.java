@@ -60,6 +60,7 @@ class AdminCatalogControllerWebTest {
               "salePrice": 12.80,
               "costPrice": 5.20,
               "stockAlertThreshold": 10,
+              "initialStock": 200,
               "tags": ["净化", "日常"],
               "status": "ON_SALE"
             }

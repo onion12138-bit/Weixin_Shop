@@ -3,6 +3,7 @@ package com.diybracelet.mall.catalog.application;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.diybracelet.mall.catalog.api.dto.AdminPackageDetail;
 import com.diybracelet.mall.catalog.api.dto.AdminPackageItem;
+import com.diybracelet.mall.catalog.api.dto.CreateBeadSkuRequest;
 import com.diybracelet.mall.catalog.api.dto.PageResponse;
 import com.diybracelet.mall.catalog.api.dto.SaveBeadSkuRequest;
 import com.diybracelet.mall.catalog.api.dto.SaveCategoryRequest;
@@ -17,6 +18,10 @@ import com.diybracelet.mall.catalog.infrastructure.mapper.BeadSkuMapper;
 import com.diybracelet.mall.catalog.infrastructure.mapper.CategoryMapper;
 import com.diybracelet.mall.catalog.infrastructure.mapper.PackageItemMapper;
 import com.diybracelet.mall.catalog.infrastructure.mapper.ProductPackageMapper;
+import com.diybracelet.mall.inventory.domain.InventoryBalance;
+import com.diybracelet.mall.inventory.domain.InventoryLedger;
+import com.diybracelet.mall.inventory.infrastructure.mapper.InventoryBalanceMapper;
+import com.diybracelet.mall.inventory.infrastructure.mapper.InventoryLedgerMapper;
 import com.diybracelet.mall.shared.error.BusinessException;
 import com.diybracelet.mall.shared.error.ErrorCode;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -44,6 +49,8 @@ public class AdminCatalogService {
     private final BeadSkuMapper beadSkuMapper;
     private final ProductPackageMapper productPackageMapper;
     private final PackageItemMapper packageItemMapper;
+    private final InventoryBalanceMapper inventoryBalanceMapper;
+    private final InventoryLedgerMapper inventoryLedgerMapper;
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
 
@@ -52,6 +59,8 @@ public class AdminCatalogService {
             BeadSkuMapper beadSkuMapper,
             ProductPackageMapper productPackageMapper,
             PackageItemMapper packageItemMapper,
+            InventoryBalanceMapper inventoryBalanceMapper,
+            InventoryLedgerMapper inventoryLedgerMapper,
             JdbcTemplate jdbcTemplate,
             ObjectMapper objectMapper
     ) {
@@ -59,6 +68,8 @@ public class AdminCatalogService {
         this.beadSkuMapper = beadSkuMapper;
         this.productPackageMapper = productPackageMapper;
         this.packageItemMapper = packageItemMapper;
+        this.inventoryBalanceMapper = inventoryBalanceMapper;
+        this.inventoryLedgerMapper = inventoryLedgerMapper;
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
     }
@@ -134,13 +145,15 @@ public class AdminCatalogService {
     }
 
     @Transactional
-    public BeadSku createBead(SaveBeadSkuRequest request) {
-        requireCategory(request.categoryId());
-        validateAsset(request.coverAssetId());
-        ensureUniqueSkuCode(request.skuCode(), null);
+    public BeadSku createBead(CreateBeadSkuRequest request) {
+        SaveBeadSkuRequest beadRequest = request.bead();
+        requireCategory(beadRequest.categoryId());
+        validateAsset(beadRequest.coverAssetId());
+        ensureUniqueSkuCode(beadRequest.skuCode(), null);
         BeadSku bead = new BeadSku();
-        applyBead(bead, request);
+        applyBead(bead, beadRequest);
         beadSkuMapper.insert(bead);
+        initializeInventory(bead.getId(), request.initialStock());
         return bead;
     }
 
@@ -297,6 +310,33 @@ public class AdminCatalogService {
         bead.setCoverAssetId(request.coverAssetId());
         bead.setTagsJson(writeTags(request.tags()));
         bead.setStatus(request.status());
+    }
+
+    private void initializeInventory(Long beadSkuId, Integer initialStock) {
+        InventoryBalance balance = new InventoryBalance();
+        balance.setBeadSkuId(beadSkuId);
+        balance.setAvailableQty(initialStock);
+        balance.setReservedQty(0);
+        balance.setSoldQty(0);
+        balance.setVersion(0L);
+        inventoryBalanceMapper.insert(balance);
+
+        // 流水 quantity 必须大于零；零库存没有数量变动，只保留余额基线。
+        if (initialStock == 0) {
+            return;
+        }
+        InventoryLedger ledger = new InventoryLedger();
+        ledger.setBeadSkuId(beadSkuId);
+        ledger.setChangeType("INIT");
+        ledger.setQuantity(initialStock);
+        ledger.setBeforeAvailableQty(0);
+        ledger.setAfterAvailableQty(initialStock);
+        ledger.setBeforeReservedQty(0);
+        ledger.setAfterReservedQty(0);
+        ledger.setBeforeSoldQty(0);
+        ledger.setAfterSoldQty(0);
+        ledger.setNote("后台创建商品初始化");
+        inventoryLedgerMapper.insert(ledger);
     }
 
     private void applyPackage(

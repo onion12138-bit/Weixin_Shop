@@ -62,6 +62,10 @@ export interface SaveBeadSkuRequest {
   status: CatalogStatus
 }
 
+export type CreateBeadSkuRequest = SaveBeadSkuRequest & {
+  initialStock: number
+}
+
 export interface ProductPackage {
   id: number
   packageCode: string
@@ -153,7 +157,7 @@ export function listAdminBeads(
 }
 
 export function createAdminBead(
-  payload: SaveBeadSkuRequest,
+  payload: CreateBeadSkuRequest,
 ): Promise<BeadSku> {
   return request<BeadSku>('/admin/catalog/beads', {
     method: 'POST',

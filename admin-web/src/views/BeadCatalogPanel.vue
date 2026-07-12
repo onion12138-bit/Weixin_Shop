@@ -11,6 +11,7 @@ import {
   type BeadSku,
   type CatalogStatus,
   type Category,
+  type CreateBeadSkuRequest,
   type SaveBeadSkuRequest,
 } from '../api/catalog'
 
@@ -32,7 +33,7 @@ const filters = reactive({
   size: 20,
 })
 
-const form = reactive<SaveBeadSkuRequest>({
+const form = reactive<CreateBeadSkuRequest>({
   categoryId: 0,
   skuCode: '',
   name: '',
@@ -42,6 +43,7 @@ const form = reactive<SaveBeadSkuRequest>({
   salePrice: 0,
   costPrice: 0,
   stockAlertThreshold: 10,
+  initialStock: 200,
   coverAssetId: null,
   tags: [],
   status: 'DRAFT',
@@ -119,6 +121,7 @@ function resetForm(): void {
     salePrice: 0,
     costPrice: 0,
     stockAlertThreshold: 10,
+    initialStock: 200,
     coverAssetId: null,
     tags: [],
     status: 'DRAFT',
@@ -180,8 +183,9 @@ async function submitBead(): Promise<void> {
   errorMessage.value = ''
   successMessage.value = ''
   try {
-    const payload = {
-      ...form,
+    const { initialStock, ...bead } = form
+    const payload: SaveBeadSkuRequest = {
+      ...bead,
       tags: tagInput.value
         .split(/[,，]/)
         .map((tag) => tag.trim())
@@ -191,7 +195,7 @@ async function submitBead(): Promise<void> {
       await updateAdminBead(editingBeadId.value, payload)
       successMessage.value = '散珠商品已更新'
     } else {
-      await createAdminBead(payload)
+      await createAdminBead({ ...payload, initialStock })
       successMessage.value = '散珠商品已创建'
     }
     showCreateForm.value = false
@@ -427,6 +431,17 @@ onMounted(loadCatalog)
             <label>
               <span>库存预警</span>
               <input v-model.number="form.stockAlertThreshold" type="number" min="0" required />
+            </label>
+            <label v-if="!editingBeadId">
+              <span>初始库存</span>
+              <input
+                v-model.number="form.initialStock"
+                data-test="initial-stock"
+                type="number"
+                min="0"
+                step="1"
+                required
+              />
             </label>
             <label>
               <span>销售价（元）</span>

@@ -1,6 +1,7 @@
 package com.diybracelet.mall.catalog.api;
 
 import com.diybracelet.mall.catalog.api.dto.ChangeCatalogStatusRequest;
+import com.diybracelet.mall.catalog.api.dto.CreateBeadSkuRequest;
 import com.diybracelet.mall.catalog.api.dto.AdminPackageDetail;
 import com.diybracelet.mall.catalog.api.dto.PageResponse;
 import com.diybracelet.mall.catalog.api.dto.SaveBeadSkuRequest;
@@ -110,7 +111,7 @@ public class AdminCatalogController {
 
     @PostMapping("/beads")
     public ResponseEntity<ApiResponse<BeadSku>> createBead(
-            @Valid @RequestBody SaveBeadSkuRequest request
+            @Valid @RequestBody CreateBeadSkuRequest request
     ) {
         return created(adminCatalogService.createBead(request));
     }

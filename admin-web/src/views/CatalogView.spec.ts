@@ -2,9 +2,11 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import CatalogView from './CatalogView.vue'
 import {
+  createAdminBead,
   listAdminBeads,
   listAdminCategories,
   listAdminPackages,
+  updateAdminBead,
 } from '../api/catalog'
 
 vi.mock('../api/catalog', () => ({
@@ -29,6 +31,7 @@ vi.mock('../api/catalog', () => ({
  */
 describe('CatalogView', () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     vi.mocked(listAdminCategories).mockResolvedValue([
       {
         id: 1001,
@@ -106,5 +109,37 @@ describe('CatalogView', () => {
     expect(listAdminPackages).toHaveBeenCalled()
     expect(wrapper.text()).toContain('澄心日常手串')
     expect(wrapper.find('[data-test="create-package"]').exists()).toBe(true)
+  })
+
+  it('includes initial stock only when creating a bead', async () => {
+    const wrapper = mount(CatalogView)
+    await flushPromises()
+
+    await wrapper.get('[data-test="create-bead"]').trigger('click')
+    expect(wrapper.find('[data-test="initial-stock"]').exists()).toBe(true)
+    await wrapper.get('[data-test="initial-stock"]').setValue(321)
+    const labels = wrapper.findAll('.catalog-form label')
+    await labels.find((label) => label.text().includes('商品名称'))!
+      .get('input').setValue('测试紫水晶')
+    await labels.find((label) => label.text().includes('SKU 编码'))!
+      .get('input').setValue('BEAD-TEST-VUE')
+    await labels.find((label) => label.text().includes('材质'))!
+      .get('input').setValue('水晶')
+    await labels.find((label) => label.text().includes('颜色'))!
+      .get('input').setValue('紫色')
+    await wrapper.get('.catalog-form').trigger('submit')
+    await flushPromises()
+
+    expect(createAdminBead).toHaveBeenCalledWith(
+      expect.objectContaining({ initialStock: 321 }),
+    )
+
+    await wrapper.get('[data-test="edit-bead-2001"]').trigger('click')
+    expect(wrapper.find('[data-test="initial-stock"]').exists()).toBe(false)
+    await wrapper.get('.catalog-form').trigger('submit')
+    await flushPromises()
+
+    const updatePayload = vi.mocked(updateAdminBead).mock.calls[0][1]
+    expect(updatePayload).not.toHaveProperty('initialStock')
   })
 })
