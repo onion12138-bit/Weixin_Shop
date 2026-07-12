@@ -46,8 +46,6 @@ fake_dir="$(mktemp -d)"
 trap 'rm -rf "$fake_dir"' EXIT
 curl_log="$fake_dir/curl.log"
 created_skus="$fake_dir/created-skus"
-: > "$curl_log"
-: > "$created_skus"
 
 cat > "$fake_dir/curl" <<'FAKE_CURL'
 #!/usr/bin/env bash
@@ -72,16 +70,29 @@ case "$url" in
     printf '%s\n' '{"code":"OK","message":"success","data":[{"id":1001,"name":"天然水晶","slug":"natural-crystal","sortOrder":1,"status":"ON_SALE"}]}'
     ;;
   */api/admin/catalog/beads?page=1\&size=100)
-    created_count="$(wc -l < "$FAKE_CREATED_SKUS" | tr -d ' ')"
-    items="$(jq -cn '[range(1; 101) | {skuCode:("DUMMY-" + tostring)}]')"
-    jq -cn --argjson items "$items" --argjson total "$((101 + created_count))" \
-      '{code:"OK",message:"success",data:{items:$items,total:$total,page:1,size:100}}'
+    case "$FAKE_CATALOG_SCENARIO" in
+      empty)
+        items="$(jq -Rsc 'split("\n") | map(select(length > 0) | {skuCode:.})' "$FAKE_CREATED_SKUS")"
+        jq -cn --argjson items "$items" \
+          '{code:"OK",message:"success",data:{items:$items,total:($items | length),page:1,size:100}}'
+        ;;
+      paginated)
+        items="$(jq -cn '[range(1; 101) | {skuCode:("DUMMY-" + tostring)}]')"
+        jq -cn --argjson items "$items" \
+          '{code:"OK",message:"success",data:{items:$items,total:101,page:1,size:100}}'
+        ;;
+      *)
+        printf 'unknown fake catalog scenario: %s\n' "$FAKE_CATALOG_SCENARIO" >&2
+        exit 22
+        ;;
+    esac
     ;;
   */api/admin/catalog/beads?page=2\&size=100)
-    created="$(jq -Rsc 'split("\n") | map(select(length > 0))' "$FAKE_CREATED_SKUS")"
-    items="$(jq -cn --argjson created "$created" '[{skuCode:"BEAD-LABRADORITE-8MM"}] + ($created | map({skuCode:.}))')"
-    jq -cn --argjson items "$items" --argjson total "$((101 + $(jq 'length' <<< "$created")))" \
-      '{code:"OK",message:"success",data:{items:$items,total:$total,page:2,size:100}}'
+    [[ "$FAKE_CATALOG_SCENARIO" == "paginated" ]] || {
+      printf 'unexpected page 2 request for scenario: %s\n' "$FAKE_CATALOG_SCENARIO" >&2
+      exit 22
+    }
+    printf '%s\n' '{"code":"OK","message":"success","data":{"items":[{"skuCode":"BEAD-LABRADORITE-8MM"}],"total":101,"page":2,"size":100}}'
     ;;
   */api/admin/files)
     upload_count="$(grep -c '/api/admin/files' "$FAKE_CURL_LOG" || true)"
@@ -111,6 +122,15 @@ export BACKEND_BASE_URL="http://fake-backend:8081"
 export ADMIN_USERNAME="admin-contract"
 export ADMIN_PASSWORD="contract-password-must-stay-private"
 
+reset_fake_state() {
+  : > "$curl_log"
+  : > "$created_skus"
+  unset FAKE_CURL_FAIL_URL FAKE_API_ERROR_URL
+}
+
+# Scenario 1: an empty catalog creates all products once, then skips all three.
+reset_fake_state
+export FAKE_CATALOG_SCENARIO="empty"
 first_output="$(bash "$importer" 2>&1)" || fail "first fake import failed: $first_output"
 second_output="$(bash "$importer" 2>&1)" || fail "second fake import failed: $second_output"
 combined_output="$first_output
@@ -118,26 +138,20 @@ $second_output"
 
 [[ "$combined_output" != *"$ADMIN_PASSWORD"* ]] || fail "importer leaked the administrator password"
 
-[[ "$first_output" == *"skipped existing SKU: BEAD-LABRADORITE-8MM"* ]] || fail "first import did not discover the second-page SKU"
-[[ "$curl_log" != *"labradorite-8mm.png"* ]] || fail "second-page SKU was uploaded before being skipped"
-
-labradorite_creates="$(grep -c '\"skuCode\":\"BEAD-LABRADORITE-8MM\"' "$curl_log" || true)"
-[[ "$labradorite_creates" == "0" ]] || fail "second-page SKU was submitted for creation"
-
-for sku in BEAD-GARNET-8MM BEAD-FLUORITE-8MM; do
+for sku in BEAD-LABRADORITE-8MM BEAD-GARNET-8MM BEAD-FLUORITE-8MM; do
   count="$(grep -o "\\\"skuCode\\\":\\\"$sku\\\"" "$curl_log" | wc -l | tr -d ' ')"
   [[ "$count" == "1" ]] || fail "expected one create payload for $sku, got $count"
-done
-for sku in BEAD-LABRADORITE-8MM BEAD-GARNET-8MM BEAD-FLUORITE-8MM; do
+  [[ "$first_output" == *"created SKU: $sku"* ]] || fail "first import did not create $sku"
   [[ "$second_output" == *"skipped existing SKU: $sku"* ]] || fail "second import did not skip $sku"
 done
 
 stock_count="$(grep -o '\"initialStock\":200' "$curl_log" | wc -l | tr -d ' ')"
-[[ "$stock_count" == "2" ]] || fail "expected initialStock 200 in two create payloads, got $stock_count"
+[[ "$stock_count" == "3" ]] || fail "expected initialStock 200 in three create payloads, got $stock_count"
 
 payloads_json="$(grep '^<{.*\"skuCode\"' "$curl_log" | sed 's/^<//; s/>$//' | jq -s '.')"
 if ! jq -e '
   map(del(.coverAssetId)) == [
+    {categoryId:1001,skuCode:"BEAD-LABRADORITE-8MM",name:"拉长石 8mm",material:"天然水晶",color:"灰蓝色",diameterMm:8,salePrice:9.80,costPrice:2.80,stockAlertThreshold:20,tags:["灵感","守护","灰蓝","通勤"],status:"ON_SALE",initialStock:200},
     {categoryId:1001,skuCode:"BEAD-GARNET-8MM",name:"石榴石 8mm",material:"天然水晶",color:"酒红色",diameterMm:8,salePrice:9.50,costPrice:2.50,stockAlertThreshold:20,tags:["活力","热情","红色","日常"],status:"ON_SALE",initialStock:200},
     {categoryId:1001,skuCode:"BEAD-FLUORITE-8MM",name:"萤石 8mm",material:"天然水晶",color:"紫绿色",diameterMm:8,salePrice:8.80,costPrice:1.80,stockAlertThreshold:20,tags:["专注","平衡","紫绿","学习"],status:"ON_SALE",initialStock:200}
   ]
@@ -146,11 +160,26 @@ if ! jq -e '
 fi
 
 upload_count="$(grep -c '/api/admin/files' "$curl_log")"
-[[ "$upload_count" == "2" ]] || fail "expected two uploads across two runs, got $upload_count"
+[[ "$upload_count" == "3" ]] || fail "expected three uploads across two runs, got $upload_count"
 
-page_two_count="$(grep -c '/api/admin/catalog/beads?page=2&size=100' "$curl_log")"
-[[ "$page_two_count" == "2" ]] || fail "expected both imports to fetch catalog page 2, got $page_two_count"
+# Scenario 2: page 2 contains Labradorite, which must be found before uploads.
+reset_fake_state
+export FAKE_CATALOG_SCENARIO="paginated"
+paginated_output="$(bash "$importer" 2>&1)" || fail "paginated fake import failed: $paginated_output"
+[[ "$paginated_output" == *"skipped existing SKU: BEAD-LABRADORITE-8MM"* ]] || fail "paginated import did not discover the second-page SKU"
+if grep -q 'labradorite-8mm.png' "$curl_log"; then
+  fail "second-page SKU was uploaded before being skipped"
+fi
+if grep -q '\"skuCode\":\"BEAD-LABRADORITE-8MM\"' "$curl_log"; then
+  fail "second-page SKU was submitted for creation"
+fi
+page_two_line="$(awk '/\/api\/admin\/catalog\/beads\?page=2&size=100/{print NR; exit}' "$curl_log")"
+first_upload_line="$(awk '/\/api\/admin\/files/{print NR; exit}' "$curl_log")"
+[[ -n "$page_two_line" && -n "$first_upload_line" && "$page_two_line" -lt "$first_upload_line" ]] || fail "page 2 was not read before the first upload"
 
+# Failure scenarios use fresh state so their logs cannot inherit product data.
+reset_fake_state
+export FAKE_CATALOG_SCENARIO="empty"
 export FAKE_CURL_FAIL_URL="/api/admin/auth/login"
 if failure_output="$(bash "$importer" 2>&1)"; then
   fail "importer succeeded despite a curl login failure"
@@ -158,7 +187,8 @@ fi
 [[ "$failure_output" == *"ERROR: administrator login failed"* ]] || fail "curl failure did not identify the failed operation"
 [[ "$failure_output" != *"$ADMIN_PASSWORD"* ]] || fail "curl failure output leaked the administrator password"
 
-unset FAKE_CURL_FAIL_URL
+reset_fake_state
+export FAKE_CATALOG_SCENARIO="empty"
 export FAKE_API_ERROR_URL="/api/admin/catalog/categories"
 if envelope_output="$(bash "$importer" 2>&1)"; then
   fail "importer succeeded despite a non-OK API envelope"
