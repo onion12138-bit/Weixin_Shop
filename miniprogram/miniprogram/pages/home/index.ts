@@ -13,4 +13,10 @@ Page({
       url: '/pages/catalog/index',
     })
   },
+
+  openRecommendation() {
+    wx.navigateTo({
+      url: '/pages/recommendation/index',
+    })
+  },
 })

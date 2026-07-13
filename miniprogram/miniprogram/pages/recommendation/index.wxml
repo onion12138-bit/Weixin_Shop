@@ -1,0 +1,171 @@
+<view class="recommendation-page">
+  <view class="consultation-hero">
+    <view class="hero-copy">
+      <text class="eyebrow">AI BRACELET GUIDE</text>
+      <text class="hero-title">把此刻的心愿，织进一串日常。</text>
+      <text class="hero-summary">告诉我们你的偏好，由 AI 提供一套可继续编辑的手串灵感。</text>
+    </view>
+    <image class="guide-image" src="/assets/images/ai-water-guide.png" mode="aspectFill" />
+  </view>
+
+  <view wx:if="{{statusLoading}}" class="state-card">
+    <text>正在确认 AI 推荐服务…</text>
+  </view>
+
+  <view wx:elif="{{!available}}" class="state-card unavailable-card">
+    <text class="state-title">{{statusMessage}}</text>
+    <text class="state-copy">你仍可从首页进入商品目录或直接 DIY。</text>
+    <button bindtap="retryStatus">重新检查</button>
+  </view>
+
+  <view wx:else class="form-card">
+    <view class="section-heading">
+      <text class="section-kicker">YOUR PROFILE</text>
+      <text class="section-title">描述你的专属灵感</text>
+      <text class="section-note">生日与自由描述只用于本次请求，不会保存为草稿。</text>
+    </view>
+
+    <view class="field-group">
+      <text class="field-label">生日（可选）</text>
+      <picker mode="date" value="{{birthDate}}" end="{{today}}" bindchange="changeBirthDate">
+        <view class="picker-field {{birthDate ? '' : 'placeholder'}}">
+          {{birthDate || '选择日期'}}
+        </view>
+      </picker>
+      <text wx:if="{{birthDate}}" class="derived-note">
+        按生日推导：{{derivedConstellation}} · {{derivedZodiac}}（生肖按公历年份）
+      </text>
+    </view>
+
+    <view class="field-grid">
+      <view class="field-group">
+        <text class="field-label">星座（可手动填写）</text>
+        <input
+          data-field="manualConstellation"
+          value="{{manualConstellation}}"
+          maxlength="16"
+          placeholder="手动值优先"
+          bindinput="updateField"
+        />
+      </view>
+      <view class="field-group">
+        <text class="field-label">生肖（可手动填写）</text>
+        <input
+          data-field="manualZodiac"
+          value="{{manualZodiac}}"
+          maxlength="16"
+          placeholder="手动值优先"
+          bindinput="updateField"
+        />
+      </view>
+    </view>
+
+    <view class="field-grid">
+      <view class="field-group">
+        <text class="field-label">五行偏好</text>
+        <input data-field="elementPreference" value="{{elementPreference}}" maxlength="16" placeholder="如：水、木" bindinput="updateField" />
+      </view>
+      <view class="field-group">
+        <text class="field-label">期望</text>
+        <input data-field="wish" value="{{wish}}" maxlength="80" placeholder="如：专注、从容" bindinput="updateField" />
+      </view>
+      <view class="field-group">
+        <text class="field-label">使用场景</text>
+        <input data-field="scene" value="{{scene}}" maxlength="80" placeholder="如：通勤、旅行" bindinput="updateField" />
+      </view>
+      <view class="field-group">
+        <text class="field-label">偏好颜色</text>
+        <input data-field="colorPreference" value="{{colorPreference}}" maxlength="80" placeholder="如：灰蓝、暖棕" bindinput="updateField" />
+      </view>
+    </view>
+
+    <view class="field-grid sizing-grid">
+      <view class="field-group">
+        <text class="field-label">预算（元） *</text>
+        <input type="digit" data-field="budget" value="{{budget}}" placeholder="0.01 - 999999.99" bindinput="updateField" />
+      </view>
+      <view class="field-group">
+        <text class="field-label">手围（毫米） *</text>
+        <input type="digit" data-field="wristCircumferenceMm" value="{{wristCircumferenceMm}}" placeholder="1 - 1000" bindinput="updateField" />
+      </view>
+      <view class="field-group">
+        <text class="field-label">松紧偏好 *</text>
+        <picker range="{{fitTypeLabels}}" value="{{fitTypeIndex}}" bindchange="changeFitType">
+          <view class="picker-field">{{fitTypeLabels[fitTypeIndex]}}</view>
+        </picker>
+      </view>
+    </view>
+
+    <view class="field-group">
+      <text class="field-label">自由描述</text>
+      <textarea
+        data-field="freeText"
+        value="{{freeText}}"
+        maxlength="500"
+        placeholder="还可以补充材质感受、佩戴习惯或想避开的搭配"
+        bindinput="updateField"
+      />
+      <text class="counter">{{freeText.length}} / 500</text>
+    </view>
+
+    <text wx:if="{{errorMessage}}" class="form-error">{{errorMessage}}</text>
+    <button
+      wx:if="{{available && !submitting}}"
+      class="submit-button"
+      bindtap="submitRecommendation"
+    >
+      生成一套推荐
+    </button>
+    <view wx:if="{{submitting}}" class="submitting-state">正在生成并校验推荐…</view>
+  </view>
+
+  <view wx:if="{{result}}" class="result-card">
+    <view class="result-heading">
+      <text class="section-kicker">ONE VALIDATED DESIGN</text>
+      <text class="result-title">{{result.schemeName}}</text>
+      <text class="result-summary">{{result.summary}}</text>
+    </view>
+
+    <view class="recommendation-items">
+      <view wx:for="{{result.items}}" wx:key="skuId" class="recommendation-item">
+        <image src="{{item.imageUrl}}" mode="aspectFill" />
+        <view class="item-copy">
+          <view class="item-title-row">
+            <text class="item-name">{{item.name}}</text>
+            <text class="item-quantity">{{item.quantityText}}</text>
+          </view>
+          <text class="item-reason">{{item.reason}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="sequence-section">
+      <text class="subsection-title">有序珠子</text>
+      <scroll-view class="sequence-scroll" scroll-x enable-flex>
+        <view wx:for="{{result.orderedBeads}}" wx:key="order" class="sequence-bead">
+          <image src="{{item.imageUrl}}" mode="aspectFill" />
+          <text>{{item.order}}</text>
+          <text class="sequence-name">{{item.name}}</text>
+        </view>
+      </scroll-view>
+    </view>
+
+    <view class="quote-card">
+      <view class="quote-line">
+        <text>绳材</text>
+        <text>{{result.cordOptionName}}</text>
+      </view>
+      <view wx:for="{{result.amountDetails}}" wx:key="label" class="quote-line">
+        <text>{{item.label}}</text>
+        <text>{{item.amountText}}</text>
+      </view>
+      <view class="quote-total">
+        <text>服务端总价</text>
+        <text>{{result.totalAmountText}}</text>
+      </view>
+    </view>
+
+    <text class="disclaimer">{{result.culturalDisclaimer}}</text>
+    <button class="diy-button" bindtap="enterDiy">一键进入 DIY</button>
+  </view>
+</view>

@@ -192,6 +192,59 @@
   background: #fffdfb;
 }
 
+.ai-consultation-card {
+  display: flex;
+  overflow: hidden;
+  margin: 54rpx 36rpx 0;
+  border-radius: 28rpx;
+  color: #fff;
+  background: linear-gradient(135deg, #344f5d, #75919a);
+  box-shadow: 0 18rpx 45rpx rgba(57, 82, 92, .18);
+}
+
+.ai-consultation-card image {
+  width: 250rpx;
+  min-height: 280rpx;
+  flex: 0 0 auto;
+}
+
+.ai-card-copy {
+  padding: 34rpx 28rpx;
+}
+
+.ai-card-copy .section-kicker {
+  color: #cde1e5;
+  font-size: 16rpx;
+  letter-spacing: 3rpx;
+}
+
+.ai-card-title,
+.ai-card-summary,
+.ai-card-link {
+  display: block;
+}
+
+.ai-card-title {
+  margin-top: 12rpx;
+  font-family: "Songti SC", serif;
+  font-size: 36rpx;
+  font-weight: 700;
+}
+
+.ai-card-summary {
+  margin-top: 14rpx;
+  color: #dce9eb;
+  font-size: 21rpx;
+  line-height: 1.65;
+}
+
+.ai-card-link {
+  margin-top: 18rpx;
+  color: #fff;
+  font-size: 22rpx;
+  font-weight: 700;
+}
+
 .journey-card .section-kicker {
   color: #9a6879;
   font-size: 18rpx;

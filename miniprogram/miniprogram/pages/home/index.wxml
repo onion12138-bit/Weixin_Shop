@@ -27,6 +27,16 @@
     </view>
   </view>
 
+  <view class="ai-consultation-card" bindtap="openRecommendation">
+    <image src="/assets/images/ai-water-guide.png" mode="aspectFill" />
+    <view class="ai-card-copy">
+      <text class="section-kicker">AI BRACELET GUIDE</text>
+      <text class="ai-card-title">AI 灵感咨询</text>
+      <text class="ai-card-summary">从生日、偏好与佩戴场景出发，获得一套可继续 DIY 的手串灵感。</text>
+      <text class="ai-card-link">开始咨询 →</text>
+    </view>
+  </view>
+
   <view class="journey-card">
     <view>
       <text class="section-kicker">HOW IT WORKS</text>

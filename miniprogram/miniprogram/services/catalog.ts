@@ -57,6 +57,23 @@ export async function listBeads(
   }
 }
 
+/** Loads every current public bead so AI handoff IDs can be validated. */
+export async function listAllPublicBeads(): Promise<PublicBead[]> {
+  const pageSize = 100
+  const first = await listBeads({ page: 1, size: pageSize })
+  const pageCount = Math.max(1, Math.ceil(first.total / pageSize))
+  const remaining = await Promise.all(
+    Array.from({ length: pageCount - 1 }, (_, index) => (
+      listBeads({ page: index + 2, size: pageSize })
+    )),
+  )
+  const byId = new Map<number, PublicBead>()
+  for (const bead of [first, ...remaining].flatMap((page) => page.items)) {
+    byId.set(bead.id, bead)
+  }
+  return Array.from(byId.values())
+}
+
 export async function getBead(id: number): Promise<PublicBead> {
   const bead = await request<PublicBead>(`/public/catalog/beads/${id}`)
   return {

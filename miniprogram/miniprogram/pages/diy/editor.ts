@@ -1,6 +1,7 @@
 import {
   getBead,
   getPackage,
+  listAllPublicBeads,
   listBeads,
   listCategories,
   type Category,
@@ -30,6 +31,10 @@ import {
   createHistory,
   type EditorHistory,
 } from '../../domain/editor-history'
+import {
+  PENDING_AI_RECOMMENDATION_KEY,
+  consumePendingAiRecommendation,
+} from '../../domain/recommendation-profile'
 import { layoutBracelet } from '../../domain/bracelet-layout'
 import { estimatePriceCents } from '../../domain/price-estimate'
 import type {
@@ -175,21 +180,40 @@ Page({
   canvasImages: {} as Record<string, CanvasImage | 'loading' | 'error'>,
   dragFromIndex: -1,
   dragToIndex: -1,
+  pendingAiRecommendationRaw: null as unknown,
 
   onLoad(options: Record<string, string>) {
+    if (options.source === 'ai') {
+      try {
+        this.pendingAiRecommendationRaw = wx.getStorageSync(
+          PENDING_AI_RECOMMENDATION_KEY,
+        )
+      } catch {
+        this.pendingAiRecommendationRaw = null
+      } finally {
+        try {
+          wx.removeStorageSync(PENDING_AI_RECOMMENDATION_KEY)
+        } catch {
+          // Keep loading; unreadable persisted data must never block the editor.
+        }
+      }
+    }
     void this.bootstrap(options)
   },
 
   async bootstrap(options: Record<string, string>) {
     this.setData({ loading: true, errorMessage: '' })
     try {
-      const [config, categories, beadPage] = await Promise.all([
+      const beadsPromise = options.source === 'ai'
+        ? listAllPublicBeads()
+        : listBeads({ page: 1, size: 30 }).then((page) => page.items)
+      const [config, categories, beads] = await Promise.all([
         getDiyConfiguration(),
         listCategories(),
-        listBeads({ page: 1, size: 30 }),
+        beadsPromise,
       ])
       this.config = config
-      const catalog = beadPage.items.map(toCatalogItem)
+      const catalog = beads.map(toCatalogItem)
       const cordOptions = config.cordOptions.map(toCordOptionItem)
       const wristOptions = buildWristOptions(
         config.rule.minWristMm,
@@ -249,6 +273,27 @@ Page({
   async resolveInitialDraft(
     options: Record<string, string>,
   ): Promise<DraftCache> {
+    if (options.source === 'ai') {
+      const config = this.config
+      const aiDraft = consumePendingAiRecommendation(
+        options.source,
+        {
+          get: () => this.pendingAiRecommendationRaw,
+          remove: () => {
+            this.pendingAiRecommendationRaw = null
+          },
+        },
+        {
+          allowedSkuIds: this.data.catalog.map((item) => item.id),
+          allowedCordOptionIds: this.data.cordOptions.map((item) => item.id),
+          minWristCircumferenceMm: config?.rule.minWristMm || 1,
+          maxWristCircumferenceMm: config?.rule.maxWristMm || 1000,
+          maxSequenceLength: config?.rule.maxBeadCount || 200,
+        },
+      )
+      return aiDraft || blankDraft()
+    }
+
     const schemeId = Number(options.schemeId || 0)
     const packageId = Number(options.packageId || 0)
     const skuId = Number(options.skuId || 0)
@@ -844,7 +889,7 @@ function blankDraft(): DraftCache {
 
 function readDraftCache(): DraftCache | null {
   const raw = wx.getStorageSync(DRAFT_CACHE_KEY)
-  if (!raw) return null
+  if (!raw || typeof raw !== 'string') return null
   try {
     const parsed = JSON.parse(raw) as DraftCache
     return Array.isArray(parsed.sequence) ? parsed : null

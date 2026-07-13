@@ -1,6 +1,7 @@
 {
   "pages": [
     "pages/home/index",
+    "pages/recommendation/index",
     "pages/catalog/index",
     "pages/catalog/detail",
     "pages/diy/editor",
