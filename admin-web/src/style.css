@@ -1026,9 +1026,22 @@ tbody tr:hover {
   margin-bottom: 0;
 }
 
-.ai-configuration-actions > div {
+.ai-configuration-actions > .ai-action-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+}
+
+.ai-action-buttons {
   display: flex;
   gap: 10px;
+}
+
+.save-before-test {
+  color: var(--amber);
+  font-size: 11px;
+  font-weight: 700;
 }
 
 @media (max-width: 1180px) {

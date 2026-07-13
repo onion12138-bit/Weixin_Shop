@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../api/http'
 import {
   clearAiApiKey,
@@ -33,6 +33,14 @@ function configuration(
   }
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise
+  })
+  return { promise, resolve }
+}
+
 describe('AiConfigurationView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -44,6 +52,27 @@ describe('AiConfigurationView', () => {
     vi.mocked(clearAiApiKey).mockResolvedValue(
       configuration({ apiKeyConfigured: false, version: 6 }),
     )
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('uses fixed trace-aware copy when loading fails', async () => {
+    vi.mocked(getAiConfiguration).mockRejectedValue(
+      new ApiError(
+        'sensitive-server-load-detail',
+        'COMMON_INTERNAL_ERROR',
+        500,
+        'trace-load-7',
+      ),
+    )
+    const wrapper = mount(AiConfigurationView)
+    await flushPromises()
+
+    expect(wrapper.get('[role="alert"]').text()).toContain('AI 配置读取失败')
+    expect(wrapper.get('[role="alert"]').text()).toContain('trace-load-7')
+    expect(wrapper.text()).not.toContain('sensitive-server-load-detail')
   })
 
   it('loads the DeepSeek configuration without ever echoing its API key', async () => {
@@ -83,6 +112,58 @@ describe('AiConfigurationView', () => {
       .toMatchObject({ value: '' })
   })
 
+  it('clears a replacement API key only after a successful save', async () => {
+    const wrapper = mount(AiConfigurationView)
+    await flushPromises()
+    await wrapper.get('[data-test="api-key"]').setValue('sk-replacement')
+
+    await wrapper.get('[data-test="configuration-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(saveAiConfiguration).toHaveBeenCalledWith(
+      expect.objectContaining({ apiKey: 'sk-replacement' }),
+    )
+    expect(wrapper.get('[data-test="api-key"]').element)
+      .toMatchObject({ value: '' })
+  })
+
+  it('retains the API key when client-side validation fails', async () => {
+    const wrapper = mount(AiConfigurationView)
+    await flushPromises()
+    await wrapper.get('[data-test="api-key"]').setValue('sk-retry-validation')
+    await wrapper.get('input[type="url"]').setValue('')
+
+    await wrapper.get('[data-test="configuration-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(saveAiConfiguration).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-test="api-key"]').element)
+      .toMatchObject({ value: 'sk-retry-validation' })
+  })
+
+  it('retains the API key and hides server detail when save fails', async () => {
+    vi.mocked(saveAiConfiguration).mockRejectedValue(
+      new ApiError(
+        'sensitive-server-save-detail',
+        'COMMON_CONFLICT',
+        409,
+        'trace-save-7',
+      ),
+    )
+    const wrapper = mount(AiConfigurationView)
+    await flushPromises()
+    await wrapper.get('[data-test="api-key"]').setValue('sk-retry-save')
+
+    await wrapper.get('[data-test="configuration-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.get('[role="alert"]').text()).toContain('AI 配置保存失败')
+    expect(wrapper.get('[role="alert"]').text()).toContain('trace-save-7')
+    expect(wrapper.text()).not.toContain('sensitive-server-save-detail')
+    expect(wrapper.get('[data-test="api-key"]').element)
+      .toMatchObject({ value: 'sk-retry-save' })
+  })
+
   it('clears the API key only after confirmation and uses the current version', async () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     const wrapper = mount(AiConfigurationView)
@@ -102,6 +183,117 @@ describe('AiConfigurationView', () => {
     confirm.mockRestore()
   })
 
+  it('retains the draft key and hides server detail when clearing fails', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.mocked(clearAiApiKey).mockRejectedValue(
+      new ApiError(
+        'sensitive-server-clear-detail',
+        'COMMON_CONFLICT',
+        409,
+        'trace-clear-7',
+      ),
+    )
+    const wrapper = mount(AiConfigurationView)
+    await flushPromises()
+    await wrapper.get('[data-test="api-key"]').setValue('sk-retry-clear')
+
+    await wrapper.get('[data-test="clear-api-key"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[role="alert"]').text()).toContain('API Key 清除失败')
+    expect(wrapper.get('[role="alert"]').text()).toContain('trace-clear-7')
+    expect(wrapper.text()).not.toContain('sensitive-server-clear-detail')
+    expect(wrapper.get('[data-test="api-key"]').element)
+      .toMatchObject({ value: 'sk-retry-clear' })
+  })
+
+  it('disables every conflicting action while an operation is pending', async () => {
+    const pendingSave = deferred<AiConfiguration>()
+    vi.mocked(saveAiConfiguration).mockReturnValue(pendingSave.promise)
+    const saveWrapper = mount(AiConfigurationView)
+    await flushPromises()
+    await saveWrapper.get('[data-test="configuration-form"]').trigger('submit')
+
+    expect(saveWrapper.get('[data-test="test-connection"]').attributes('disabled'))
+      .toBeDefined()
+    expect(saveWrapper.get('[data-test="clear-api-key"]').attributes('disabled'))
+      .toBeDefined()
+    pendingSave.resolve(configuration({ version: 6 }))
+    await flushPromises()
+
+    const pendingTest = deferred<void>()
+    vi.mocked(testAiConfiguration).mockReturnValue(pendingTest.promise)
+    const testWrapper = mount(AiConfigurationView)
+    await flushPromises()
+    await testWrapper.get('[data-test="test-connection"]').trigger('click')
+
+    expect(testWrapper.get('button[type="submit"]').attributes('disabled'))
+      .toBeDefined()
+    expect(testWrapper.get('[data-test="clear-api-key"]').attributes('disabled'))
+      .toBeDefined()
+    pendingTest.resolve()
+    await flushPromises()
+
+    const pendingClear = deferred<AiConfiguration>()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.mocked(clearAiApiKey).mockReturnValue(pendingClear.promise)
+    const clearWrapper = mount(AiConfigurationView)
+    await flushPromises()
+    await clearWrapper.get('[data-test="clear-api-key"]').trigger('click')
+
+    expect(clearWrapper.get('button[type="submit"]').attributes('disabled'))
+      .toBeDefined()
+    expect(clearWrapper.get('[data-test="test-connection"]').attributes('disabled'))
+      .toBeDefined()
+    pendingClear.resolve(configuration({ apiKeyConfigured: false, version: 6 }))
+    await flushPromises()
+  })
+
+  it.each([
+    ['input[type="url"]', 'https://api.deepseek.com/'],
+    ['[data-test="model-name"]', 'deepseek-v4-pro'],
+    ['input[type="number"]', '31'],
+    ['input[type="number"]:nth-of-type(2)', '4096'],
+  ])('requires saving after editing %s before testing', async (selector, value) => {
+    const wrapper = mount(AiConfigurationView)
+    await flushPromises()
+
+    const numericInputs = wrapper.findAll('input[type="number"]')
+    const input = selector === 'input[type="number"]:nth-of-type(2)'
+      ? numericInputs[1]
+      : selector === 'input[type="number"]'
+        ? numericInputs[0]
+        : wrapper.get(selector)
+    await input.setValue(value)
+
+    expect(wrapper.get('[data-test="test-connection"]').attributes('disabled'))
+      .toBeDefined()
+    expect(wrapper.get('[data-test="save-before-test"]').text())
+      .toContain('请先保存配置')
+  })
+
+  it('requires saving after changing the enabled switch before testing', async () => {
+    const wrapper = mount(AiConfigurationView)
+    await flushPromises()
+
+    await wrapper.get('input[type="checkbox"]').setValue(false)
+
+    expect(wrapper.get('[data-test="test-connection"]').attributes('disabled'))
+      .toBeDefined()
+    expect(wrapper.get('[data-test="save-before-test"]').text())
+      .toContain('请先保存配置')
+  })
+
+  it('associates the API key input with its visible label', async () => {
+    const wrapper = mount(AiConfigurationView)
+    await flushPromises()
+
+    expect(wrapper.get('label[for="ai-api-key"]').text())
+      .toContain('DeepSeek API Key')
+    expect(wrapper.get('[data-test="api-key"]').attributes('id'))
+      .toBe('ai-api-key')
+  })
+
   it('shows a successful test-connection result', async () => {
     const wrapper = mount(AiConfigurationView)
     await flushPromises()
@@ -112,6 +304,23 @@ describe('AiConfigurationView', () => {
     expect(testAiConfiguration).toHaveBeenCalledOnce()
     expect(wrapper.get('[data-test="connection-result"]').text())
       .toContain('连接成功，模型 deepseek-v4-flash 可用')
+  })
+
+  it('uses the saved model in success copy when the form changes in flight', async () => {
+    const pending = deferred<void>()
+    vi.mocked(testAiConfiguration).mockReturnValue(pending.promise)
+    const wrapper = mount(AiConfigurationView)
+    await flushPromises()
+
+    await wrapper.get('[data-test="test-connection"]').trigger('click')
+    await wrapper.get('[data-test="model-name"]').setValue('deepseek-v4-pro')
+    pending.resolve()
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="connection-result"]').text())
+      .toContain('连接成功，模型 deepseek-v4-flash 可用')
+    expect(wrapper.get('[data-test="connection-result"]').text())
+      .not.toContain('deepseek-v4-pro')
   })
 
   it.each([

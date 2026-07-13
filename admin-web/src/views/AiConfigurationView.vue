@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import {
   clearAiApiKey,
   getAiConfiguration,
@@ -21,6 +21,7 @@ const errorMessage = ref('')
 const successMessage = ref('')
 const connectionMessage = ref('')
 const connectionSucceeded = ref(false)
+const lastSavedConfiguration = ref<AiConfiguration | null>(null)
 
 const configuration = reactive<AiConfiguration>({
   provider: 'DEEPSEEK',
@@ -33,8 +34,20 @@ const configuration = reactive<AiConfiguration>({
   version: 0,
 })
 
+const hasUnsavedChanges = computed(() => {
+  const saved = lastSavedConfiguration.value
+  if (!saved) return true
+  return apiKey.value !== ''
+    || configuration.baseUrl !== saved.baseUrl
+    || configuration.modelName !== saved.modelName
+    || configuration.enabled !== saved.enabled
+    || Number(configuration.timeoutSeconds) !== saved.timeoutSeconds
+    || Number(configuration.maxOutputTokens) !== saved.maxOutputTokens
+})
+
 function applyConfiguration(next: AiConfiguration): void {
   Object.assign(configuration, next)
+  lastSavedConfiguration.value = { ...next }
   apiKey.value = ''
 }
 
@@ -46,7 +59,7 @@ function withTrace(message: string, error: ApiError): string {
 
 function readableOperationError(error: unknown, fallback: string): string {
   if (error instanceof ApiError) {
-    return withTrace(error.message || fallback, error)
+    return withTrace(fallback, error)
   }
   return fallback
 }
@@ -128,32 +141,44 @@ async function loadConfiguration(): Promise<void> {
 }
 
 async function saveConfiguration(): Promise<void> {
+  if (saving.value || testing.value || clearing.value) return
   saving.value = true
   clearMessages()
+
+  let payload: SaveAiConfigurationPayload
   try {
-    const payload = savePayload()
-    apiKey.value = ''
+    payload = savePayload()
+  } catch (error) {
+    errorMessage.value = error instanceof Error
+      ? error.message
+      : 'AI 配置校验失败'
+    saving.value = false
+    return
+  }
+
+  try {
     applyConfiguration(await saveAiConfiguration(payload))
     successMessage.value = 'AI 配置已保存'
   } catch (error) {
-    errorMessage.value = error instanceof ApiError
-      ? readableOperationError(error, 'AI 配置保存失败')
-      : error instanceof Error
-        ? error.message
-        : 'AI 配置保存失败'
+    errorMessage.value = readableOperationError(error, 'AI 配置保存失败')
   } finally {
-    apiKey.value = ''
     saving.value = false
   }
 }
 
 async function testConnection(): Promise<void> {
+  if (testing.value || saving.value || clearing.value) return
+  if (hasUnsavedChanges.value) {
+    connectionSucceeded.value = false
+    connectionMessage.value = '请先保存配置'
+    return
+  }
   testing.value = true
   clearMessages()
   try {
     await testAiConfiguration()
     connectionSucceeded.value = true
-    connectionMessage.value = `连接成功，模型 ${configuration.modelName} 可用`
+    connectionMessage.value = `连接成功，模型 ${lastSavedConfiguration.value!.modelName} 可用`
   } catch (error) {
     connectionMessage.value = safeConnectionError(error)
   } finally {
@@ -162,7 +187,12 @@ async function testConnection(): Promise<void> {
 }
 
 async function clearApiKey(): Promise<void> {
-  if (!configuration.apiKeyConfigured) return
+  if (
+    saving.value
+    || testing.value
+    || clearing.value
+    || !configuration.apiKeyConfigured
+  ) return
   const confirmed = window.confirm(
     '确定清除当前 DeepSeek API Key？清除后 AI 服务将无法调用。',
   )
@@ -176,7 +206,6 @@ async function clearApiKey(): Promise<void> {
   } catch (error) {
     errorMessage.value = readableOperationError(error, 'API Key 清除失败')
   } finally {
-    apiKey.value = ''
     clearing.value = false
   }
 }
@@ -285,10 +314,10 @@ onMounted(loadConfiguration)
 
       <section class="ai-key-panel">
         <header>
-          <div>
+          <label for="ai-api-key">
             <strong>DeepSeek API Key</strong>
             <small>留空保存会保留当前 Key；密钥不会回显。</small>
-          </div>
+          </label>
           <span
             class="status-pill"
             :class="configuration.apiKeyConfigured ? 'status-on_sale' : 'status-off_sale'"
@@ -297,6 +326,7 @@ onMounted(loadConfiguration)
         </header>
         <input
           v-model="apiKey"
+          id="ai-api-key"
           data-test="api-key"
           type="password"
           autocomplete="new-password"
@@ -320,28 +350,35 @@ onMounted(loadConfiguration)
           class="danger-button"
           data-test="clear-api-key"
           type="button"
-          :disabled="clearing || !configuration.apiKeyConfigured"
+          :disabled="saving || testing || clearing || !configuration.apiKeyConfigured"
           @click="clearApiKey"
         >
           {{ clearing ? '清除中…' : '清除 API Key' }}
         </button>
-        <div>
-          <button
-            class="secondary-button"
-            data-test="test-connection"
-            type="button"
-            :disabled="testing || saving || clearing"
-            @click="testConnection"
-          >
-            {{ testing ? '测试中…' : '测试连接' }}
-          </button>
-          <button
-            class="primary-button"
-            type="submit"
-            :disabled="saving || testing || clearing"
-          >
-            {{ saving ? '保存中…' : '保存配置' }}
-          </button>
+        <div class="ai-action-stack">
+          <small
+            v-if="hasUnsavedChanges"
+            class="save-before-test"
+            data-test="save-before-test"
+          >请先保存配置</small>
+          <span class="ai-action-buttons">
+            <button
+              class="secondary-button"
+              data-test="test-connection"
+              type="button"
+              :disabled="testing || saving || clearing || hasUnsavedChanges"
+              @click="testConnection"
+            >
+              {{ testing ? '测试中…' : '测试连接' }}
+            </button>
+            <button
+              class="primary-button"
+              type="submit"
+              :disabled="saving || testing || clearing"
+            >
+              {{ saving ? '保存中…' : '保存配置' }}
+            </button>
+          </span>
         </div>
       </footer>
     </form>
