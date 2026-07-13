@@ -1,11 +1,13 @@
 package com.diybracelet.mall.recommendation.infrastructure;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.diybracelet.mall.support.MySqlIntegrationTest;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 class AiConfigurationMigrationTest extends MySqlIntegrationTest {
@@ -33,5 +35,32 @@ class AiConfigurationMigrationTest extends MySqlIntegrationTest {
         assertThat(config.get("encrypted_api_key")).isNull();
         assertThat(config.get("enabled")).isEqualTo(false);
         assertThat(((Number) config.get("version")).longValue()).isEqualTo(0L);
+    }
+
+    @Test
+    void shouldRejectASecondAiModelConfiguration() {
+        assertThatThrownBy(() -> jdbcTemplate.update("""
+            insert into ai_model_config (
+                id, provider, base_url, model_name, encrypted_api_key,
+                enabled, timeout_seconds, max_output_tokens, version
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            2L,
+            "DEEPSEEK",
+            "https://api.deepseek.com",
+            "deepseek-v4-flash",
+            null,
+            false,
+            30,
+            2048,
+            0L
+        )).isInstanceOf(DataAccessException.class)
+            .hasMessageContaining("chk_ai_model_singleton");
+
+        Integer rowCount = jdbcTemplate.queryForObject(
+            "select count(*) from ai_model_config",
+            Integer.class
+        );
+        assertThat(rowCount).isEqualTo(1);
     }
 }

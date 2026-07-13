@@ -11,6 +11,7 @@ create table ai_model_config (
     version bigint not null,
     created_at timestamp not null default current_timestamp,
     updated_at timestamp not null default current_timestamp on update current_timestamp,
+    constraint chk_ai_model_singleton check (id = 1),
     constraint chk_ai_model_provider check (provider = 'DEEPSEEK'),
     constraint chk_ai_model_timeout check (timeout_seconds > 0),
     constraint chk_ai_model_max_output_tokens check (max_output_tokens > 0)

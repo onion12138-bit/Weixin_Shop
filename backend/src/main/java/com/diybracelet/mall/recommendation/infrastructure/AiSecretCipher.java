@@ -66,6 +66,9 @@ public final class AiSecretCipher {
      */
     public String decrypt(String encodedCiphertext) {
         SecretKeySpec key = masterKey();
+        if (encodedCiphertext == null) {
+            throw new IllegalStateException("Unable to decrypt AI secret");
+        }
 
         try {
             byte[] stored = Base64.getDecoder().decode(encodedCiphertext);

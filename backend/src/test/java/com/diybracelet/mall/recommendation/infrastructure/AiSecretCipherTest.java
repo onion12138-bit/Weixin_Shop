@@ -42,6 +42,16 @@ class AiSecretCipherTest {
     }
 
     @Test
+    void shouldRejectNullCiphertextWithAControlledSecretFreeException() {
+        AiSecretCipher cipher = new AiSecretCipher(MASTER_KEY);
+
+        assertThatThrownBy(() -> cipher.decrypt(null))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessage("Unable to decrypt AI secret")
+            .hasNoCause();
+    }
+
+    @Test
     void shouldValidateTheMasterKeyOnlyWhenCryptographyIsRequested() {
         AiSecretCipher emptyKeyCipher = new AiSecretCipher("");
         AiSecretCipher nullKeyCipher = new AiSecretCipher(null);
