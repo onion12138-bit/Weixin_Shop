@@ -75,6 +75,35 @@ describe('AiConfigurationView', () => {
     expect(wrapper.text()).not.toContain('sensitive-server-load-detail')
   })
 
+  it('hides default configuration after load failure and retries explicitly', async () => {
+    vi.mocked(getAiConfiguration)
+      .mockRejectedValueOnce(
+        new ApiError(
+          'hidden-load-detail',
+          'COMMON_INTERNAL_ERROR',
+          500,
+          'trace-retry-7',
+        ),
+      )
+      .mockResolvedValueOnce(configuration())
+    const wrapper = mount(AiConfigurationView)
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="configuration-form"]').exists())
+      .toBe(false)
+    expect(wrapper.find('[data-test="configuration-version"]').exists())
+      .toBe(false)
+    expect(wrapper.get('[data-test="reload-configuration"]').text())
+      .toContain('重新加载')
+
+    await wrapper.get('[data-test="reload-configuration"]').trigger('click')
+    await flushPromises()
+
+    expect(getAiConfiguration).toHaveBeenCalledTimes(2)
+    expect(wrapper.get('[data-test="configuration-version"]').text())
+      .toBe('v5')
+  })
+
   it('loads the DeepSeek configuration without ever echoing its API key', async () => {
     const wrapper = mount(AiConfigurationView)
     await flushPromises()
@@ -245,6 +274,39 @@ describe('AiConfigurationView', () => {
       .toBeDefined()
     expect(clearWrapper.get('[data-test="test-connection"]').attributes('disabled'))
       .toBeDefined()
+    pendingClear.resolve(configuration({ apiKeyConfigured: false, version: 6 }))
+    await flushPromises()
+  })
+
+  it('disables editable inputs while save or clear is pending', async () => {
+    const pendingSave = deferred<AiConfiguration>()
+    vi.mocked(saveAiConfiguration).mockReturnValue(pendingSave.promise)
+    const saveWrapper = mount(AiConfigurationView)
+    await flushPromises()
+    await saveWrapper.get('[data-test="configuration-form"]').trigger('submit')
+
+    const saveFields = saveWrapper.get('[data-test="configuration-fields"]')
+    expect(saveFields.attributes('disabled')).toBeDefined()
+    expect(saveWrapper.get('[data-test="model-name"]').element.matches(':disabled'))
+      .toBe(true)
+    expect(saveWrapper.get('[data-test="api-key"]').element.matches(':disabled'))
+      .toBe(true)
+    pendingSave.resolve(configuration({ version: 6 }))
+    await flushPromises()
+
+    const pendingClear = deferred<AiConfiguration>()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.mocked(clearAiApiKey).mockReturnValue(pendingClear.promise)
+    const clearWrapper = mount(AiConfigurationView)
+    await flushPromises()
+    await clearWrapper.get('[data-test="clear-api-key"]').trigger('click')
+
+    const clearFields = clearWrapper.get('[data-test="configuration-fields"]')
+    expect(clearFields.attributes('disabled')).toBeDefined()
+    expect(clearWrapper.get('[data-test="model-name"]').element.matches(':disabled'))
+      .toBe(true)
+    expect(clearWrapper.get('[data-test="api-key"]').element.matches(':disabled'))
+      .toBe(true)
     pendingClear.resolve(configuration({ apiKeyConfigured: false, version: 6 }))
     await flushPromises()
   })

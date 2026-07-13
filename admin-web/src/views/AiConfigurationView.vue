@@ -13,6 +13,7 @@ import { ApiError } from '../api/http'
 const OFFICIAL_BASE_URL = 'https://api.deepseek.com'
 
 const loading = ref(true)
+const loaded = ref(false)
 const saving = ref(false)
 const testing = ref(false)
 const clearing = ref(false)
@@ -130,9 +131,11 @@ function savePayload(): SaveAiConfigurationPayload {
 
 async function loadConfiguration(): Promise<void> {
   loading.value = true
+  loaded.value = false
   errorMessage.value = ''
   try {
     applyConfiguration(await getAiConfiguration())
+    loaded.value = true
   } catch (error) {
     errorMessage.value = readableOperationError(error, 'AI 配置读取失败')
   } finally {
@@ -234,6 +237,18 @@ onMounted(loadConfiguration)
 
     <div v-if="loading" class="empty-state">正在读取 AI 配置…</div>
 
+    <div v-else-if="!loaded" class="empty-state ai-load-failure">
+      <p>当前无法显示 AI 配置。</p>
+      <button
+        class="secondary-button"
+        data-test="reload-configuration"
+        type="button"
+        @click="loadConfiguration"
+      >
+        重新加载
+      </button>
+    </div>
+
     <form
       v-else
       class="settings-card ai-configuration-card"
@@ -251,89 +266,95 @@ onMounted(loadConfiguration)
         >v{{ configuration.version }}</span>
       </header>
 
-      <div class="form-grid ai-configuration-grid">
-        <label>
-          <span>Provider</span>
-          <input
-            data-test="provider"
-            :value="configuration.provider"
-            readonly
-          />
-        </label>
-        <label>
-          <span>官方 Base URL</span>
-          <input
-            v-model="configuration.baseUrl"
-            type="url"
-            required
-            maxlength="255"
-            :placeholder="OFFICIAL_BASE_URL"
-          />
-          <small>仅允许 DeepSeek 官方 HTTPS 地址</small>
-        </label>
-        <label class="ai-model-field">
-          <span>模型名称</span>
-          <input
-            v-model="configuration.modelName"
-            data-test="model-name"
-            required
-            maxlength="120"
-            placeholder="deepseek-v4-flash"
-          />
-        </label>
-        <label>
-          <span>请求超时（秒）</span>
-          <input
-            v-model.number="configuration.timeoutSeconds"
-            type="number"
-            min="1"
-            max="120"
-            step="1"
-            required
-          />
-        </label>
-        <label>
-          <span>最大输出 Token</span>
-          <input
-            v-model.number="configuration.maxOutputTokens"
-            type="number"
-            min="256"
-            max="16384"
-            step="1"
-            required
-          />
-        </label>
-        <label class="switch-field">
-          <span>服务状态</span>
-          <span class="switch-control">
-            <input v-model="configuration.enabled" type="checkbox" />
-            <span>{{ configuration.enabled ? '已启用' : '已停用' }}</span>
-          </span>
-        </label>
-      </div>
-
-      <section class="ai-key-panel">
-        <header>
-          <label for="ai-api-key">
-            <strong>DeepSeek API Key</strong>
-            <small>留空保存会保留当前 Key；密钥不会回显。</small>
+      <fieldset
+        class="ai-configuration-fields"
+        data-test="configuration-fields"
+        :disabled="saving || clearing"
+      >
+        <div class="form-grid ai-configuration-grid">
+          <label>
+            <span>Provider</span>
+            <input
+              data-test="provider"
+              :value="configuration.provider"
+              readonly
+            />
           </label>
-          <span
-            class="status-pill"
-            :class="configuration.apiKeyConfigured ? 'status-on_sale' : 'status-off_sale'"
-            data-test="api-key-status"
-          >{{ configuration.apiKeyConfigured ? '已配置' : '未配置' }}</span>
-        </header>
-        <input
-          v-model="apiKey"
-          id="ai-api-key"
-          data-test="api-key"
-          type="password"
-          autocomplete="new-password"
-          spellcheck="false"
-          placeholder="输入新的 API Key；留空则保留现有配置"
-        />
-      </section>
+          <label>
+            <span>官方 Base URL</span>
+            <input
+              v-model="configuration.baseUrl"
+              type="url"
+              required
+              maxlength="255"
+              :placeholder="OFFICIAL_BASE_URL"
+            />
+            <small>仅允许 DeepSeek 官方 HTTPS 地址</small>
+          </label>
+          <label class="ai-model-field">
+            <span>模型名称</span>
+            <input
+              v-model="configuration.modelName"
+              data-test="model-name"
+              required
+              maxlength="120"
+              placeholder="deepseek-v4-flash"
+            />
+          </label>
+          <label>
+            <span>请求超时（秒）</span>
+            <input
+              v-model.number="configuration.timeoutSeconds"
+              type="number"
+              min="1"
+              max="120"
+              step="1"
+              required
+            />
+          </label>
+          <label>
+            <span>最大输出 Token</span>
+            <input
+              v-model.number="configuration.maxOutputTokens"
+              type="number"
+              min="256"
+              max="16384"
+              step="1"
+              required
+            />
+          </label>
+          <label class="switch-field">
+            <span>服务状态</span>
+            <span class="switch-control">
+              <input v-model="configuration.enabled" type="checkbox" />
+              <span>{{ configuration.enabled ? '已启用' : '已停用' }}</span>
+            </span>
+          </label>
+        </div>
+
+        <section class="ai-key-panel">
+          <header>
+            <label for="ai-api-key">
+              <strong>DeepSeek API Key</strong>
+              <small>留空保存会保留当前 Key；密钥不会回显。</small>
+            </label>
+            <span
+              class="status-pill"
+              :class="configuration.apiKeyConfigured ? 'status-on_sale' : 'status-off_sale'"
+              data-test="api-key-status"
+            >{{ configuration.apiKeyConfigured ? '已配置' : '未配置' }}</span>
+          </header>
+          <input
+            v-model="apiKey"
+            id="ai-api-key"
+            data-test="api-key"
+            type="password"
+            autocomplete="new-password"
+            spellcheck="false"
+            placeholder="输入新的 API Key；留空则保留现有配置"
+          />
+        </section>
+      </fieldset>
 
       <div
         v-if="connectionMessage"

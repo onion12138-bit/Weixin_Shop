@@ -965,6 +965,17 @@ tbody tr:hover {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.ai-configuration-fields {
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+
+.ai-load-failure {
+  justify-items: center;
+}
+
 .ai-configuration-grid label small,
 .ai-key-panel small {
   color: var(--muted);

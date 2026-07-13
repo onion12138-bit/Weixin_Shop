@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   clearAiApiKey,
+  getAiConfiguration,
   saveAiConfiguration,
   testAiConfiguration,
   type SaveAiConfigurationPayload,
@@ -23,6 +24,12 @@ describe('AI configuration API contract', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(request).mockResolvedValue(undefined)
+  })
+
+  it('loads the singleton configuration with GET defaults', async () => {
+    await getAiConfiguration()
+
+    expect(request).toHaveBeenCalledWith('/admin/ai/config')
   })
 
   it('saves with PUT and the complete JSON body', async () => {
