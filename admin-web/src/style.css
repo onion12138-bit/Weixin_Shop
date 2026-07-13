@@ -68,6 +68,7 @@ button {
 
 .primary-button,
 .secondary-button,
+.danger-button,
 .page-button {
   min-height: 40px;
   padding: 0 18px;
@@ -91,6 +92,7 @@ button {
 
 .primary-button:disabled,
 .secondary-button:disabled,
+.danger-button:disabled,
 .page-button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
@@ -102,6 +104,17 @@ button {
   border: 1px solid var(--line);
   color: var(--ink);
   background: white;
+}
+
+.danger-button {
+  border: 1px solid #e4b8bd;
+  color: #943a42;
+  background: #fff7f7;
+}
+
+.danger-button:hover:not(:disabled) {
+  border-color: #c98289;
+  background: #fff0f1;
 }
 
 .secondary-button:hover,
@@ -938,6 +951,84 @@ tbody tr:hover {
   height: 28px;
   border: 1px solid rgb(36 31 34 / 12%);
   border-radius: 50%;
+}
+
+.ai-configuration-workspace {
+  max-width: 1040px;
+}
+
+.ai-configuration-card {
+  padding: 30px;
+}
+
+.ai-configuration-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.ai-configuration-grid label small,
+.ai-key-panel small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.55;
+}
+
+.switch-field {
+  align-content: start;
+}
+
+.switch-control {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: 42px;
+  padding: 0 13px;
+  border: 1px solid #ddd4d0;
+  border-radius: 9px;
+  background: white;
+}
+
+.switch-control input {
+  width: 18px;
+  min-height: 18px;
+  margin: 0;
+  accent-color: var(--berry);
+}
+
+.ai-key-panel {
+  display: grid;
+  gap: 14px;
+  margin-top: 22px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #faf8f6;
+}
+
+.ai-key-panel > header {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ai-key-panel strong,
+.ai-key-panel small {
+  display: block;
+}
+
+.ai-key-panel small {
+  margin-top: 5px;
+}
+
+.connection-result {
+  margin-top: 18px;
+  margin-bottom: 0;
+}
+
+.ai-configuration-actions > div {
+  display: flex;
+  gap: 10px;
 }
 
 @media (max-width: 1180px) {

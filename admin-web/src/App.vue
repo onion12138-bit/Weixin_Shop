@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useAuthStore } from './stores/auth'
+import AiConfigurationView from './views/AiConfigurationView.vue'
 import CatalogView from './views/CatalogView.vue'
 import DiySettingsView from './views/DiySettingsView.vue'
 import LoginView from './views/LoginView.vue'
 import OrderView from './views/OrderView.vue'
 
 const auth = useAuthStore()
-type AdminView = 'catalog' | 'diy' | 'orders'
+type AdminView = 'catalog' | 'diy' | 'orders' | 'ai'
 const activeView = ref<AdminView>('catalog')
 </script>
 
@@ -50,6 +51,15 @@ const activeView = ref<AdminView>('catalog')
           订单管理
           <small>制作 / 发货 / 完成</small>
         </button>
+        <p>平台能力</p>
+        <button
+          :class="{ active: activeView === 'ai' }"
+          @click="activeView = 'ai'"
+        >
+          <span>✦</span>
+          AI 模型
+          <small>DeepSeek / 连接配置</small>
+        </button>
       </nav>
 
       <div class="sidebar-footer">
@@ -67,7 +77,8 @@ const activeView = ref<AdminView>('catalog')
     <main class="admin-content">
       <CatalogView v-if="activeView === 'catalog'" />
       <DiySettingsView v-else-if="activeView === 'diy'" />
-      <OrderView v-else />
+      <OrderView v-else-if="activeView === 'orders'" />
+      <AiConfigurationView v-else />
     </main>
   </div>
 </template>
