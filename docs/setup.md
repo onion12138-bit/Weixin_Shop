@@ -108,4 +108,4 @@ BACKEND_BASE_URL=http://localhost:8081 \
 - MySQL 端口占用：在 `.env` 修改 `MYSQL_PORT`，后端使用相同环境变量。
 - Docker 集成测试提示 API 版本过低：项目已锁定 Testcontainers 1.21.4；确认 Maven
   未被旧依赖覆盖。
-- 图片无法显示：确认后端 8080 端口可访问，且 `FILE_STORAGE_LOCAL_ROOT` 对进程可写。
+- 图片无法显示：确认后端 8081 端口可访问，且 `FILE_STORAGE_LOCAL_ROOT` 对进程可写。

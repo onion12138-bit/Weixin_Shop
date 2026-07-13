@@ -54,6 +54,39 @@ new_installation_id() {
     "$RANDOM" "$RANDOM" "$RANDOM"
 }
 
+validate_live_recommendation() {
+  local recommendation_json="$1"
+  local public_catalog_ids="$2"
+
+  jq -e --argjson catalogIds "$public_catalog_ids" '
+    .code == "OK"
+    and (.data | type == "object")
+    and (.data.sequence | type == "array" and length > 0)
+    and (all(.data.sequence[]; type == "number" and floor == . and . > 0))
+    and (([.data.sequence[]] | unique) - $catalogIds | length == 0)
+    and (.data.quantities | type == "object" and length > 0)
+    and (.data.quantities | to_entries | all(.[].key; test("^[1-9][0-9]*$")))
+    and (.data.quantities | to_entries | all(.[].value;
+      type == "number" and floor == . and . > 0))
+    and ((.data.quantities | keys | map(tonumber) | sort)
+      == ([.data.sequence[]] | unique | sort))
+    and (.data.quantities == (reduce .data.sequence[] as $sku ({};
+      .[$sku | tostring] = ((.[$sku | tostring] // 0) + 1))))
+    and (.data.items | type == "array" and length > 0)
+    and (all(.data.items[];
+      (.skuId | type == "number" and floor == . and . > 0)
+      and (.imageUrl | type == "string" and length > 0)))
+    and (([.data.items[].skuId] | length)
+      == ([.data.items[].skuId] | unique | length))
+    and (([.data.items[].skuId] | unique | sort)
+      == ([.data.sequence[]] | unique | sort))
+    and (([.data.items[].skuId] | unique) - $catalogIds | length == 0)
+    and (.data.totalAmount | type == "number" and . >= 0)
+    and (.data.quoteFingerprint | type == "string" and length > 0)
+    and (.data.culturalDisclaimer | type == "string" and length > 0)
+  ' >/dev/null 2>&1 <<< "$recommendation_json"
+}
+
 build_payload() {
   local payload_kind="$1"
   case "$payload_kind" in
@@ -136,6 +169,8 @@ call_api() {
   curl_arguments=(
     --silent
     --show-error
+    --connect-timeout 5
+    --max-time "$((timeout_seconds + 15))"
     --output "$response_file"
     --write-out '%{http_code}'
     --request "$method"
@@ -369,21 +404,7 @@ while :; do
   catalog_page=$((catalog_page + 1))
 done
 
-if ! jq -e --argjson catalogIds "$catalog_ids" '
-  .code == "OK"
-  and (.data | type == "object")
-  and (.data.sequence | type == "array" and length > 0)
-  and (all(.data.sequence[]; type == "number" and floor == . and . > 0))
-  and (([.data.sequence[]] | unique) - $catalogIds | length == 0)
-  and (.data.items | type == "array" and length > 0)
-  and (all(.data.items[];
-    (.skuId | type == "number" and floor == . and . > 0)
-    and (.imageUrl | type == "string" and length > 0)))
-  and (([.data.sequence[]] | unique) - [.data.items[].skuId] | length == 0)
-  and (.data.totalAmount | type == "number" and . >= 0)
-  and (.data.quoteFingerprint | type == "string" and length > 0)
-  and (.data.culturalDisclaimer | type == "string" and length > 0)
-' >/dev/null 2>&1 <<< "$recommendation_response"; then
+if ! validate_live_recommendation "$recommendation_response" "$catalog_ids"; then
   printf '%s\n' \
     'ERROR: live recommendation failed the single-design, paginated-catalog, amount, fingerprint, disclaimer, or image assertions.' >&2
   exit 1
