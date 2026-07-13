@@ -1,0 +1,30 @@
+package com.diybracelet.mall.recommendation.api.dto;
+
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+
+/** Admin request for replacing the non-secret AI settings and optionally the key. */
+public record SaveAiConfigurationRequest(
+    @NotBlank @Size(max = 255) String baseUrl,
+    @NotBlank @Size(max = 120) String modelName,
+    String apiKey,
+    boolean enabled,
+    @Min(1) @Max(120) int timeoutSeconds,
+    @Min(256) @Max(16384) int maxOutputTokens,
+    @Min(0) long version
+) {
+
+    /** Prevents accidental plaintext key disclosure by structured argument logging. */
+    @Override
+    public String toString() {
+        return "SaveAiConfigurationRequest[apiKeyProvided="
+            + (apiKey != null && !apiKey.isBlank())
+            + ", enabled=" + enabled
+            + ", timeoutSeconds=" + timeoutSeconds
+            + ", maxOutputTokens=" + maxOutputTokens
+            + ", version=" + version
+            + "]";
+    }
+}

@@ -34,6 +34,27 @@ public enum ErrorCode {
     /** 下单所需 SKU 库存不足。 */
     INVENTORY_INSUFFICIENT(HttpStatus.CONFLICT),
 
+    /** AI Provider API Key 尚未配置。 */
+    AI_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE),
+
+    /** AI 功能已被管理员停用。 */
+    AI_DISABLED(HttpStatus.SERVICE_UNAVAILABLE),
+
+    /** AI Provider 拒绝了当前鉴权信息。 */
+    AI_UNAUTHORIZED(HttpStatus.BAD_GATEWAY),
+
+    /** 配置的 AI 模型在 Provider 侧不可用。 */
+    AI_MODEL_UNAVAILABLE(HttpStatus.BAD_GATEWAY),
+
+    /** AI Provider 对当前请求限流。 */
+    AI_RATE_LIMITED(HttpStatus.SERVICE_UNAVAILABLE),
+
+    /** AI Provider 超时或发生临时故障。 */
+    AI_TEMPORARILY_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE),
+
+    /** AI 推荐响应未通过后端契约或业务校验。 */
+    AI_INVALID_RECOMMENDATION(HttpStatus.UNPROCESSABLE_ENTITY),
+
     /** 服务端发生未预期错误。 */
     COMMON_INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR);
 
