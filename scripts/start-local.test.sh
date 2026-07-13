@@ -60,8 +60,20 @@ case "${url}" in
     exit 22
     ;;
   http://localhost:8081/actuator/health)
+    if [[ "${START_LOCAL_TEST_FOREIGN_8081:-0}" == "1" ]]; then
+      printf '%s\n' '{"status":"UP"}'
+      exit 0
+    fi
     grep -q 'BACKEND_PORT=8081 mvn spring-boot:run' "${START_LOCAL_TEST_TRACE}" || exit 22
     printf '%s\n' '{"status":"UP"}'
+    ;;
+  http://localhost:8081/api/public/project-health)
+    if [[ "${START_LOCAL_TEST_FOREIGN_8081:-0}" == "1" ]]; then
+      printf '%s\n' '{"name":"其他 Spring 服务","status":"UP"}'
+      exit 0
+    fi
+    grep -q 'BACKEND_PORT=8081 mvn spring-boot:run' "${START_LOCAL_TEST_TRACE}" || exit 22
+    printf '%s\n' '{"name":"DIY 手串定制商城","status":"UP"}'
     ;;
   http://localhost:8082/actuator/health)
     grep -q 'BACKEND_PORT=8082 mvn spring-boot:run' "${START_LOCAL_TEST_TRACE}" || exit 22
@@ -111,6 +123,26 @@ fi
 
 if grep -Fq 'BACKEND_PORT=8082 mvn spring-boot:run' "${trace_file}"; then
   echo "FAIL: launcher started the backend on fallback port 8082" >&2
+  cat "${trace_file}" >&2
+  exit 1
+fi
+
+: >"${trace_file}"
+
+foreign_output="${test_root}/foreign-output.log"
+if PATH="${fake_bin}:/usr/bin:/bin:/usr/sbin:/sbin" \
+  START_LOCAL_SKIP_ENV=1 \
+  START_LOCAL_NO_OPEN=1 \
+  START_LOCAL_WAIT_INTERVAL=0.05 \
+  START_LOCAL_WAIT_ATTEMPTS=20 \
+  START_LOCAL_RUNTIME_DIR="${runtime_dir}" \
+  START_LOCAL_TEST_TRACE="${trace_file}" \
+  START_LOCAL_TEST_OCCUPY_8081=1 \
+  START_LOCAL_TEST_FOREIGN_8081=1 \
+  BACKEND_PORT=8081 \
+  bash "${startup_script}" >"${foreign_output}" 2>&1; then
+  echo "FAIL: launcher reused a foreign healthy Spring service on port 8081" >&2
+  cat "${foreign_output}" >&2
   cat "${trace_file}" >&2
   exit 1
 fi

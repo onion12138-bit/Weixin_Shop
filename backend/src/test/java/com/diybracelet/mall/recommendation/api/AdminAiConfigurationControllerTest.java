@@ -164,10 +164,10 @@ class AdminAiConfigurationControllerTest {
         mockMvc.perform(put("/api/admin/ai/config")
                 .header(authHeader(), adminToken())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(saveRequest("https://api.deepseek.com/", "deepseek-chat", null, true, 12, 1024, 0)))
+                .content(saveRequest("https://api.deepseek.com/", "deepseek-v4-flash", null, true, 12, 1024, 0)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.baseUrl").value("https://api.deepseek.com"))
-            .andExpect(jsonPath("$.data.modelName").value("deepseek-chat"))
+            .andExpect(jsonPath("$.data.modelName").value("deepseek-v4-flash"))
             .andExpect(jsonPath("$.data.apiKeyConfigured").value(false))
             .andExpect(jsonPath("$.data.version").value(1));
 
@@ -179,7 +179,7 @@ class AdminAiConfigurationControllerTest {
         String response = mockMvc.perform(put("/api/admin/ai/config")
                 .header(authHeader(), adminToken())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(saveRequest("https://api.deepseek.com", "deepseek-chat", SECRET, true, 30, 2048, 0)))
+                .content(saveRequest("https://api.deepseek.com", "deepseek-v4-flash", SECRET, true, 30, 2048, 0)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.apiKeyConfigured").value(true))
             .andReturn().getResponse().getContentAsString();
@@ -202,12 +202,30 @@ class AdminAiConfigurationControllerTest {
         mockMvc.perform(put("/api/admin/ai/config")
                 .header(authHeader(), adminToken())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(saveRequest("https://api.deepseek.com", "deepseek-chat", "   ", true, 20, 1536, 4)))
+                .content(saveRequest("https://api.deepseek.com", "deepseek-v4-flash", "   ", true, 20, 1536, 4)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.apiKeyConfigured").value(true))
             .andExpect(jsonPath("$.data.version").value(5));
 
         org.assertj.core.api.Assertions.assertThat(stored.getEncryptedApiKey()).isEqualTo(encrypted);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "deepseek-chat",
+        "deepseek-v4-pro",
+        " deepseek-v4-flash ",
+        "DEEPSEEK-V4-FLASH"
+    })
+    void shouldRejectEveryModelOtherThanTheFixedFlashModel(String modelName) throws Exception {
+        mockMvc.perform(put("/api/admin/ai/config")
+                .header(authHeader(), adminToken())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(saveRequest("https://api.deepseek.com", modelName, "", false, 30, 2048, 0)))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("COMMON_BAD_REQUEST"));
+
+        verify(configMapper, never()).updateWithVersion(any(), anyLong());
     }
 
     @Test
@@ -243,7 +261,7 @@ class AdminAiConfigurationControllerTest {
         mockMvc.perform(put("/api/admin/ai/config")
                 .header(authHeader(), adminToken())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(saveRequest(baseUrl, "deepseek-chat", "", false, 30, 2048, 0)))
+                .content(saveRequest(baseUrl, "deepseek-v4-flash", "", false, 30, 2048, 0)))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.code").value("COMMON_BAD_REQUEST"))
             .andExpect(content().string(not(containsString(baseUrl))));
@@ -258,7 +276,7 @@ class AdminAiConfigurationControllerTest {
         mockMvc.perform(put("/api/admin/ai/config")
                 .header(authHeader(), adminToken())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(saveRequest("https://api.deepseek.com", "deepseek-chat", SECRET, true, 30, 2048, 2)))
+                .content(saveRequest("https://api.deepseek.com", "deepseek-v4-flash", SECRET, true, 30, 2048, 2)))
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.code").value("COMMON_CONFLICT"));
 

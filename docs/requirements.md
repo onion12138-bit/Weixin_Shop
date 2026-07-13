@@ -1,6 +1,6 @@
 # 需求规格说明
 
-最后更新：2026-07-13
+最后更新：2026-07-14
 
 ## 1. 产品目标
 
@@ -103,7 +103,7 @@
 - `scripts/catalog-smoke.sh`、`scripts/diy-smoke.sh`、`scripts/order-smoke.sh` 已通过真实 HTTP 验证。
 - `scripts/recommendation-smoke.sh` 已以 `NOT_CONFIGURED → AI_NOT_CONFIGURED` 通过真实 HTTP 暂停路径验证，并确认无 DeepSeek 调用和无本地降级。
 - 3 款图片演示散珠首次创建、第二次全部幂等跳过已经真实 HTTP 验证。
-- 后端 166 项、管理后台 38 项、小程序 83 项自动化测试已通过；有效 Key live test 尚未执行。
+- 后端 176 项、管理后台 37 项、小程序 85 项自动化测试已通过；有效 Key live test 尚未执行。
 
 ### 完整规划范围
 

@@ -7,19 +7,44 @@ import java.util.regex.Pattern;
 final class RecommendationCopySafetyPolicy {
 
     private static final int FLAGS = Pattern.CASE_INSENSITIVE
-        | Pattern.UNICODE_CASE;
+        | Pattern.UNICODE_CASE
+        | Pattern.DOTALL;
+    private static final String NEAR = ".{0,12}";
+    private static final String CERTAINTY =
+        "(?:保证|确保|承诺|必然|必定|肯定|绝对|注定|"
+            + "百分(?:之)?百|100\\s*%|一定(?:会|能|可以)?)";
+    private static final String FORTUNE_ACTION =
+        "(?:带来|获得|实现|助(?:你|您)?|让(?:你|您)?|使(?:你|您)?|"
+            + "促成|迎来|提升|增强|增加)";
+    private static final String FORTUNE_RESULT =
+        "(?:好运|财运|财富|发财|发大财|赚大钱|财源滚滚|转运|姻缘|"
+            + "桃花运|事业运|成功)";
+    private static final String WEARING_TRIGGER =
+        "(?:佩戴|戴上|带上|使用|拥有)";
+    private static final String OUTCOME_MODAL =
+        "(?:会|能|可(?:以)?|能够|就能|即可|将)";
+    private static final String MEDICAL_ACTION =
+        "(?:治疗|治愈|治好|医治|医好|预防|防治|缓解|减轻|改善|"
+            + "控制|降低|降|消除|对抗)";
+    private static final String HEALTH_CONDITION =
+        "(?:疾病|病症|症状|疼痛|(?:偏)?头(?:痛|疼)|失眠|焦虑|抑郁|"
+            + "血压|血糖|血脂|癌症|肿瘤|炎症)";
+    private static final String PROHIBITED_RESULT =
+        "(?:" + FORTUNE_RESULT + "|" + MEDICAL_ACTION + "|"
+            + HEALTH_CONDITION + ")";
 
     private static final List<Rule> RULES = List.of(
         rule(
             Category.CERTAIN_OUTCOME,
-            "(?:保证|确保|承诺|必然|必定|肯定|绝对|注定|"
-                + "百分(?:之)?百|100\\s*%|一定(?:会|能|可以)?)"
+            CERTAINTY + NEAR + PROHIBITED_RESULT
         ),
         rule(
             Category.FORTUNE_OUTCOME,
-            "(?:带来|获得|实现|助(?:你|您)?|让(?:你|您)?|使(?:你|您)?|"
-                + "促成|迎来|提升|增强|增加).{0,12}"
-                + "(?:好运|财运|财富|发财|转运|姻缘|桃花运|事业运|成功)"
+            FORTUNE_ACTION + NEAR + FORTUNE_RESULT
+        ),
+        rule(
+            Category.FORTUNE_OUTCOME,
+            WEARING_TRIGGER + NEAR + OUTCOME_MODAL + NEAR + FORTUNE_RESULT
         ),
         rule(
             Category.FORTUNE_OUTCOME,
@@ -28,16 +53,12 @@ final class RecommendationCopySafetyPolicy {
         ),
         rule(
             Category.MEDICAL_CLAIM,
-            "(?:治疗|治愈|预防|防治|缓解|减轻|改善|控制|降低|降|消除|"
-                + "对抗).{0,12}(?:疾病|病症|症状|疼痛|失眠|焦虑|抑郁|"
-                + "血压|血糖|血脂|癌症|肿瘤|炎症)"
+            MEDICAL_ACTION + NEAR + HEALTH_CONDITION
         ),
         rule(
             Category.MEDICAL_CLAIM,
-            "(?:疾病|病症|症状|疼痛|失眠|焦虑|抑郁|血压|血糖|血脂|"
-                + "癌症|肿瘤|炎症).{0,12}(?:得到|获得|可以|能够|有助于)?"
-                + "(?:治疗|治愈|预防|防治|缓解|减轻|改善|控制|降低|"
-                + "下降|消除)"
+            HEALTH_CONDITION + NEAR
+                + "(?:得到|获得|可以|能够|有助于)?" + MEDICAL_ACTION
         ),
         rule(
             Category.MEDICAL_CLAIM,

@@ -37,8 +37,23 @@ require_command nohup
 mkdir -p "${runtime_dir}" || fail "无法创建运行目录 ${runtime_dir}"
 
 backend_ready() {
-  curl -fsS --max-time 2 "http://localhost:$1/actuator/health" 2>/dev/null \
-    | grep -Eq '"status"[[:space:]]*:[[:space:]]*"UP"'
+  local port="$1"
+  local actuator_response project_response
+
+  actuator_response="$(
+    curl -fsS --max-time 2 "http://localhost:${port}/actuator/health" 2>/dev/null
+  )" || return 1
+  grep -Eq '"status"[[:space:]]*:[[:space:]]*"UP"' \
+    <<<"${actuator_response}" || return 1
+
+  project_response="$(
+    curl -fsS --max-time 2 \
+      "http://localhost:${port}/api/public/project-health" 2>/dev/null
+  )" || return 1
+  grep -Eq '"name"[[:space:]]*:[[:space:]]*"DIY 手串定制商城"' \
+    <<<"${project_response}" \
+    && grep -Eq '"status"[[:space:]]*:[[:space:]]*"UP"' \
+      <<<"${project_response}"
 }
 
 admin_ready() {

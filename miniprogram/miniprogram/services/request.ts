@@ -108,6 +108,7 @@ export function upload<T>(
   path: string,
   filePath: string,
   name = 'file',
+  retried = false,
 ): Promise<T> {
   return ensureGuestToken().then((token) => new Promise<T>((resolve, reject) => {
     wx.uploadFile({
@@ -116,6 +117,13 @@ export function upload<T>(
       name,
       header: { Authorization: `Bearer ${token}` },
       success(response) {
+        if (shouldRefreshCustomerSession(path, response.statusCode, retried)) {
+          guestSessionManager.invalidate()
+          refreshGuestToken()
+            .then(() => upload<T>(path, filePath, name, true))
+            .then(resolve, reject)
+          return
+        }
         handleUploadEnvelope<T>(response, resolve, reject)
       },
       fail(error) {

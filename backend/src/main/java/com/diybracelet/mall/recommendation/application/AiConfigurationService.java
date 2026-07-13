@@ -21,6 +21,7 @@ public class AiConfigurationService {
     private static final long SINGLETON_ID = 1L;
     private static final String PROVIDER = "DEEPSEEK";
     private static final String OFFICIAL_BASE_URL = "https://api.deepseek.com";
+    private static final String FIXED_MODEL_NAME = "deepseek-v4-flash";
 
     private final AiModelConfigMapper configMapper;
     private final AiSecretCipher secretCipher;
@@ -52,7 +53,7 @@ public class AiConfigurationService {
         replacement.setId(SINGLETON_ID);
         replacement.setProvider(PROVIDER);
         replacement.setBaseUrl(validateAndNormalizeBaseUrl(request.baseUrl()));
-        replacement.setModelName(normalizeModelName(request.modelName()));
+        replacement.setModelName(validateFixedModelName(request.modelName()));
         replacement.setEncryptedApiKey(encryptedReplacementKey(request.apiKey(), current));
         replacement.setEnabled(request.enabled());
         replacement.setTimeoutSeconds(request.timeoutSeconds());
@@ -109,12 +110,11 @@ public class AiConfigurationService {
         return secretCipher.encrypt(requestedKey.trim());
     }
 
-    private String normalizeModelName(String modelName) {
-        String normalized = modelName == null ? "" : modelName.trim();
-        if (normalized.isEmpty()) {
-            throw badRequest("AI 模型名称不能为空");
+    private String validateFixedModelName(String modelName) {
+        if (!FIXED_MODEL_NAME.equals(modelName)) {
+            throw badRequest("AI 模型仅允许 deepseek-v4-flash");
         }
-        return normalized;
+        return FIXED_MODEL_NAME;
     }
 
     private String validateAndNormalizeBaseUrl(String candidate) {

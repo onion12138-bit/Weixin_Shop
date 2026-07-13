@@ -297,6 +297,7 @@ onMounted(loadConfiguration)
               v-model="configuration.modelName"
               data-test="model-name"
               required
+              readonly
               maxlength="120"
               placeholder="deepseek-v4-flash"
             />

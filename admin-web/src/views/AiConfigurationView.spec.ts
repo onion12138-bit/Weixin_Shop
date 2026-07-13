@@ -110,6 +110,8 @@ describe('AiConfigurationView', () => {
 
     expect(wrapper.get('[data-test="provider"]').attributes('readonly'))
       .toBeDefined()
+    expect(wrapper.get('[data-test="model-name"]').attributes('readonly'))
+      .toBeDefined()
     expect(wrapper.get('[data-test="model-name"]').element)
       .toMatchObject({ value: 'deepseek-v4-flash' })
     expect(wrapper.get('[data-test="api-key"]').attributes('type'))
@@ -313,7 +315,6 @@ describe('AiConfigurationView', () => {
 
   it.each([
     ['input[type="url"]', 'https://api.deepseek.com/'],
-    ['[data-test="model-name"]', 'deepseek-v4-pro'],
     ['input[type="number"]', '31'],
     ['input[type="number"]:nth-of-type(2)', '4096'],
   ])('requires saving after editing %s before testing', async (selector, value) => {

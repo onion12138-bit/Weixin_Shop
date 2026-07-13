@@ -1,12 +1,12 @@
 # Codex 项目交接说明
 
-最后更新：2026-07-13 16:35（Asia/Shanghai）
+最后更新：2026-07-14 07:17（Asia/Shanghai）
 
 ## 0. 2026-07-13 商品与 AI 推荐里程碑摘要
 
 `codex/catalog-ai-recommendation` 已完成商品创建初始库存、3 款图片演示散珠幂等导入、DeepSeek 后台单例配置、后端校验单套推荐和小程序一次性进入 DIY。默认后端端口已经统一为 8081。
 
-真实证据：后端 166 项、管理后台 38 项并完成构建、小程序 83 项通过；catalog/diy/order 三个真实 HTTP smoke 均通过；推荐 smoke 以 `NOT_CONFIGURED → AI_NOT_CONFIGURED` 通过并明确没有调用 DeepSeek、没有本地降级；3 款 demo 首次创建后第二次全部跳过。
+真实证据：后端 176 项、管理后台 37 项并完成构建、小程序 85 项通过；catalog/diy/order 三个真实 HTTP smoke 均通过；推荐 smoke 以 `NOT_CONFIGURED → AI_NOT_CONFIGURED` 通过并明确没有调用 DeepSeek、没有本地降级；3 款 demo 首次创建后第二次全部跳过。
 
 唯一必须保留的 AI 验收待办：需要用户在后台安全输入有效 DeepSeek Key，并确保后端以 Base64 32 字节 `AI_CONFIG_ENCRYPTION_KEY` 启动，然后执行一次 opt-in live `/test` 和单套推荐。当前没有真实调用 DeepSeek，不得将模拟网关测试或暂停 smoke 写成 live 成功。
 
@@ -92,9 +92,9 @@
 
 最近一次完整自动化验证：
 
-- 后端：166 项测试通过；
-- 管理后台：6 个文件、38 项测试、类型检查和生产构建通过；
-- 小程序：13 个套件、83 项测试和 TypeScript 检查通过；
+- 后端：176 项测试通过；
+- 管理后台：6 个文件、37 项测试、类型检查和生产构建通过；
+- 小程序：14 个套件、85 项测试和 TypeScript 检查通过；
 - 商品、DIY、订单真实 HTTP 冒烟通过；推荐暂停路径 HTTP 冒烟通过。
 
 尚未完成的关键外部验收与上线能力：

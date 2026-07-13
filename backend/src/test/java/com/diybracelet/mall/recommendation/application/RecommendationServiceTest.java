@@ -337,6 +337,42 @@ class RecommendationServiceTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void shouldAllowNeutralCulturalReferencesAndSymbolicMeanings() {
+        prepareConfiguredCandidates();
+        when(gateway.recommend(any(), any(), any())).thenReturn(new ModelRecommendation(
+            "传统寓意配色",
+            List.of(2001L, 2002L, 2001L),
+            List.of(
+                new ModelRecommendation.Reason(
+                    2001L,
+                    "蓝色常被用作宁静的色彩象征。"
+                ),
+                new ModelRecommendation.Reason(
+                    2002L,
+                    "紫色的传统寓意可作搭配参考。"
+                )
+            ),
+            "色彩象征与传统寓意内容仅供文化娱乐参考，不构成效果承诺。"
+        ));
+        when(candidateMapper.selectCurrentSellableByIds(List.of(2001L, 2002L)))
+            .thenReturn(List.of(currentCandidate(2001L, 2), currentCandidate(2002L, 1)));
+        when(cordOptionMapper.selectList(any(Wrapper.class))).thenReturn(List.of(cord()));
+        when(pricingService.evaluate(any())).thenReturn(quotable("314.80"));
+
+        RecommendationResponse response = service.recommend(request());
+
+        assertThat(response.schemeName()).isEqualTo("传统寓意配色");
+        assertThat(response.summary()).contains("文化娱乐参考");
+        assertThat(response.items())
+            .extracting(RecommendationResponse.Item::reason)
+            .containsExactly(
+                "蓝色常被用作宁静的色彩象征。",
+                "紫色的传统寓意可作搭配参考。"
+            );
+    }
+
+    @Test
     void shouldRejectRecommendationWhenNoEnabledCordExists() {
         prepareConfiguredCandidates();
         when(gateway.recommend(any(), any(), any())).thenReturn(modelResult());
@@ -584,6 +620,36 @@ class RecommendationServiceTest {
 
     private static Stream<Arguments> unsafeModelCopy() {
         return Stream.of(
+            Arguments.of(
+                "scheme future fortune outcome",
+                "佩戴后会发财",
+                "仅作日常配色参考。",
+                "灰蓝配色。"
+            ),
+            Arguments.of(
+                "summary cures headache",
+                "日常手串",
+                "这颗珠子能治好头痛。",
+                "灰蓝配色。"
+            ),
+            Arguments.of(
+                "disclaimer cannot sanitize fortune outcome",
+                "日常手串",
+                "佩戴后会发财，仅供文化娱乐参考。",
+                "灰蓝配色。"
+            ),
+            Arguments.of(
+                "reason synonymous fortune outcome",
+                "日常手串",
+                "仅作日常配色参考。",
+                "戴上后就能发大财。"
+            ),
+            Arguments.of(
+                "reason synonymous medical outcome",
+                "日常手串",
+                "仅作日常配色参考。",
+                "这颗珠子可以医好偏头疼。"
+            ),
             Arguments.of(
                 "scheme guarantee",
                 "保证发财手串",
