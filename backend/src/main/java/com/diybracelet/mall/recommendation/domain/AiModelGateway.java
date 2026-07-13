@@ -7,4 +7,11 @@ public interface AiModelGateway {
 
     /** Returns the provider model identifiers visible to the configured account. */
     List<String> listModels(AiModelConfig config);
+
+    /** Generates one strict model proposal from a sanitized profile and candidates. */
+    ModelRecommendation recommend(
+        AiModelConfig config,
+        RecommendationProfile profile,
+        List<RecommendationCandidate> candidates
+    );
 }
