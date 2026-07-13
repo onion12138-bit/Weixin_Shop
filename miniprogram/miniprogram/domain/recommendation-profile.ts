@@ -217,6 +217,12 @@ export function recommendationStatusMessage(
   return GENERIC_UNAVAILABLE
 }
 
+export function recommendationFailureMessage(code: unknown): string {
+  if (code === 'AI_NOT_CONFIGURED') return 'AI 推荐暂未开放'
+  if (code === 'AI_DISABLED') return 'AI 推荐暂停使用'
+  return GENERIC_UNAVAILABLE
+}
+
 export function toRecommendationViewModel(
   response: RecommendationResponse,
 ): RecommendationViewModel {
@@ -270,6 +276,7 @@ export function consumePendingAiRecommendation(
   if (source !== 'ai') return null
 
   let raw: unknown
+  let removed = false
   try {
     raw = storage.get(PENDING_AI_RECOMMENDATION_KEY)
   } catch {
@@ -277,11 +284,13 @@ export function consumePendingAiRecommendation(
   } finally {
     try {
       storage.remove(PENDING_AI_RECOMMENDATION_KEY)
+      removed = true
     } catch {
-      // Best effort only: a failed removal must not make corrupt input usable.
+      removed = false
     }
   }
 
+  if (!removed) return null
   const handoff = validatePendingAiRecommendation(raw, validation)
   if (!handoff) return null
   return {

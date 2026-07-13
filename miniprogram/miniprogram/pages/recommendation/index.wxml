@@ -166,6 +166,13 @@
     </view>
 
     <text class="disclaimer">{{result.culturalDisclaimer}}</text>
-    <button class="diy-button" bindtap="enterDiy">一键进入 DIY</button>
+    <button
+      class="diy-button"
+      loading="{{enteringDiy}}"
+      disabled="{{enteringDiy}}"
+      bindtap="enterDiy"
+    >
+      一键进入 DIY
+    </button>
   </view>
 </view>

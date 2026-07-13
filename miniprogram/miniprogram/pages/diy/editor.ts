@@ -194,7 +194,17 @@ Page({
         try {
           wx.removeStorageSync(PENDING_AI_RECOMMENDATION_KEY)
         } catch {
-          // Keep loading; unreadable persisted data must never block the editor.
+          this.pendingAiRecommendationRaw = null
+          try {
+            wx.setStorageSync(PENDING_AI_RECOMMENDATION_KEY, '')
+          } catch {
+            // Never apply raw data if persistent storage cannot be invalidated.
+          }
+          try {
+            wx.removeStorageSync(PENDING_AI_RECOMMENDATION_KEY)
+          } catch {
+            // The empty overwrite, when available, prevents a replay.
+          }
         }
       }
     }

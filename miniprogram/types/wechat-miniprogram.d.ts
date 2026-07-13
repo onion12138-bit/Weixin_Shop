@@ -86,7 +86,11 @@ declare const wx: {
 
   getRandomValues?(array: Uint8Array): Uint8Array
 
-  navigateTo(options: { url: string }): void
+  navigateTo(options: {
+    url: string
+    success?(): void
+    fail?(error: { errMsg: string }): void
+  }): void
 
   stopPullDownRefresh(): void
 

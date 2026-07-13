@@ -4,6 +4,7 @@ import {
   createPendingAiRecommendation,
   deriveChineseZodiac,
   deriveConstellation,
+  recommendationFailureMessage,
   recommendationStatusMessage,
   toRecommendationViewModel,
   validateRecommendationForm,
@@ -16,11 +17,10 @@ import {
   getRecommendationStatus,
   requestRecommendation,
 } from '../../services/recommendation'
+import { ApiError } from '../../services/request'
 
 const FIT_TYPES: RecommendationFitType[] = ['SNUG', 'STANDARD', 'LOOSE']
 const FIT_TYPE_LABELS = ['贴手', '标准', '宽松']
-const GENERIC_UNAVAILABLE = 'AI 推荐服务暂时不可用，请稍后重试'
-
 Page({
   data: {
     today: '',
@@ -28,6 +28,7 @@ Page({
     available: false,
     statusMessage: '',
     submitting: false,
+    enteringDiy: false,
     errorMessage: '',
     birthDate: '',
     derivedConstellation: '',
@@ -49,13 +50,31 @@ Page({
 
   recommendation: null as RecommendationResponse | null,
   submittedForm: null as RecommendationForm | null,
+  pageAlive: false,
+  formRevision: 0,
+  recommendationToken: 0,
+  statusToken: 0,
+  diyNavigationInFlight: false,
 
   onLoad() {
+    this.pageAlive = true
     this.setData({ today: localToday() })
     void this.loadStatus()
   },
 
+  onUnload() {
+    this.pageAlive = false
+    this.formRevision += 1
+    this.recommendationToken += 1
+    this.statusToken += 1
+    this.diyNavigationInFlight = false
+    this.recommendation = null
+    this.submittedForm = null
+  },
+
   async loadStatus() {
+    if (!this.pageAlive) return
+    const token = ++this.statusToken
     this.setData({
       statusLoading: true,
       available: false,
@@ -64,6 +83,7 @@ Page({
     })
     try {
       const status = await getRecommendationStatus()
+      if (!this.isStatusCurrent(token)) return
       const statusMessage = recommendationStatusMessage(
         status.status,
         status.available,
@@ -73,12 +93,15 @@ Page({
         statusMessage,
       })
     } catch {
+      if (!this.isStatusCurrent(token)) return
       this.setData({
         available: false,
-        statusMessage: GENERIC_UNAVAILABLE,
+        statusMessage: recommendationFailureMessage(undefined),
       })
     } finally {
-      this.setData({ statusLoading: false })
+      if (this.isStatusCurrent(token)) {
+        this.setData({ statusLoading: false })
+      }
     }
   },
 
@@ -128,6 +151,8 @@ Page({
       return
     }
 
+    const revision = this.formRevision
+    const token = ++this.recommendationToken
     this.setData({ submitting: true, errorMessage: '', result: null })
     this.recommendation = null
     this.submittedForm = null
@@ -135,30 +160,54 @@ Page({
       const recommendation = await requestRecommendation(
         buildRecommendationRequest(form),
       )
+      if (!this.isRecommendationCurrent(token, revision)) return
       this.recommendation = recommendation
       this.submittedForm = form
       this.setData({ result: toRecommendationViewModel(recommendation) })
-    } catch {
+    } catch (error) {
+      if (!this.isRecommendationCurrent(token, revision)) return
+      const code = error instanceof ApiError ? error.code : undefined
       this.setData({
         available: false,
-        statusMessage: GENERIC_UNAVAILABLE,
+        statusMessage: recommendationFailureMessage(code),
       })
     } finally {
-      this.setData({ submitting: false })
+      if (this.isRecommendationCurrent(token, revision)) {
+        this.setData({ submitting: false })
+      }
     }
   },
 
   enterDiy() {
-    if (!this.recommendation || !this.submittedForm) return
+    if (
+      !this.pageAlive
+      || this.diyNavigationInFlight
+      || !this.recommendation
+      || !this.submittedForm
+    ) return
+    this.diyNavigationInFlight = true
+    this.setData({ enteringDiy: true, errorMessage: '' })
     const handoff = createPendingAiRecommendation(
       this.recommendation,
       this.submittedForm,
     )
-    wx.setStorageSync(
-      PENDING_AI_RECOMMENDATION_KEY,
-      JSON.stringify(handoff),
-    )
-    wx.navigateTo({ url: '/pages/diy/editor?source=ai' })
+    try {
+      wx.setStorageSync(
+        PENDING_AI_RECOMMENDATION_KEY,
+        JSON.stringify(handoff),
+      )
+      wx.navigateTo({
+        url: '/pages/diy/editor?source=ai',
+        success: () => this.finishDiyNavigation(),
+        fail: () => {
+          this.clearPendingAiHandoff()
+          this.finishDiyNavigation('进入 DIY 失败，请重试')
+        },
+      })
+    } catch {
+      this.clearPendingAiHandoff()
+      this.finishDiyNavigation('进入 DIY 失败，请重试')
+    }
   },
 
   currentForm(): RecommendationForm {
@@ -178,9 +227,48 @@ Page({
   },
 
   clearResult() {
+    this.formRevision += 1
+    this.recommendationToken += 1
     this.recommendation = null
     this.submittedForm = null
-    this.setData({ result: null })
+    if (this.pageAlive) {
+      this.setData({ result: null, submitting: false })
+    }
+  },
+
+  isStatusCurrent(token: number): boolean {
+    return this.pageAlive && token === this.statusToken
+  },
+
+  isRecommendationCurrent(token: number, revision: number): boolean {
+    return this.pageAlive
+      && token === this.recommendationToken
+      && revision === this.formRevision
+  },
+
+  clearPendingAiHandoff() {
+    try {
+      wx.removeStorageSync(PENDING_AI_RECOMMENDATION_KEY)
+      return
+    } catch {
+      // Overwrite first so a second source=ai open cannot replay valid data.
+    }
+    try {
+      wx.setStorageSync(PENDING_AI_RECOMMENDATION_KEY, '')
+    } catch {
+      // Best effort only; the navigation itself has already failed.
+    }
+    try {
+      wx.removeStorageSync(PENDING_AI_RECOMMENDATION_KEY)
+    } catch {
+      // Best effort only.
+    }
+  },
+
+  finishDiyNavigation(errorMessage = '') {
+    this.diyNavigationInFlight = false
+    if (!this.pageAlive) return
+    this.setData({ enteringDiy: false, errorMessage })
   },
 })
 

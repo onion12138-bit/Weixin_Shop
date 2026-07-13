@@ -137,4 +137,19 @@ describe('one-time AI recommendation handoff', () => {
     expect(consumePendingAiRecommendation('ai', values, validation)).toBeNull()
     expect(values.remove).toHaveBeenCalledWith(PENDING_AI_RECOMMENDATION_KEY)
   })
+
+  it('rejects an otherwise valid handoff when persistent removal throws', () => {
+    const values = storage({
+      sequence: [2001],
+      wristCircumferenceMm: 165,
+      fitType: 'STANDARD',
+      cordOptionId: 6001,
+    })
+    values.remove.mockImplementation(() => {
+      throw new Error('storage cannot be cleared')
+    })
+
+    expect(consumePendingAiRecommendation('ai', values, validation)).toBeNull()
+    expect(values.remove).toHaveBeenCalledWith(PENDING_AI_RECOMMENDATION_KEY)
+  })
 })

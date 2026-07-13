@@ -5,6 +5,7 @@ import {
   deriveChineseZodiac,
   deriveConstellation,
   recommendationStatusMessage,
+  recommendationFailureMessage,
   toRecommendationViewModel,
   validateRecommendationForm,
   type RecommendationForm,
@@ -154,6 +155,18 @@ describe('recommendation availability copy', () => {
     expect(recommendationStatusMessage('AVAILABLE', true)).toBe('')
     expect(recommendationStatusMessage('AVAILABLE', false))
       .toBe('AI 推荐服务暂时不可用，请稍后重试')
+  })
+
+  it.each([
+    ['AI_NOT_CONFIGURED', 'AI 推荐暂未开放'],
+    ['AI_DISABLED', 'AI 推荐暂停使用'],
+    ['AI_MODEL_UNAVAILABLE', 'AI 推荐服务暂时不可用，请稍后重试'],
+    ['trace-secret', 'AI 推荐服务暂时不可用，请稍后重试'],
+  ])('maps POST business code %s without exposing technical details', (
+    code,
+    expected,
+  ) => {
+    expect(recommendationFailureMessage(code)).toBe(expected)
   })
 })
 
