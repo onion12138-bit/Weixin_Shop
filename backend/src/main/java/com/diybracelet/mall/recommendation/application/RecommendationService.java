@@ -36,10 +36,8 @@ public class RecommendationService {
     private static final int MAX_SEQUENCE_SIZE = 200;
     private static final String DISCLAIMER =
         "星座、生肖、五行及寓意内容仅供文化娱乐参考，不构成任何确定效果或承诺。";
-    private static final List<String> FORBIDDEN_PROMISE_TERMS = List.of(
-        "保证", "确保", "必定", "一定会", "百分百", "绝对会", "肯定会",
-        "治愈", "治疗", "疗效", "改善疾病", "改善失眠", "稳赚", "必发财"
-    );
+    private static final RecommendationCopySafetyPolicy COPY_SAFETY =
+        new RecommendationCopySafetyPolicy();
 
     private final AiModelConfigMapper configMapper;
     private final RecommendationCandidateMapper candidateMapper;
@@ -167,8 +165,9 @@ public class RecommendationService {
     private void validateModelShape(ModelRecommendation model) {
         if (model == null
                 || !text(model.schemeName(), 80)
+                || !COPY_SAFETY.isAllowed(model.schemeName())
                 || !text(model.summary(), 1000)
-                || !safeCulturalText(model.summary())
+                || !COPY_SAFETY.isAllowed(model.summary())
                 || model.sequence() == null
                 || model.sequence().isEmpty()
                 || model.sequence().size() > MAX_SEQUENCE_SIZE
@@ -203,7 +202,7 @@ public class RecommendationService {
                     || reason.skuId() == null
                     || !selectedIds.contains(reason.skuId())
                     || !text(reason.reason(), 300)
-                    || !safeCulturalText(reason.reason())
+                    || !COPY_SAFETY.isAllowed(reason.reason())
                     || reasons.putIfAbsent(
                         reason.skuId(),
                         reason.reason().trim()
@@ -365,11 +364,6 @@ public class RecommendationService {
 
     private boolean text(String value, int maxLength) {
         return value != null && !value.isBlank() && value.length() <= maxLength;
-    }
-
-    private boolean safeCulturalText(String value) {
-        return value != null && FORBIDDEN_PROMISE_TERMS.stream()
-            .noneMatch(value::contains);
     }
 
     private String normalized(String value) {

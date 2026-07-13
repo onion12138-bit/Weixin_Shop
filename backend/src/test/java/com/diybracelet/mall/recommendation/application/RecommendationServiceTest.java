@@ -316,14 +316,20 @@ class RecommendationServiceTest {
         assertInvalidRecommendation(() -> service.recommend(request()));
     }
 
-    @Test
-    void shouldRejectDeterministicCulturalOrHealthPromisesFromTheModel() {
+    @ParameterizedTest(name = "unsafe copy: {0}")
+    @MethodSource("unsafeModelCopy")
+    void shouldRejectDeterministicCulturalOrHealthPromisesFromEveryModelTextField(
+            String scenario,
+            String schemeName,
+            String summary,
+            String reason
+    ) {
         prepareConfiguredCandidates();
         when(gateway.recommend(any(), any(), any())).thenReturn(new ModelRecommendation(
-            "违规承诺",
+            schemeName,
             List.of(2001L),
-            List.of(new ModelRecommendation.Reason(2001L, "保证招财并治愈失眠")),
-            "佩戴后一定会转运。"
+            List.of(new ModelRecommendation.Reason(2001L, reason)),
+            summary
         ));
 
         assertInvalidRecommendation(() -> service.recommend(request()));
@@ -371,6 +377,11 @@ class RecommendationServiceTest {
             .containsIgnoringCase("join inventory_balance")
             .containsIgnoringCase("status = 'ON_SALE'")
             .containsIgnoringCase("available_qty > 0")
+            .containsIgnoringCase("join asset_file")
+            .doesNotContainIgnoringCase("left join asset_file")
+            .containsIgnoringCase("asset.status = 'ACTIVE'")
+            .containsIgnoringCase("asset.public_url is not null")
+            .containsIgnoringCase("length(trim(asset.public_url)) > 0")
             .doesNotContainIgnoringCase("cost_price");
     }
 
@@ -568,6 +579,47 @@ class RecommendationServiceTest {
             Arguments.of("model unavailable", ErrorCode.AI_MODEL_UNAVAILABLE),
             Arguments.of("rate limited", ErrorCode.AI_RATE_LIMITED),
             Arguments.of("timeout", ErrorCode.AI_TEMPORARILY_UNAVAILABLE)
+        );
+    }
+
+    private static Stream<Arguments> unsafeModelCopy() {
+        return Stream.of(
+            Arguments.of(
+                "scheme guarantee",
+                "保证发财手串",
+                "仅作日常配色参考。",
+                "灰蓝配色。"
+            ),
+            Arguments.of(
+                "summary inevitable outcome",
+                "日常手串",
+                "佩戴后必然获得财富。",
+                "灰蓝配色。"
+            ),
+            Arguments.of(
+                "summary brings luck",
+                "日常手串",
+                "佩戴后将带来好运。",
+                "灰蓝配色。"
+            ),
+            Arguments.of(
+                "summary cancer prevention",
+                "日常手串",
+                "这套搭配可预防癌症。",
+                "灰蓝配色。"
+            ),
+            Arguments.of(
+                "reason disease relief",
+                "日常手串",
+                "仅作日常配色参考。",
+                "这颗珠子能够缓解疾病。"
+            ),
+            Arguments.of(
+                "reason blood pressure",
+                "日常手串",
+                "仅作日常配色参考。",
+                "长期佩戴可降低血压。"
+            )
         );
     }
 }

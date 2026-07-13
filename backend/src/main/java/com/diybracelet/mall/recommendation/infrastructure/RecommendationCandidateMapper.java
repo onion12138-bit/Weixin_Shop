@@ -27,9 +27,11 @@ public interface RecommendationCandidateMapper {
         join inventory_balance inventory
           on inventory.bead_sku_id = bead.id
          and inventory.available_qty > 0
-        left join asset_file asset
+        join asset_file asset
           on asset.id = bead.cover_asset_id
          and asset.status = 'ACTIVE'
+         and asset.public_url is not null
+         and length(trim(asset.public_url)) > 0
         where bead.status = 'ON_SALE'
         order by bead.id asc
         """)
@@ -53,9 +55,11 @@ public interface RecommendationCandidateMapper {
         join inventory_balance inventory
           on inventory.bead_sku_id = bead.id
          and inventory.available_qty > 0
-        left join asset_file asset
+        join asset_file asset
           on asset.id = bead.cover_asset_id
          and asset.status = 'ACTIVE'
+         and asset.public_url is not null
+         and length(trim(asset.public_url)) > 0
         where bead.status = 'ON_SALE'
           and bead.id in
           <foreach collection="ids" item="id" open="(" separator="," close=")">

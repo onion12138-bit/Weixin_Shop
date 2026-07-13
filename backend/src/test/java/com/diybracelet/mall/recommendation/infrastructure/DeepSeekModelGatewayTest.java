@@ -311,6 +311,10 @@ class DeepSeekModelGatewayTest {
             .collect(java.util.stream.Collectors.joining(","));
         return Stream.of(
             Arguments.of("not json", "not-json"),
+            Arguments.of("duplicate root field", "{\"schemeName\":\"first\",\"schemeName\":\"second\",\"sequence\":[2001],\"reasons\":[{\"skuId\":2001,\"reason\":\"x\"}],\"summary\":\"x\"}"),
+            Arguments.of("duplicate nested reason field", "{\"schemeName\":\"x\",\"sequence\":[2001],\"reasons\":[{\"skuId\":2001,\"reason\":\"first\",\"reason\":\"second\"}],\"summary\":\"x\"}"),
+            Arguments.of("trailing second root", "{\"schemeName\":\"x\",\"sequence\":[2001],\"reasons\":[{\"skuId\":2001,\"reason\":\"x\"}],\"summary\":\"x\"} {\"second\":true}"),
+            Arguments.of("trailing scalar token", "{\"schemeName\":\"x\",\"sequence\":[2001],\"reasons\":[{\"skuId\":2001,\"reason\":\"x\"}],\"summary\":\"x\"} 42"),
             Arguments.of("missing field", "{\"schemeName\":\"x\",\"sequence\":[2001],\"reasons\":[]}"),
             Arguments.of("model price field", "{\"schemeName\":\"x\",\"sequence\":[2001],\"reasons\":[{\"skuId\":2001,\"reason\":\"x\"}],\"summary\":\"x\",\"totalAmount\":0.01}"),
             Arguments.of("nonpositive quantity field", "{\"schemeName\":\"x\",\"sequence\":[2001],\"quantities\":{\"2001\":-1},\"reasons\":[{\"skuId\":2001,\"reason\":\"x\"}],\"summary\":\"x\"}"),

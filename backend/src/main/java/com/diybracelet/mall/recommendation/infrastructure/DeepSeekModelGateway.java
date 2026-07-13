@@ -7,9 +7,12 @@ import com.diybracelet.mall.recommendation.domain.RecommendationCandidate;
 import com.diybracelet.mall.recommendation.domain.RecommendationProfile;
 import com.diybracelet.mall.shared.error.BusinessException;
 import com.diybracelet.mall.shared.error.ErrorCode;
+import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
@@ -40,6 +43,7 @@ public class DeepSeekModelGateway implements AiModelGateway {
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
+    private final ObjectReader strictModelReader;
     private final AiSecretCipher secretCipher;
 
     @Autowired
@@ -60,6 +64,11 @@ public class DeepSeekModelGateway implements AiModelGateway {
     ) {
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;
+        ObjectMapper strictMapper = objectMapper.copy()
+            .enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
+            .enable(DeserializationFeature.FAIL_ON_READING_DUP_TREE_KEY)
+            .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
+        this.strictModelReader = strictMapper.readerFor(JsonNode.class);
         this.secretCipher = secretCipher;
     }
 
@@ -278,7 +287,7 @@ public class DeepSeekModelGateway implements AiModelGateway {
             if (content == null || !content.isTextual()) {
                 throw invalidRecommendation();
             }
-            JsonNode root = objectMapper.readTree(content.textValue());
+            JsonNode root = strictModelReader.readValue(content.textValue());
             if (!exactFields(root, MODEL_FIELDS)) {
                 throw invalidRecommendation();
             }
