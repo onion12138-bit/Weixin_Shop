@@ -1,8 +1,8 @@
 # API 接口文档
 
-最后更新：2026-07-11
+最后更新：2026-07-13
 
-默认后端：`http://localhost:8080`。
+默认后端：`http://localhost:8081`。
 
 ## 1. 通用约定
 
@@ -91,9 +91,12 @@
   "stockAlertThreshold": 20,
   "coverAssetId": null,
   "tags": ["守护", "日常"],
-  "status": "DRAFT"
+  "status": "DRAFT",
+  "initialStock": 200
 }
 ```
+
+`initialStock` 只属于新增 DTO，范围为非负整数；修改散珠时不接收该字段。新增商品、库存余额和非零库存的 `INIT` 流水在同一事务完成。
 
 ## 5. DIY 配置管理
 
@@ -243,10 +246,75 @@
 - 同一订单重复模拟支付直接返回当前已支付订单，不重复扣库存。
 - 后续接微信支付时应保持订单、库存和幂等语义不变，通过支付网关适配器接入下单与回调。
 
-## 9. 健康检查与冒烟
+## 9. DeepSeek 配置与单套推荐
+
+### 9.1 管理员单例配置
+
+所有接口都需要管理员 JWT。API Key 只允许在保存请求中提交，读取和保存响应都只返回 `apiKeyConfigured`，不会回显明文或密文。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/admin/ai/config` | 读取唯一配置及乐观锁 `version` |
+| PUT | `/api/admin/ai/config` | 保存官方地址、模型、启停、超时、Token 上限及可选新 Key |
+| POST | `/api/admin/ai/config/test` | 调用 DeepSeek `/models` 校验鉴权和模型存在性 |
+| DELETE | `/api/admin/ai/config/api-key?version={version}` | 清除已保存 Key |
+
+保存请求：
+
+```json
+{
+  "baseUrl": "https://api.deepseek.com",
+  "modelName": "deepseek-v4-flash",
+  "apiKey": "仅在保存时提交，不回显",
+  "enabled": true,
+  "timeoutSeconds": 30,
+  "maxOutputTokens": 2048,
+  "version": 0
+}
+```
+
+Provider 固定为 `DEEPSEEK`，Base URL 只接受 DeepSeek 官方 HTTPS origin。Key 以 AES-GCM 密文保存，解密主密钥来自后端环境 `AI_CONFIG_ENCRYPTION_KEY`；该主密钥不进入数据库。
+
+### 9.2 顾客推荐
+
+两个接口都必须使用 `/api/app/session/guest` 返回的顾客 JWT；管理员 JWT 不能代替。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/app/recommendations/status` | 返回 `AVAILABLE`、`NOT_CONFIGURED` 或 `DISABLED` |
+| POST | `/api/app/recommendations` | 调用模型一次并返回一套经后端复核的推荐 |
+
+请求示例：
+
+```json
+{
+  "birthDate": "1992-01-20",
+  "constellation": "水瓶座",
+  "zodiac": "猴",
+  "elementPreference": "水",
+  "wish": "专注与从容",
+  "scene": "通勤",
+  "colorPreference": "灰蓝",
+  "budget": 500,
+  "wristCircumferenceMm": 160,
+  "fitType": "STANDARD",
+  "freeText": "偏好日常搭配"
+}
+```
+
+响应只有一套对象，不是候选列表；核心字段包括 `schemeName`、有序 `sequence`、`quantities`、带当前图片与理由的 `items`、`cordOption`、服务端重算的 `beadAmount/craftFee/cordFee/totalAmount`、`quoteFingerprint` 和 `culturalDisclaimer`。模型只能从当前已上架且有库存的 SKU 中选择；后端会再次校验 SKU、库存、预算、腕围、文案、绳材和权威价格，任一失败都不返回部分方案。
+
+生日和完整咨询文本只在本次请求内使用，不持久化、不写日志、不回显。小程序进入 DIY 时只写入 `sequence`、`wristCircumferenceMm`、`fitType`、`cordOptionId`，并在 `source=ai` 首次读取时删除；价格、理由、生日和自由文本不进入 handoff。
+
+无 Key 时状态精确为 `NOT_CONFIGURED`，POST 返回 HTTP 503 + `AI_NOT_CONFIGURED`，小程序文案为“AI 推荐暂未开放”；管理员停用时状态为 `DISABLED`，POST 返回 HTTP 503 + `AI_DISABLED`，文案为“AI 推荐暂停使用”。系统没有规则或本地降级，不会把暂停状态包装成成功。
+
+其他稳定错误包括 `AI_UNAUTHORIZED`、`AI_MODEL_UNAVAILABLE`、`AI_RATE_LIMITED`、`AI_TEMPORARILY_UNAVAILABLE` 和 `AI_INVALID_RECOMMENDATION`；错误响应不含上游完整响应体。
+
+## 10. 健康检查与冒烟
 
 - `GET /actuator/health`
 - `GET /api/public/project-health`
 - 商品目录真实 HTTP 冒烟：`./scripts/catalog-smoke.sh`
 - DIY 真实 HTTP 冒烟：`./scripts/diy-smoke.sh`
 - 订单与履约真实 HTTP 冒烟：`./scripts/order-smoke.sh`
+- AI 推荐暂停/live 双路径冒烟：`./scripts/recommendation-smoke.sh`（live 必须显式提供 Key）

@@ -1,6 +1,14 @@
 # Codex 项目交接说明
 
-最后更新：2026-07-11 22:22（Asia/Shanghai）
+最后更新：2026-07-13 16:35（Asia/Shanghai）
+
+## 0. 2026-07-13 商品与 AI 推荐里程碑摘要
+
+`codex/catalog-ai-recommendation` 已完成商品创建初始库存、3 款图片演示散珠幂等导入、DeepSeek 后台单例配置、后端校验单套推荐和小程序一次性进入 DIY。默认后端端口已经统一为 8081。
+
+真实证据：后端 166 项、管理后台 38 项并完成构建、小程序 83 项通过；catalog/diy/order 三个真实 HTTP smoke 均通过；推荐 smoke 以 `NOT_CONFIGURED → AI_NOT_CONFIGURED` 通过并明确没有调用 DeepSeek、没有本地降级；3 款 demo 首次创建后第二次全部跳过。
+
+唯一必须保留的 AI 验收待办：需要用户在后台安全输入有效 DeepSeek Key，并确保后端以 Base64 32 字节 `AI_CONFIG_ENCRYPTION_KEY` 启动，然后执行一次 opt-in live `/test` 和单套推荐。当前没有真实调用 DeepSeek，不得将模拟网关测试或暂停 smoke 写成 live 成功。
 
 ## 1. 新任务接手方式
 
@@ -23,20 +31,28 @@
 - 本地根目录：`/Users/onion/Desktop/AI_Testing/Weixin_Shop`
 - GitHub：`https://github.com/onion12138-bit/Weixin_Shop`
 - 当前主分支：`main`
-- 当前基线提交：`2370ed8fd26db79983d313364ca55e9da9b93b90`
-- 当前提交说明：`feat: complete order and mock payment vertical slice`
-- `origin/main` 已与上述提交核对一致；曾从 GitHub 全新克隆并比较 Tree 哈希及 265 个受 Git 管理文件，结果一致。
+- 当前主分支基线提交：`42567cd55d715dd0b51d5a3a12a96c4d7d29241c`
+- 当前提交说明：`docs: plan catalog stability and AI recommendation`
+- 当前本地 `main` 比 `origin/main` ahead 7；`origin/main` 当前为 `fa24d184138f7912f6f992463c6221346a276eb5`。不得把两者写成已对齐。
+- `2370ed8 feat: complete order and mock payment vertical slice` 是更早的订单里程碑，不是当前基线。
 - 本仓库仅配置 `http.version=HTTP/1.1`，用于规避当前网络环境下 Git HTTPS/2 的 TLS 中断；这不是代理配置。
+- 当前功能 worktree 分支为 `codex/catalog-ai-recommendation`，实现基线为 `f897594`；本里程碑同时包含 Task 10 验证脚本与文档，最终提交号以 `git log` 为准。上述 `main/42567cd` 是主工作树基线，不代表当前功能分支 HEAD。
 
 ### 2.1 必须保留的未提交改动
 
-微信开发者工具打开项目后自动修改了 `miniprogram/project.config.json`：
+当前主工作树存在以下必须保护的用户/工具变更：
+
+- 已修改的 `miniprogram/project.config.json`；
+- 未跟踪的 `.pnpm-store/`；
+- 未跟踪的 `Pic/`。
+
+其中微信开发者工具对 `miniprogram/project.config.json` 的改动包括：
 
 - `appid` 从 `touristappid` 改成实际小程序 AppID；
 - 增加 `minifyWXML: true`；
 - 自动格式化 `useCompilerPlugins`。
 
-该文件是开始编写交接文档前唯一由用户或开发者工具产生的未提交项目改动。接手后必须先执行 `git diff -- miniprogram/project.config.json`，由用户确认是否提交，不得擅自还原或覆盖。
+接手后必须先执行主工作树 `git status` 和 `git diff -- miniprogram/project.config.json`。未经用户明确确认，不得还原、覆盖、删除或提交上述三项，也不得把 `.pnpm-store/` 或 `Pic/` 带入本功能提交。
 
 ## 3. 产品范围与已确认决策
 
@@ -60,7 +76,7 @@
 
 ## 4. 当前完成度与验证证据
 
-`docs/progress.md` 记录的产品范围覆盖率为 **86%**。
+`docs/progress.md` 记录的产品范围覆盖率为 **95%**。
 
 已完成的主要闭环：
 
@@ -72,18 +88,19 @@
 - 库存预占、支付转已售和取消释放；
 - 顾客下单、查询、模拟支付和取消；
 - 后台制作、BOM、发货和完成履约。
+- DeepSeek 后台单例配置、AES-GCM Key 保存、后端校验单套推荐和小程序一次性 DIY handoff。
 
 最近一次完整自动化验证：
 
-- 后端：52 项测试通过；
-- 管理后台：8 项测试、类型检查和生产构建通过；
-- 小程序：8 个测试套件、13 项测试和 TypeScript 检查通过；
-- 商品、DIY、订单真实 HTTP 冒烟通过。
+- 后端：166 项测试通过；
+- 管理后台：6 个文件、38 项测试、类型检查和生产构建通过；
+- 小程序：13 个套件、83 项测试和 TypeScript 检查通过；
+- 商品、DIY、订单真实 HTTP 冒烟通过；推荐暂停路径 HTTP 冒烟通过。
 
-尚未完成的一级模块：
+尚未完成的关键外部验收与上线能力：
 
-- 规则推荐：0%，需要实现预算、色系、材质和场景推荐；
-- 第三方能力替换：50%，真实微信登录、微信支付和对象存储留待上线前接入。
+- DeepSeek 实现已完成，但用户有效 Key live test 尚未执行；
+- 第三方能力替换仍为 50%，真实微信登录、微信支付和对象存储留待上线前接入。
 
 ## 5. 本机环境与端口注意事项
 
@@ -97,7 +114,7 @@
 
 `/opt/homebrew/opt/jenkins-lts/libexec/jenkins.war --httpListenAddress=127.0.0.1 --httpPort=8080`
 
-不得误杀 Jenkins。此前 Spring Boot 监听 IPv6 通配地址时，`http://localhost:8080` 解析到 `::1`，可以访问本项目；`http://127.0.0.1:8080` 会命中 Jenkins 并返回 403。接手后启动服务必须重新核对此行为，长期建议把项目开发端口改为不冲突端口并同步三端配置。
+不得误杀 Jenkins，也不得再用 8080 启动或验证本项目。后端、管理后台默认 API、小程序 runtime 和 smoke 现在统一使用 `http://localhost:8081`；`BACKEND_BASE_URL` 只传 origin，不附加 `/api`。
 
 交接时 Spring Boot 和 Vue 开发服务器未确认仍在运行；新任务必须按 `docs/setup.md` 重新检查和启动。Docker 容器此前显示 MySQL、Redis 均为 healthy，但也应重新执行 `docker compose ps` 验证。
 
@@ -140,17 +157,13 @@
 
 ## 8. 下一步执行顺序
 
-1. 在新的 `Weixin_Shop` Codex 项目中读取本交接文档并执行 `git status`；
-2. 保护 `miniprogram/project.config.json` 的未提交差异，向用户确认是否提交真实 AppID 配置；
-3. 完成代理与网络配置的只读核对，发现明确残留后再做最小删除；
-4. 确认微信开发者工具已登录、基础库可以下载/编译；
-5. 启动并验证 MySQL、Redis、Spring Boot 和管理后台；
-6. 导入小程序并验收首页、商品目录、详情、DIY、方案、下单、模拟支付和订单；
-7. 修复验收发现的问题并复跑 `./scripts/verify.sh` 与真实 HTTP 冒烟；
-8. 更新 `docs/progress.md`，提交并推送验收结果；
-9. 按 Superpowers 流程设计并实现规则推荐模块；
-10. 增加 GitHub Actions 自动验证；
-11. 微信登录、真实支付和对象存储继续留在上线准备阶段。
+1. 读取本交接文档与 `docs/progress.md`，执行 `git status`，保护 `miniprogram/project.config.json` 和所有用户改动；
+2. 在 8081 启动当前功能分支后端，确认 `AI_CONFIG_ENCRYPTION_KEY` 使用仓库外安全值；
+3. 用户通过后台“AI 模型”页面输入有效 Key，保存官方 Base URL、`deepseek-v4-flash`、超时与启用状态，点击“测试连接”；
+4. 仅在用户明确授权 live 后，以环境变量 opt-in 运行 `scripts/recommendation-smoke.sh`，记录真实 `/test` + 单套推荐结果；绝不回显 Key；
+5. 在微信开发者工具验收推荐暂停/可用页面、服务端价格、免责声明和一次性进入 DIY，并继续验收既有商品/DIY/订单页面；
+6. 复跑 `./scripts/verify.sh` 与四个真实 HTTP smoke，更新进度后提交/推送；
+7. 增加 GitHub Actions；微信登录、真实支付和对象存储继续留在上线准备阶段。
 
 ## 9. 常用命令
 
@@ -171,7 +184,13 @@ pnpm dev
 
 cd ..
 ./scripts/verify.sh
+BACKEND_BASE_URL=http://localhost:8081 ./scripts/catalog-smoke.sh
+BACKEND_BASE_URL=http://localhost:8081 ./scripts/diy-smoke.sh
+BACKEND_BASE_URL=http://localhost:8081 ./scripts/order-smoke.sh
+BACKEND_BASE_URL=http://localhost:8081 ./scripts/recommendation-smoke.sh
 ```
+
+最后一条无 Key 时只验证暂停路径。live 必须在安全 Shell 预先导出 `DEEPSEEK_API_KEY` 与 `AI_CONFIG_ENCRYPTION_KEY`；不要把真实值写入命令示例、脚本、日志或报告。
 
 微信开发者工具 CLI：
 

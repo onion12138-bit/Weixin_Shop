@@ -1,6 +1,6 @@
 # 测试说明
 
-最后更新：2026-07-11
+最后更新：2026-07-13
 
 ## 1. 常用命令
 
@@ -11,6 +11,7 @@
 - 商品目录真实 HTTP 冒烟：`./scripts/catalog-smoke.sh`
 - DIY 真实 HTTP 冒烟：`./scripts/diy-smoke.sh`
 - 订单与履约真实 HTTP 冒烟：`./scripts/order-smoke.sh`
+- AI 推荐暂停/live 双路径 HTTP 冒烟：`./scripts/recommendation-smoke.sh`
 
 当前本机如果没有 pnpm 但 `node_modules` 已存在，可临时用 `npm test`、`npm run build`、`npm run typecheck` 执行同名脚本；提交前不得改动锁文件。
 
@@ -34,6 +35,9 @@
 - 后台订单与 BOM 分页查询、制作、发货、完成和禁止状态跳步。
 - 本地存储 MIME、大小、路径安全，上传/读取控制器。
 - 健康接口、统一错误和参数校验。
+- V6 DeepSeek 单例迁移、AES-GCM 往返/篡改/主密钥校验、Key 掩码、官方 Base URL 和乐观锁。
+- DeepSeek `/models` 与 `/chat/completions` 请求、超时、无重试、严格 JSON、上游错误映射及敏感字段不泄漏。
+- 推荐候选目录、可用状态、单套推荐、SKU/库存/预算/腕围/文案/权威价格复核和文化娱乐免责声明。
 
 数据库测试基于 Testcontainers MySQL 8，需要 Docker Desktop 正常运行。
 
@@ -43,6 +47,7 @@
 - DIY 配置页面加载、规则保存、工艺费区间校验和绳材编辑。
 - 订单页面金额、收货信息、BOM、动作按钮和制作状态更新。
 - `vue-tsc` 严格类型检查和 Vite 生产构建。
+- AI 配置 API、页面加载/保存/清 Key/测试连接、安全错误映射和不回显 Key。
 
 ### 小程序
 
@@ -55,12 +60,14 @@
 - 订单视图模型：状态、金额、BOM、进度和支付/取消按钮规则。
 - 所有运行时页面/服务的 TypeScript 静态检查。
 - 微信开发者工具中的 WXML/WXSS 渲染仍需人工烟测。
+- AI 咨询字段校验、精确暂停文案、单套结果展示、图片/金额/免责声明，以及跨分页目录的一次性 DIY handoff。
 
 ## 3. 已知验证数量
 
-- 后端当前完整测试套件：52 个 JUnit/Testcontainers 测试。
-- 管理后台当前完整测试套件：4 个 Vitest 文件、8 个测试，并执行生产构建。
-- 小程序当前完整测试套件：8 个 Jest 套件、13 个测试，并执行运行时类型检查。
+- 后端当前完整测试套件：166 个 JUnit/Testcontainers 测试。
+- 管理后台当前完整测试套件：6 个 Vitest 文件、38 个测试，并执行类型检查与生产构建。
+- 小程序当前完整测试套件：13 个 Jest 套件、83 个测试，并执行运行时类型检查。
+- Shell：`recommendation-smoke.test.sh` 固定边界样本并连续生成 512 个访客 UUID；`verify.sh` 还执行推荐脚本 `bash -n` 和静态端点/安全契约检查。
 
 以上数量以最近一次 `./scripts/verify.sh` 输出为准；新增测试后必须同步更新本节。
 
@@ -72,6 +79,7 @@
 ./scripts/catalog-smoke.sh
 ./scripts/diy-smoke.sh
 ./scripts/order-smoke.sh
+./scripts/recommendation-smoke.sh
 ```
 
 `diy-smoke.sh` 会生成随机安装 UUID，依次验证：
@@ -93,11 +101,23 @@
 5. 发货保存模拟运单号，完成状态对顾客可见
 6. 第二笔待支付订单可以取消并释放库存
 
+`recommendation-smoke.sh` 默认不需要 Key，验证：
+
+1. 创建 guest JWT 并读取 `GET /api/app/recommendations/status`；
+2. 只接受精确的 `NOT_CONFIGURED` 或 `DISABLED` 暂停状态；
+3. POST 必须分别返回 `AI_NOT_CONFIGURED` 或 `AI_DISABLED`；
+4. 明确输出“未调用 DeepSeek，也未使用本地降级”；若无 Key 却返回 `AVAILABLE`，脚本失败并要求改走显式 live 路径。
+
+2026-07-13 实测：`catalog`、`diy`、`order` 三个真实 HTTP smoke 均通过；推荐脚本以 `NOT_CONFIGURED → AI_NOT_CONFIGURED` 通过。3 款演示散珠首次创建成功，第二次运行全部按 SKU 跳过。以上没有访问真实 DeepSeek。
+
+只有在安全环境显式设置有效 `DEEPSEEK_API_KEY` 与后端启动时相同的 `AI_CONFIG_ENCRYPTION_KEY`，推荐脚本才会执行外部 live 路径。它会保存官方地址、`deepseek-v4-flash`、启用/超时/Token 配置，调用 `/test`，再请求一套推荐，并分页读取全部公共目录，断言每个 sequence SKU、非负总价、`quoteFingerprint`、免责声明和图片。截至 2026-07-13 尚未提供真实 Key，因此这条 live 验证仍是明确待办，不能记为通过。
+
 ## 5. 合入门槛
 
 1. `./scripts/verify.sh` 返回 0。
 2. Docker 集成测试没有跳过。
-3. 三个 `catalog`、`diy`、`order` 冒烟脚本返回 0。
-4. 管理后台完成人工烟测：登录、商品维护、DIY 配置、订单筛选、制作、发货和完成。
-5. 小程序完成人工烟测：访客身份、DIY 编辑、报价、方案生命周期、确认订单、模拟支付、取消和状态刷新。
-6. 文档中的“已实现”必须与代码一致。
+3. 四个 `catalog`、`diy`、`order`、`recommendation` 冒烟脚本返回 0；默认 recommendation 只要求暂停路径，不产生费用。
+4. 用户在后台安全输入有效 Key 后，另行完成一次 opt-in live `/test` + 推荐验证并记录结果。
+5. 管理后台完成人工烟测：登录、商品维护、DIY 配置、订单履约、AI 配置保存和安全错误显示。
+6. 小程序完成人工烟测：访客身份、DIY/订单闭环、推荐暂停文案、可用时的咨询结果与一次性 handoff。
+7. 文档中的“已实现”和“已验证”必须分开，不能把模拟网关测试或暂停 smoke 写成真实 DeepSeek 成功。

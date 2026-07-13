@@ -1,6 +1,6 @@
 # 数据模型
 
-最后更新：2026-07-11
+最后更新：2026-07-13
 
 本文件只记录已经通过 Flyway 落地的表。当前迁移：
 
@@ -9,6 +9,7 @@
 - `V3__diy_identity_pricing_schema.sql`：访客身份、DIY 规则、工艺费、绳材和方案结构。
 - `V4__diy_seed.sql`：默认 DIY 规则、工艺费和绳材演示配置。
 - `V5__commerce_order_inventory_schema.sql`：库存、订单、模拟支付和履约结构及演示库存。
+- `V6__ai_model_config.sql`：唯一一行 DeepSeek 配置、默认模型和密钥密文列。
 
 ## 1. 关系
 
@@ -24,6 +25,7 @@ customer_order 1 ── 1 payment_record
 customer_order 1 ── 1 fulfillment_task
 diy_rule_config 1 ── 当前全局 DIY 规则
 craft_fee_rule n ── 按珠数区间匹配工艺费
+ai_model_config 1 ── 全局唯一 DeepSeek 配置（推荐结果不持久化）
 ```
 
 ## 2. 商品与素材表
@@ -144,7 +146,30 @@ PENDING_PAYMENT -> CANCELLED
 
 SKU `2001`～`2004` 各初始化 200 个可用库存，并写入 `INIT` 流水。该数据只用于本地开发和演示，生产环境必须使用正式库存初始化流程。
 
-## 7. 查询与约束
+## 7. DeepSeek 单例配置与隐私边界
+
+### `ai_model_config`
+
+Flyway V6 固定创建 `id=1`、`provider=DEEPSEEK` 的单例行。字段包括官方 `base_url`、默认 `model_name=deepseek-v4-flash`、`encrypted_api_key`、启停状态、请求超时、最大输出 Token、乐观锁 `version` 和审计时间。
+
+- API Key 使用 AES-256-GCM，每次保存生成随机 12-byte nonce，数据库只保存 `base64(nonce + ciphertext + tag)`。
+- `AI_CONFIG_ENCRYPTION_KEY` 是 Base64 编码的 32 字节主密钥，只来自后端运行环境，不保存到数据库或仓库。
+- 后台读取只返回 `apiKeyConfigured`，不返回明文或密文；空 Key 保存会保留已有密钥。
+- 推荐请求、生日、自由文本、模型原始响应和推荐结果均不落库。最终方案只有在顾客进入 DIY 并主动保存后才按既有 `diy_scheme` 模型持久化。
+
+### 3 款图片演示散珠导入
+
+`scripts/import-demo-beads.sh` 不是 Flyway 种子，它分页查询后台目录并按稳定 SKU 编码幂等导入；已存在项直接跳过，不重复上传图片或创建库存。2026-07-13 的真实运行证据为首次创建三项、第二次三项全部跳过。
+
+| SKU | 名称 | 售价 | 成本 | `available_qty` | 初始流水 |
+| --- | --- | ---: | ---: | ---: | --- |
+| `BEAD-LABRADORITE-8MM` | 拉长石 8mm | 9.80 | 2.80 | 200 | `INIT +200` |
+| `BEAD-GARNET-8MM` | 石榴石 8mm | 9.50 | 2.50 | 200 | `INIT +200` |
+| `BEAD-FLUORITE-8MM` | 萤石 8mm | 8.80 | 1.80 | 200 | `INIT +200` |
+
+创建接口在一个事务中写 `bead_sku`、`inventory_balance` 和非零初始库存的 `inventory_ledger`；任一写入失败全部回滚。编辑 DTO 不含 `initialStock`，避免把商品编辑误当库存调整。
+
+## 8. 查询与约束
 
 - 公共散珠索引：`(status, category_id, id)`。
 - 公共套餐索引：`(status, id)`。
