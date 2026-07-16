@@ -41,7 +41,7 @@ source ./scripts/project-env.sh
 docker compose up -d
 ```
 
-后端、管理后台和小程序分别启动后，后端默认地址为 `http://localhost:8081`，管理后台为 `http://localhost:5173`，默认演示账号为 `admin / Admin@123`。正式部署必须更改账号、密码、JWT 密钥，并在源码仓库外保管 `AI_CONFIG_ENCRYPTION_KEY`。
+后端、管理后台和小程序分别启动后，后端默认地址为 `http://localhost:8081`，管理后台为 `http://localhost:5173`，默认演示账号为 `admin / Admin@123`。本地一键启动会在 Git 忽略的 `.local-secrets/` 中生成并复用 AI 加密主密钥；正式部署必须更改账号、密码、JWT 密钥，并在源码仓库外配置和备份 `AI_CONFIG_ENCRYPTION_KEY`。
 
 ## 验证
 

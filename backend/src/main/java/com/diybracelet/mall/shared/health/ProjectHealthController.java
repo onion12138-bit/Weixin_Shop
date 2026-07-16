@@ -1,5 +1,6 @@
 package com.diybracelet.mall.shared.health;
 
+import com.diybracelet.mall.recommendation.infrastructure.AiSecretCipher;
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -15,13 +16,23 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/public")
 public class ProjectHealthController {
 
+    private final AiSecretCipher aiSecretCipher;
+
+    public ProjectHealthController(AiSecretCipher aiSecretCipher) {
+        this.aiSecretCipher = aiSecretCipher;
+    }
+
     /**
      * 返回项目名称和进程状态。
      *
      * @return 可供前端启动页展示的稳定字段
      */
     @GetMapping("/project-health")
-    public Map<String, String> projectHealth() {
-        return Map.of("name", "DIY 手串定制商城", "status", "UP");
+    public Map<String, Object> projectHealth() {
+        return Map.of(
+            "name", "DIY 手串定制商城",
+            "status", "UP",
+            "aiEncryptionReady", aiSecretCipher.isReady()
+        );
     }
 }

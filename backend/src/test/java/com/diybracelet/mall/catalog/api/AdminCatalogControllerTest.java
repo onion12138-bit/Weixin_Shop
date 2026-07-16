@@ -15,6 +15,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,6 +47,9 @@ class AdminCatalogControllerTest extends MySqlIntegrationTest {
 
     @Autowired
     private InventoryLedgerMapper inventoryLedgerMapper;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Test
     void shouldCreateBeadAndInitialInventoryAtomically() throws Exception {
@@ -170,6 +174,47 @@ class AdminCatalogControllerTest extends MySqlIntegrationTest {
 
         assertThat(balance.getAvailableQty()).isZero();
         assertThat(initLedgerCount).isZero();
+    }
+
+    @Test
+    void shouldFilterBeadsAndReturnTheUploadedCoverUrl() throws Exception {
+        String token = loginAsAdmin();
+        jdbcTemplate.update(
+                """
+                insert into asset_file (
+                    storage_key, original_name, content_type,
+                    size_bytes, public_url, status
+                ) values (?, ?, ?, ?, ?, 'ACTIVE')
+                """,
+                "tests/admin-sandalwood.png",
+                "admin-sandalwood.png",
+                "image/png",
+                128L,
+                "/api/public/files/tests/admin-sandalwood.png"
+        );
+        Long assetId = jdbcTemplate.queryForObject(
+                "select id from asset_file where storage_key = ?",
+                Long.class,
+                "tests/admin-sandalwood.png"
+        );
+        jdbcTemplate.update(
+                "update bead_sku set cover_asset_id = ? where id = 2004",
+                assetId
+        );
+
+        mockMvc.perform(get("/api/admin/catalog/beads")
+                        .header("Authorization", "Bearer " + token)
+                        .param("categoryId", "1002")
+                        .param("attribute", "檀木 棕色 8mm")
+                        .param("page", "1")
+                        .param("size", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.items[0].id").value(2004))
+                .andExpect(jsonPath("$.data.items[0].coverAssetId")
+                        .value(assetId))
+                .andExpect(jsonPath("$.data.items[0].coverUrl")
+                        .value("/api/public/files/tests/admin-sandalwood.png"));
     }
 
     /**

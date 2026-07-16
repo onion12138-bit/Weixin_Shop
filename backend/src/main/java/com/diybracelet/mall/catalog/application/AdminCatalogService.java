@@ -3,6 +3,7 @@ package com.diybracelet.mall.catalog.application;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.diybracelet.mall.catalog.api.dto.AdminPackageDetail;
 import com.diybracelet.mall.catalog.api.dto.AdminPackageItem;
+import com.diybracelet.mall.catalog.api.dto.AdminBeadSkuView;
 import com.diybracelet.mall.catalog.api.dto.CreateBeadSkuRequest;
 import com.diybracelet.mall.catalog.api.dto.PageResponse;
 import com.diybracelet.mall.catalog.api.dto.SaveBeadSkuRequest;
@@ -18,6 +19,8 @@ import com.diybracelet.mall.catalog.infrastructure.mapper.BeadSkuMapper;
 import com.diybracelet.mall.catalog.infrastructure.mapper.CategoryMapper;
 import com.diybracelet.mall.catalog.infrastructure.mapper.PackageItemMapper;
 import com.diybracelet.mall.catalog.infrastructure.mapper.ProductPackageMapper;
+import com.diybracelet.mall.file.domain.AssetFile;
+import com.diybracelet.mall.file.infrastructure.AssetFileMapper;
 import com.diybracelet.mall.inventory.domain.InventoryBalance;
 import com.diybracelet.mall.inventory.domain.InventoryLedger;
 import com.diybracelet.mall.inventory.infrastructure.mapper.InventoryBalanceMapper;
@@ -30,10 +33,13 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 管理后台商品目录维护服务。
@@ -51,6 +57,7 @@ public class AdminCatalogService {
     private final PackageItemMapper packageItemMapper;
     private final InventoryBalanceMapper inventoryBalanceMapper;
     private final InventoryLedgerMapper inventoryLedgerMapper;
+    private final AssetFileMapper assetFileMapper;
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
 
@@ -61,6 +68,7 @@ public class AdminCatalogService {
             PackageItemMapper packageItemMapper,
             InventoryBalanceMapper inventoryBalanceMapper,
             InventoryLedgerMapper inventoryLedgerMapper,
+            AssetFileMapper assetFileMapper,
             JdbcTemplate jdbcTemplate,
             ObjectMapper objectMapper
     ) {
@@ -70,6 +78,7 @@ public class AdminCatalogService {
         this.packageItemMapper = packageItemMapper;
         this.inventoryBalanceMapper = inventoryBalanceMapper;
         this.inventoryLedgerMapper = inventoryLedgerMapper;
+        this.assetFileMapper = assetFileMapper;
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
     }
@@ -116,23 +125,34 @@ public class AdminCatalogService {
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<BeadSku> listBeads(
+    public PageResponse<AdminBeadSkuView> listBeads(
             String keyword,
             CatalogStatus status,
+            Long categoryId,
+            String attribute,
             int page,
             int size
     ) {
         String normalizedKeyword = normalizeKeyword(keyword);
+        String normalizedAttribute = normalizeAttribute(attribute);
         LambdaQueryWrapper<BeadSku> query = buildBeadAdminQuery(
                 normalizedKeyword,
-                status
+                status,
+                categoryId,
+                normalizedAttribute
         );
         long total = beadSkuMapper.selectCount(query);
         long offset = (long) (page - 1) * size;
         query.orderByDesc(BeadSku::getId)
                 .last("limit " + size + " offset " + offset);
+        List<BeadSku> beads = beadSkuMapper.selectList(query);
+        Map<Long, String> coverUrls = loadCoverUrls(
+                beads.stream().map(BeadSku::getCoverAssetId).toList()
+        );
         return new PageResponse<>(
-                beadSkuMapper.selectList(query),
+                beads.stream()
+                        .map(bead -> toAdminView(bead, coverUrls))
+                        .toList(),
                 total,
                 page,
                 size
@@ -502,19 +522,86 @@ public class AdminCatalogService {
 
     private LambdaQueryWrapper<BeadSku> buildBeadAdminQuery(
             String keyword,
-            CatalogStatus status
+            CatalogStatus status,
+            Long categoryId,
+            String attribute
     ) {
-        return new LambdaQueryWrapper<BeadSku>()
+        LambdaQueryWrapper<BeadSku> query = new LambdaQueryWrapper<BeadSku>()
                 .eq(status != null, BeadSku::getStatus, status)
+                .eq(categoryId != null, BeadSku::getCategoryId, categoryId)
                 .and(
                         keyword != null,
-                        query -> query
+                        keywordGroup -> keywordGroup
                                 .like(BeadSku::getSkuCode, keyword)
                                 .or()
                                 .like(BeadSku::getName, keyword)
                                 .or()
                                 .like(BeadSku::getMaterial, keyword)
                 );
+        if (attribute != null) {
+            for (String token : attribute.split("\\s+")) {
+                query.and(group -> group
+                                .like(BeadSku::getMaterial, token)
+                                .or()
+                                .like(BeadSku::getColor, token)
+                                .or()
+                                .like(BeadSku::getDiameterMm, token)
+                                .or()
+                                .like(BeadSku::getTagsJson, token)
+                );
+            }
+        }
+        return query;
+    }
+
+    private AdminBeadSkuView toAdminView(
+            BeadSku bead,
+            Map<Long, String> coverUrls
+    ) {
+        return new AdminBeadSkuView(
+                bead.getId(),
+                bead.getCategoryId(),
+                bead.getSkuCode(),
+                bead.getName(),
+                bead.getMaterial(),
+                bead.getColor(),
+                bead.getDiameterMm(),
+                bead.getSalePrice(),
+                bead.getCostPrice(),
+                bead.getStockAlertThreshold(),
+                bead.getCoverAssetId(),
+                coverUrls.get(bead.getCoverAssetId()),
+                bead.getTagsJson(),
+                bead.getStatus()
+        );
+    }
+
+    /** 批量解析当前页封面，避免列表按行访问素材表。 */
+    private Map<Long, String> loadCoverUrls(List<Long> assetIds) {
+        List<Long> distinctIds = assetIds.stream()
+                .filter(id -> id != null)
+                .distinct()
+                .toList();
+        if (distinctIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        return assetFileMapper.selectBatchIds(distinctIds)
+                .stream()
+                .filter(asset -> "ACTIVE".equals(asset.getStatus()))
+                .collect(Collectors.toMap(
+                        AssetFile::getId,
+                        AssetFile::getPublicUrl
+                ));
+    }
+
+    private String normalizeAttribute(String attribute) {
+        String normalized = normalizeKeyword(attribute);
+        if (normalized == null) {
+            return null;
+        }
+        return normalized
+                .replaceAll("(?i)(\\d+(?:\\.\\d+)?)\\s*mm\\b", "$1")
+                .trim();
     }
 
     private LambdaQueryWrapper<ProductPackage> buildPackageAdminQuery(

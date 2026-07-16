@@ -5,6 +5,7 @@ import com.diybracelet.mall.auth.infrastructure.JwtService;
 import com.diybracelet.mall.auth.infrastructure.SecurityConfiguration;
 import com.diybracelet.mall.identity.infrastructure.CustomerJwtAuthenticationFilter;
 import com.diybracelet.mall.identity.infrastructure.CustomerJwtService;
+import com.diybracelet.mall.recommendation.infrastructure.AiSecretCipher;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -25,6 +26,7 @@ import org.springframework.test.web.servlet.MockMvc;
     JwtAuthenticationFilter.class,
     CustomerJwtService.class,
     CustomerJwtAuthenticationFilter.class,
+    AiSecretCipher.class,
     SecurityConfiguration.class
 })
 @TestPropertySource(properties = {
@@ -34,7 +36,8 @@ import org.springframework.test.web.servlet.MockMvc;
     "app.customer-auth.jwt-secret=customer-test-secret-0123456789012345",
     "app.customer-auth.jwt-ttl=P30D",
     "app.customer-auth.jwt-issuer=diy-customer-test",
-    "app.customer-auth.identity-pepper=identity-test-pepper-0123456789012"
+    "app.customer-auth.identity-pepper=identity-test-pepper-0123456789012",
+    "app.ai.encryption-key=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
 })
 class ProjectHealthControllerTest {
 
@@ -46,6 +49,7 @@ class ProjectHealthControllerTest {
         mockMvc.perform(get("/api/public/project-health"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.name").value("DIY 手串定制商城"))
-            .andExpect(jsonPath("$.status").value("UP"));
+            .andExpect(jsonPath("$.status").value("UP"))
+            .andExpect(jsonPath("$.aiEncryptionReady").value(true));
     }
 }

@@ -6,6 +6,7 @@ import {
   listAdminBeads,
   listAdminCategories,
   listAdminPackages,
+  uploadCatalogFile,
   updateAdminBead,
 } from '../api/catalog'
 
@@ -54,7 +55,8 @@ describe('CatalogView', () => {
           salePrice: 12.8,
           costPrice: 5.2,
           stockAlertThreshold: 20,
-          coverAssetId: null,
+          coverAssetId: 5001,
+          coverUrl: '/api/public/files/2026/07/white-crystal.png',
           tagsJson: '["净化","日常"]',
           status: 'ON_SALE',
         },
@@ -90,6 +92,110 @@ describe('CatalogView', () => {
     expect(wrapper.find('[data-test="create-bead"]').exists()).toBe(true)
   })
 
+  it('shows the uploaded cover and opens a large image preview', async () => {
+    const wrapper = mount(CatalogView)
+    await flushPromises()
+
+    const cover = wrapper.get('[data-test="preview-bead-cover-2001"]')
+    expect(cover.get('img').attributes('src')).toContain(
+      '/api/public/files/2026/07/white-crystal.png',
+    )
+    await cover.trigger('click')
+    expect(wrapper.get('[aria-label="商品封面大图预览"] img')
+      .attributes('src')).toContain('white-crystal.png')
+    await wrapper.get('[aria-label="关闭大图预览"]').trigger('click')
+    expect(wrapper.find('[aria-label="商品封面大图预览"]').exists()).toBe(false)
+  })
+
+  it('clears search immediately and sends category and attribute filters', async () => {
+    const wrapper = mount(CatalogView)
+    await flushPromises()
+
+    await wrapper.get('[aria-label="搜索商品"]').setValue('紫水晶')
+    await wrapper.get('[data-test="clear-bead-search"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get<HTMLInputElement>('[aria-label="搜索商品"]')
+      .element.value).toBe('')
+    expect(vi.mocked(listAdminBeads).mock.calls.at(-1)?.[0])
+      .toEqual(expect.objectContaining({ keyword: '', page: 1 }))
+
+    await wrapper.get('[aria-label="商品分类"]').setValue('1001')
+    await wrapper.get('[aria-label="商品属性"]').setValue('透明 8mm')
+    await wrapper.get('.toolbar .secondary-button').trigger('click')
+    await flushPromises()
+    expect(vi.mocked(listAdminBeads).mock.calls.at(-1)?.[0])
+      .toEqual(expect.objectContaining({
+        categoryId: 1001,
+        attribute: '透明 8mm',
+        page: 1,
+      }))
+  })
+
+  it('keeps the newest search result when an older request finishes later', async () => {
+    const wrapper = mount(CatalogView)
+    await flushPromises()
+
+    let resolveOlderRequest!: (value: Awaited<ReturnType<typeof listAdminBeads>>) => void
+    const olderRequest = new Promise<Awaited<ReturnType<typeof listAdminBeads>>>(
+      (resolve) => { resolveOlderRequest = resolve },
+    )
+    vi.mocked(listAdminBeads)
+      .mockImplementationOnce(() => olderRequest)
+      .mockResolvedValueOnce({
+        items: [{
+          id: 2001,
+          categoryId: 1001,
+          skuCode: 'BEAD-LATEST',
+          name: '最新列表',
+          material: '水晶',
+          color: '透明',
+          diameterMm: 8,
+          salePrice: 10,
+          costPrice: 2,
+          stockAlertThreshold: 20,
+          coverAssetId: null,
+          coverUrl: null,
+          tagsJson: '[]',
+          status: 'ON_SALE',
+        }],
+        total: 1,
+        page: 1,
+        size: 20,
+      })
+
+    await wrapper.get('[aria-label="搜索商品"]').setValue('旧查询')
+    await wrapper.get('.toolbar .secondary-button').trigger('click')
+    await wrapper.get('[data-test="clear-bead-search"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('最新列表')
+
+    resolveOlderRequest({
+      items: [{
+        id: 2002,
+        categoryId: 1001,
+        skuCode: 'BEAD-OLDER',
+        name: '过期列表',
+        material: '水晶',
+        color: '紫色',
+        diameterMm: 8,
+        salePrice: 10,
+        costPrice: 2,
+        stockAlertThreshold: 20,
+        coverAssetId: null,
+        coverUrl: null,
+        tagsJson: '[]',
+        status: 'ON_SALE',
+      }],
+      total: 1,
+      page: 1,
+      size: 20,
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('最新列表')
+    expect(wrapper.text()).not.toContain('过期列表')
+  })
+
   it('exposes category, bead editing and package maintenance entry points', async () => {
     const wrapper = mount(CatalogView)
     await flushPromises()
@@ -117,6 +223,8 @@ describe('CatalogView', () => {
 
     await wrapper.get('[data-test="create-bead"]').trigger('click')
     expect(wrapper.find('[data-test="initial-stock"]').exists()).toBe(true)
+    expect(wrapper.get<HTMLInputElement>('[data-test="bead-sku-code"]')
+      .element.value).toMatch(/^BEAD-NATURAL-CRYSTAL-8MM-\d{8}-[A-Z0-9]{4}$/)
     await wrapper.get('[data-test="initial-stock"]').setValue(321)
     const labels = wrapper.findAll('.catalog-form label')
     await labels.find((label) => label.text().includes('商品名称'))!
@@ -141,5 +249,28 @@ describe('CatalogView', () => {
 
     const updatePayload = vi.mocked(updateAdminBead).mock.calls[0][1]
     expect(updatePayload).not.toHaveProperty('initialStock')
+  })
+
+  it('uses a decimal 5 MB upload limit before sending the file', async () => {
+    const wrapper = mount(CatalogView)
+    await flushPromises()
+    await wrapper.get('[data-test="create-bead"]').trigger('click')
+    expect(wrapper.text()).toContain('最大 5 MB')
+    expect(wrapper.text()).not.toContain('5 MiB')
+
+    const input = wrapper.get<HTMLInputElement>('.cover-upload input[type="file"]')
+    const oversized = new File(
+      [new Uint8Array(5_000_001)],
+      'too-large.png',
+      { type: 'image/png' },
+    )
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [oversized],
+    })
+    await input.trigger('change')
+
+    expect(wrapper.text()).toContain('封面图片不能超过 5 MB')
+    expect(uploadCatalogFile).not.toHaveBeenCalled()
   })
 })

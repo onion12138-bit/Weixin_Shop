@@ -107,7 +107,14 @@ public class AiConfigurationService {
         if (requestedKey == null || requestedKey.isBlank()) {
             return current.getEncryptedApiKey();
         }
-        return secretCipher.encrypt(requestedKey.trim());
+        try {
+            return secretCipher.encrypt(requestedKey.trim());
+        } catch (IllegalStateException error) {
+            throw new BusinessException(
+                ErrorCode.AI_SERVER_MISCONFIGURED,
+                "AI 加密配置未就绪，请重新启动管理后台"
+            );
+        }
     }
 
     private String validateFixedModelName(String modelName) {

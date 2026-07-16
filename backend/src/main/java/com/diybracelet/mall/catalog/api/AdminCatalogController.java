@@ -2,6 +2,7 @@ package com.diybracelet.mall.catalog.api;
 
 import com.diybracelet.mall.catalog.api.dto.ChangeCatalogStatusRequest;
 import com.diybracelet.mall.catalog.api.dto.CreateBeadSkuRequest;
+import com.diybracelet.mall.catalog.api.dto.AdminBeadSkuView;
 import com.diybracelet.mall.catalog.api.dto.AdminPackageDetail;
 import com.diybracelet.mall.catalog.api.dto.PageResponse;
 import com.diybracelet.mall.catalog.api.dto.SaveBeadSkuRequest;
@@ -83,9 +84,11 @@ public class AdminCatalogController {
     }
 
     @GetMapping("/beads")
-    public ApiResponse<PageResponse<BeadSku>> listBeads(
+    public ApiResponse<PageResponse<AdminBeadSkuView>> listBeads(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) CatalogStatus status,
+            @RequestParam(required = false) @Min(1) Long categoryId,
+            @RequestParam(required = false) String attribute,
             @RequestParam(defaultValue = "1")
             @Min(value = 1, message = "page 必须大于等于 1")
             int page,
@@ -97,6 +100,8 @@ public class AdminCatalogController {
         return success(adminCatalogService.listBeads(
                 keyword,
                 status,
+                categoryId,
+                attribute,
                 page,
                 size
         ));

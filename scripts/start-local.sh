@@ -33,6 +33,7 @@ require_command node
 require_command curl
 require_command lsof
 require_command nohup
+require_command kill
 
 mkdir -p "${runtime_dir}" || fail "无法创建运行目录 ${runtime_dir}"
 
@@ -56,6 +57,13 @@ backend_ready() {
       <<<"${project_response}"
 }
 
+backend_ai_ready() {
+  local port="$1"
+  curl -fsS --max-time 2 \
+    "http://localhost:${port}/api/public/project-health" 2>/dev/null \
+    | grep -Eq '"aiEncryptionReady"[[:space:]]*:[[:space:]]*true'
+}
+
 admin_ready() {
   curl -fsS --max-time 2 "${admin_url}/" 2>/dev/null \
     | grep -Fq 'DIY 手串定制商城管理后台'
@@ -63,6 +71,30 @@ admin_ready() {
 
 port_in_use() {
   lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
+}
+
+stop_project_backend() {
+  local port="$1"
+  local pid working_directory attempt
+  pid="$(lsof -nP -t -iTCP:"${port}" -sTCP:LISTEN 2>/dev/null | head -n 1)"
+  [[ -n "${pid}" ]] || fail "无法定位端口 ${port} 的后端进程"
+  working_directory="$(
+    lsof -a -p "${pid}" -d cwd -Fn 2>/dev/null \
+      | sed -n 's/^n//p' \
+      | head -n 1
+  )"
+  if [[ "${working_directory}" != "${project_root}/backend" ]]; then
+    fail "端口 ${port} 的后端不是当前项目进程，不会自动结束"
+  fi
+
+  kill "${pid}" || fail "无法重启缺少 AI 加密配置的旧后端"
+  attempt=1
+  while port_in_use "${port}" && [[ "${attempt}" -le 50 ]]; do
+    sleep 0.1
+    attempt=$((attempt + 1))
+  done
+  port_in_use "${port}" && fail "等待旧后端退出超时"
+  rm -f "${backend_pid_file}"
 }
 
 choose_backend_port() {
@@ -135,12 +167,25 @@ echo "${backend_port}" >"${backend_port_file}"
 
 echo "[2/4] 检查 Spring Boot 后端..."
 if backend_ready "${backend_port}"; then
-  echo "复用已运行的项目后端（端口 ${backend_port}）"
+  if backend_ai_ready "${backend_port}"; then
+    echo "复用已运行的项目后端（端口 ${backend_port}）"
+  else
+    echo "检测到旧后端缺少 AI 加密配置，正在安全重启..."
+    stop_project_backend "${backend_port}"
+    start_backend "${backend_port}"
+    if ! wait_until "后端服务；请查看 ${backend_log}" backend_ready "${backend_port}"; then
+      exit 1
+    fi
+    backend_ai_ready "${backend_port}" \
+      || fail "后端启动后 AI 加密配置仍未就绪"
+  fi
 else
   start_backend "${backend_port}"
   if ! wait_until "后端服务；请查看 ${backend_log}" backend_ready "${backend_port}"; then
     exit 1
   fi
+  backend_ai_ready "${backend_port}" \
+    || fail "后端启动后 AI 加密配置仍未就绪"
 fi
 
 echo "[3/4] 检查 Vue 管理后台..."

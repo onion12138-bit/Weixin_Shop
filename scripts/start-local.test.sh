@@ -28,6 +28,67 @@ grep -Fxq '.local-run/' "${project_root}/.gitignore" || {
 test_root="$(mktemp -d "${TMPDIR:-/tmp}/weixin-shop-start-local.XXXXXX")"
 trap 'rm -rf "${test_root}"' EXIT
 
+generated_secrets="${test_root}/generated-secrets"
+generated_key="$({
+  env -i \
+    HOME="${HOME}" \
+    USER="${USER:-}" \
+    PATH="/usr/bin:/bin:/usr/sbin:/sbin" \
+    PROJECT_LOCAL_SECRETS_DIR="${generated_secrets}" \
+    bash -c 'source "$1/scripts/project-env.sh" >/dev/null && printf "%s" "$AI_CONFIG_ENCRYPTION_KEY"' _ "${project_root}"
+})"
+decoded_key_size="$(
+  printf '%s' "${generated_key}" \
+    | openssl base64 -d -A \
+    | wc -c \
+    | tr -d '[:space:]'
+)"
+[[ "${decoded_key_size}" == "32" ]] || {
+  echo "FAIL: generated AI encryption key is not 32 bytes" >&2
+  exit 1
+}
+[[ "$(stat -f '%Lp' "${generated_secrets}/ai-config-encryption-key")" == "600" ]] || {
+  echo "FAIL: generated AI encryption key permissions are not 0600" >&2
+  exit 1
+}
+reused_key="$({
+  PROJECT_LOCAL_SECRETS_DIR="${generated_secrets}" \
+    bash -c 'source "$1/scripts/project-env.sh" >/dev/null && printf "%s" "$AI_CONFIG_ENCRYPTION_KEY"' _ "${project_root}"
+})"
+[[ "${generated_key}" == "${reused_key}" ]] || {
+  echo "FAIL: local AI encryption key was rotated" >&2
+  exit 1
+}
+
+concurrent_secrets="${test_root}/concurrent-secrets"
+concurrent_outputs="${test_root}/concurrent-outputs"
+mkdir -p "${concurrent_outputs}"
+concurrent_pids=()
+for index in 1 2 3 4 5 6 7 8; do
+  env -i \
+    HOME="${HOME}" \
+    USER="${USER:-}" \
+    PATH="/usr/bin:/bin:/usr/sbin:/sbin" \
+    PROJECT_LOCAL_SECRETS_DIR="${concurrent_secrets}" \
+    bash -c 'source "$1/scripts/project-env.sh" >/dev/null && printf "%s\n" "$AI_CONFIG_ENCRYPTION_KEY"' _ "${project_root}" \
+    >"${concurrent_outputs}/${index}" &
+  concurrent_pids+=("$!")
+done
+for concurrent_pid in "${concurrent_pids[@]}"; do
+  wait "${concurrent_pid}"
+done
+unique_concurrent_keys="$(cat "${concurrent_outputs}"/* | sort -u | wc -l | tr -d '[:space:]')"
+[[ "${unique_concurrent_keys}" == "1" ]] || {
+  echo "FAIL: concurrent launches observed different AI encryption keys" >&2
+  exit 1
+}
+persistent_concurrent_key="$(tr -d '\n' <"${concurrent_secrets}/ai-config-encryption-key")"
+first_concurrent_key="$(tr -d '\n' <"${concurrent_outputs}/1")"
+[[ "${persistent_concurrent_key}" == "${first_concurrent_key}" ]] || {
+  echo "FAIL: concurrent launch key differs from persisted key" >&2
+  exit 1
+}
+
 fake_bin="${test_root}/bin"
 trace_file="${test_root}/trace.log"
 runtime_dir="${test_root}/runtime"
@@ -60,6 +121,10 @@ case "${url}" in
     exit 22
     ;;
   http://localhost:8081/actuator/health)
+    if [[ "${START_LOCAL_TEST_OLD_8081:-0}" == "1" ]]; then
+      printf '%s\n' '{"status":"UP"}'
+      exit 0
+    fi
     if [[ "${START_LOCAL_TEST_FOREIGN_8081:-0}" == "1" ]]; then
       printf '%s\n' '{"status":"UP"}'
       exit 0
@@ -68,12 +133,20 @@ case "${url}" in
     printf '%s\n' '{"status":"UP"}'
     ;;
   http://localhost:8081/api/public/project-health)
+    if [[ "${START_LOCAL_TEST_OLD_8081:-0}" == "1" ]]; then
+      if kill -0 "${START_LOCAL_TEST_OLD_PID}" 2>/dev/null; then
+        printf '%s\n' '{"name":"DIY 手串定制商城","status":"UP"}'
+      else
+        printf '%s\n' '{"name":"DIY 手串定制商城","status":"UP","aiEncryptionReady":true}'
+      fi
+      exit 0
+    fi
     if [[ "${START_LOCAL_TEST_FOREIGN_8081:-0}" == "1" ]]; then
       printf '%s\n' '{"name":"其他 Spring 服务","status":"UP"}'
       exit 0
     fi
     grep -q 'BACKEND_PORT=8081 mvn spring-boot:run' "${START_LOCAL_TEST_TRACE}" || exit 22
-    printf '%s\n' '{"name":"DIY 手串定制商城","status":"UP"}'
+    printf '%s\n' '{"name":"DIY 手串定制商城","status":"UP","aiEncryptionReady":true}'
     ;;
   http://localhost:8082/actuator/health)
     grep -q 'BACKEND_PORT=8082 mvn spring-boot:run' "${START_LOCAL_TEST_TRACE}" || exit 22
@@ -91,6 +164,19 @@ EOF
 
 cat >"${fake_bin}/lsof" <<'EOF'
 #!/usr/bin/env bash
+if [[ "${START_LOCAL_TEST_OLD_8081:-0}" == "1" ]]; then
+  if [[ " $* " == *" -d cwd "* ]]; then
+    printf 'p%s\nn%s/backend\n' \
+      "${START_LOCAL_TEST_OLD_PID}" \
+      "${START_LOCAL_TEST_PROJECT_ROOT}"
+    exit 0
+  fi
+  if [[ " $* " == *" -iTCP:8081 "* ]] \
+    && kill -0 "${START_LOCAL_TEST_OLD_PID}" 2>/dev/null; then
+    [[ " $* " == *" -t "* ]] && printf '%s\n' "${START_LOCAL_TEST_OLD_PID}"
+    exit 0
+  fi
+fi
 case " $* " in
   *" -iTCP:8081 "*) [[ "${START_LOCAL_TEST_OCCUPY_8081:-0}" == "1" ]] && exit 0 ;;
   *) exit 1 ;;
@@ -146,6 +232,45 @@ if PATH="${fake_bin}:/usr/bin:/bin:/usr/sbin:/sbin" \
   cat "${trace_file}" >&2
   exit 1
 fi
+
+: >"${trace_file}"
+
+(
+  cd "${project_root}/backend"
+  sleep 60
+) &
+old_backend_pid=$!
+old_backend_output="${test_root}/old-backend-output.log"
+if ! PATH="${fake_bin}:/usr/bin:/bin:/usr/sbin:/sbin" \
+  START_LOCAL_SKIP_ENV=1 \
+  START_LOCAL_NO_OPEN=1 \
+  START_LOCAL_WAIT_INTERVAL=0.05 \
+  START_LOCAL_WAIT_ATTEMPTS=20 \
+  START_LOCAL_RUNTIME_DIR="${runtime_dir}" \
+  START_LOCAL_TEST_TRACE="${trace_file}" \
+  START_LOCAL_TEST_OLD_8081=1 \
+  START_LOCAL_TEST_OLD_PID="${old_backend_pid}" \
+  START_LOCAL_TEST_PROJECT_ROOT="${project_root}" \
+  BACKEND_PORT=8081 \
+  bash "${startup_script}" >"${old_backend_output}" 2>&1; then
+  kill "${old_backend_pid}" 2>/dev/null || true
+  echo "FAIL: launcher did not safely restart the current project's old backend" >&2
+  cat "${old_backend_output}" >&2
+  cat "${trace_file}" >&2
+  test ! -f "${runtime_dir}/backend.log" || cat "${runtime_dir}/backend.log" >&2
+  exit 1
+fi
+if kill -0 "${old_backend_pid}" 2>/dev/null; then
+  kill "${old_backend_pid}" 2>/dev/null || true
+  echo "FAIL: old project backend was not stopped" >&2
+  exit 1
+fi
+wait "${old_backend_pid}" 2>/dev/null || true
+grep -Fq 'BACKEND_PORT=8081 mvn spring-boot:run' "${trace_file}" || {
+  echo "FAIL: old project backend was stopped but not restarted" >&2
+  cat "${trace_file}" >&2
+  exit 1
+}
 
 : >"${trace_file}"
 
@@ -208,6 +333,7 @@ finder_node="$({
     USER="${USER:-}" \
     TMPDIR="${TMPDIR:-/tmp}" \
     PATH="/usr/bin:/bin:/usr/sbin:/sbin" \
+    PROJECT_LOCAL_SECRETS_DIR="${test_root}/finder-secrets" \
     bash -c 'source "$1/scripts/project-env.sh" >/dev/null && command -v node' _ "${project_root}"
 } 2>/dev/null)"
 if [[ -z "${finder_node}" ]]; then

@@ -37,6 +37,9 @@ public enum ErrorCode {
     /** AI Provider API Key 尚未配置。 */
     AI_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE),
 
+    /** 服务端缺少可用的 AI 密钥加密配置。 */
+    AI_SERVER_MISCONFIGURED(HttpStatus.SERVICE_UNAVAILABLE),
+
     /** AI 功能已被管理员停用。 */
     AI_DISABLED(HttpStatus.SERVICE_UNAVAILABLE),
 

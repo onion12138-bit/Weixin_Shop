@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ApiError, resolveApiResourceUrl } from '../api/http'
+import { generateBeadSku } from '../catalog/generate-sku'
 import {
   changeBeadStatus,
   createAdminBead,
@@ -25,10 +26,15 @@ const errorMessage = ref('')
 const successMessage = ref('')
 const showCreateForm = ref(false)
 const editingBeadId = ref<number | null>(null)
+const enlargedCoverUrl = ref('')
+const MAX_COVER_SIZE_BYTES = 5_000_000
+let latestCatalogRequest = 0
 
 const filters = reactive({
   keyword: '',
   status: '' as CatalogStatus | '',
+  categoryId: '' as number | '',
+  attribute: '',
   page: 1,
   size: 20,
 })
@@ -75,6 +81,10 @@ function parseTags(tagsJson: string): string[] {
   }
 }
 
+function resolvedCoverUrl(bead: BeadSku): string {
+  return bead.coverUrl ? resolveApiResourceUrl(bead.coverUrl) : ''
+}
+
 function readableError(error: unknown): string {
   if (error instanceof ApiError) {
     return error.traceId
@@ -85,6 +95,7 @@ function readableError(error: unknown): string {
 }
 
 async function loadCatalog(): Promise<void> {
+  const requestId = ++latestCatalogRequest
   loading.value = true
   errorMessage.value = ''
   try {
@@ -92,6 +103,7 @@ async function loadCatalog(): Promise<void> {
       listAdminCategories(),
       listAdminBeads(filters),
     ])
+    if (requestId !== latestCatalogRequest) return
     categories.value = categoryResult
     beads.value = beadResult.items
     total.value = beadResult.total
@@ -99,15 +111,30 @@ async function loadCatalog(): Promise<void> {
       form.categoryId = categoryResult[0].id
     }
   } catch (error) {
+    if (requestId !== latestCatalogRequest) return
     errorMessage.value = readableError(error)
   } finally {
-    loading.value = false
+    if (requestId === latestCatalogRequest) {
+      loading.value = false
+    }
   }
 }
 
 function search(): void {
   filters.page = 1
   void loadCatalog()
+}
+
+function clearSearch(): void {
+  filters.keyword = ''
+  search()
+}
+
+function generateSku(): void {
+  const category = categories.value.find(
+    (item) => item.id === Number(form.categoryId),
+  )
+  form.skuCode = generateBeadSku(category?.slug || 'general', form.diameterMm)
 }
 
 function resetForm(): void {
@@ -136,6 +163,7 @@ function resetForm(): void {
 function openCreateForm(): void {
   editingBeadId.value = null
   resetForm()
+  generateSku()
   showCreateForm.value = true
 }
 
@@ -156,7 +184,9 @@ function openEditForm(bead: BeadSku): void {
     status: bead.status,
   })
   tagInput.value = parseTags(bead.tagsJson).join('，')
-  coverPreviewUrl.value = ''
+  coverPreviewUrl.value = bead.coverUrl
+    ? resolveApiResourceUrl(bead.coverUrl)
+    : ''
   showCreateForm.value = true
 }
 
@@ -164,6 +194,11 @@ async function uploadCover(event: Event): Promise<void> {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file) return
+  if (file.size > MAX_COVER_SIZE_BYTES) {
+    errorMessage.value = '封面图片不能超过 5 MB'
+    input.value = ''
+    return
+  }
   coverUploading.value = true
   errorMessage.value = ''
   try {
@@ -253,17 +288,56 @@ onMounted(loadCatalog)
     </div>
 
     <section class="toolbar" aria-label="商品筛选">
-      <label class="search-field">
+      <div class="search-field search-field-with-clear">
         <span class="sr-only">搜索商品</span>
         <input
           v-model="filters.keyword"
+          aria-label="搜索商品"
           placeholder="搜索 SKU、名称或材质"
+          @keyup.enter="search"
+        />
+        <button
+          v-if="filters.keyword"
+          class="search-clear-button"
+          data-test="clear-bead-search"
+          type="button"
+          aria-label="清空搜索"
+          @click="clearSearch"
+        >×</button>
+      </div>
+      <label>
+        <span class="sr-only">商品分类</span>
+        <select
+          v-model.number="filters.categoryId"
+          aria-label="商品分类"
+          @change="search"
+        >
+          <option value="">全部分类</option>
+          <option
+            v-for="category in categories"
+            :key="category.id"
+            :value="category.id"
+          >
+            {{ category.name }}
+          </option>
+        </select>
+      </label>
+      <label class="attribute-filter">
+        <span class="sr-only">商品属性</span>
+        <input
+          v-model="filters.attribute"
+          aria-label="商品属性"
+          placeholder="材质 / 颜色 / 珠径 / 标签"
           @keyup.enter="search"
         />
       </label>
       <label>
         <span class="sr-only">商品状态</span>
-        <select v-model="filters.status" @change="search">
+        <select
+          v-model="filters.status"
+          aria-label="商品状态"
+          @change="search"
+        >
           <option value="">全部状态</option>
           <option value="DRAFT">草稿</option>
           <option value="ON_SALE">已上架</option>
@@ -296,7 +370,20 @@ onMounted(loadCatalog)
             <tr v-for="bead in beads" :key="bead.id">
               <td>
                 <div class="product-cell">
-                  <div class="bead-preview" :style="{ '--bead-color': bead.color }">
+                  <button
+                    v-if="bead.coverUrl"
+                    class="bead-cover-button"
+                    type="button"
+                    :aria-label="`放大预览 ${bead.name} 封面`"
+                    :data-test="`preview-bead-cover-${bead.id}`"
+                    @click="enlargedCoverUrl = resolvedCoverUrl(bead)"
+                  >
+                    <img
+                      :src="resolvedCoverUrl(bead)"
+                      :alt="`${bead.name} 封面`"
+                    />
+                  </button>
+                  <div v-else class="bead-preview" :style="{ '--bead-color': bead.color }">
                     <span />
                   </div>
                   <div>
@@ -389,12 +476,21 @@ onMounted(loadCatalog)
             </label>
             <label>
               <span>SKU 编码</span>
-              <input
-                v-model="form.skuCode"
-                required
-                maxlength="64"
-                placeholder="BEAD-CRYSTAL-001"
-              />
+              <span class="input-with-action">
+                <input
+                  v-model="form.skuCode"
+                  data-test="bead-sku-code"
+                  required
+                  maxlength="64"
+                  placeholder="BEAD-CRYSTAL-001"
+                />
+                <button
+                  class="field-action-button"
+                  data-test="generate-bead-sku"
+                  type="button"
+                  @click="generateSku"
+                >重新生成</button>
+              </span>
             </label>
             <label>
               <span>所属分类</span>
@@ -460,7 +556,7 @@ onMounted(loadCatalog)
             />
           </label>
           <label class="cover-upload">
-            <span>封面图片（PNG / JPEG / WebP，最大 5 MiB）</span>
+            <span>封面图片（PNG / JPEG / WebP，最大 5 MB）</span>
             <input
               type="file"
               accept="image/png,image/jpeg,image/webp"
@@ -494,6 +590,28 @@ onMounted(loadCatalog)
             </button>
           </footer>
         </form>
+      </section>
+    </div>
+
+    <div
+      v-if="enlargedCoverUrl"
+      class="image-preview-backdrop"
+      role="presentation"
+      @click.self="enlargedCoverUrl = ''"
+    >
+      <section
+        class="image-preview-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label="商品封面大图预览"
+      >
+        <button
+          class="image-preview-close"
+          type="button"
+          aria-label="关闭大图预览"
+          @click="enlargedCoverUrl = ''"
+        >×</button>
+        <img :src="enlargedCoverUrl" alt="商品封面大图" />
       </section>
     </div>
   </section>

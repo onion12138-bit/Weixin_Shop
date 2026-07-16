@@ -1,6 +1,6 @@
 # 本地启动
 
-最后更新：2026-07-13
+最后更新：2026-07-17
 
 ## 前置依赖
 
@@ -21,11 +21,12 @@ source ./scripts/project-env.sh
 ./scripts/check-prerequisites.sh
 ```
 
-`.env` 至少应修改 MySQL 密码、管理员密码和两类 JWT 密钥。需要保存 DeepSeek API Key 时，
-还必须把 `AI_CONFIG_ENCRYPTION_KEY` 配置为 Base64 编码的 32 字节 AES 主密钥；主密钥和
-Provider Key 都不得提交到仓库。`project-env.sh` 会自动把
-`.env` 导出到当前 Shell，使 Docker、后端和前端读取同一份配置；本地开发也可以
-直接使用 `application.yml` 中的安全默认值。
+`.env` 至少应修改 MySQL 密码、管理员密码和两类 JWT 密钥。`project-env.sh` 会自动把
+`.env` 导出到当前 Shell，使 Docker、后端和前端读取同一份配置。本地未显式配置
+`AI_CONFIG_ENCRYPTION_KEY` 时，脚本会生成 Base64 编码的 32 字节 AES 主密钥，保存到
+Git 忽略的 `.local-secrets/ai-config-encryption-key`，并在后续启动中稳定复用。不要在保存
+DeepSeek API Key 后删除该文件，否则已有密文将无法解密。正式部署仍应在仓库外显式配置
+并备份 `AI_CONFIG_ENCRYPTION_KEY`；加密主密钥和 Provider Key 都不得提交到仓库。
 
 ## 安装前端依赖
 
@@ -51,11 +52,11 @@ macOS 用户可以直接在 Finder 中双击项目根目录的 `启动管理后�
 
 `http://localhost:5173`
 
-默认账号为 `admin / Admin@123`。运行日志和进程信息保存在项目根目录的 `.local-run/`，该目录不会进入 Git。
+默认账号为 `admin / Admin@123`。运行日志和进程信息保存在项目根目录的 `.local-run/`，本地 AI 加密主密钥保存在 `.local-secrets/`；两个目录都不会进入 Git。
 
 启动成功后请保持自动打开的 Terminal 窗口开启；该窗口负责维持并监测本地后端和管理后台。需要结束本地开发会话时，关闭这个 Terminal 窗口即可。
 
-后端端口固定为 8081，不扫描或改用其他端口。若 8081 上已经是健康的本项目后端，启动脚本会直接复用；若被其他进程占用，则明确失败，不结束占用进程、不修改 `.env`。5173 同样固定为管理后台地址，被其他非本项目服务占用时脚本会停止并给出提示。
+后端端口固定为 8081，不扫描或改用其他端口。若 8081 上已经是健康且包含当前 AI 加密能力的本项目后端，启动脚本会直接复用；若识别到同一项目的旧后端缺少该能力，则只重启该项目进程。其他程序占用端口时会明确失败，不会结束占用进程；长期运行在 8080 的 Jenkins 也不会被触碰。5173 同样固定为管理后台地址，被其他非本项目服务占用时脚本会停止并给出提示。
 
 小程序开发工具中已关闭合法域名校验，默认调用 `http://localhost:8081/api`。
 真机调试不能使用手机自身的 `localhost`，应把 `miniprogram/app.ts` 中地址改为电脑局域网 IP；

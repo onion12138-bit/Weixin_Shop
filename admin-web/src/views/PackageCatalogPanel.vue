@@ -443,7 +443,7 @@ onMounted(loadPackages)
           </section>
 
           <label class="cover-upload">
-            <span>封面图片（PNG / JPEG / WebP，最大 5 MiB）</span>
+            <span>封面图片（PNG / JPEG / WebP，最大 5 MB）</span>
             <input
               type="file"
               accept="image/png,image/jpeg,image/webp"

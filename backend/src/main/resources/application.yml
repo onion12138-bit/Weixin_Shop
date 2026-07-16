@@ -1,6 +1,11 @@
 spring:
   application:
     name: diy-bracelet-mall-backend
+  servlet:
+    multipart:
+      # 传输层略高于业务 5 MB 边界，精确限制由 FileStorage 统一返回业务错误。
+      max-file-size: 6MB
+      max-request-size: 6MB
   datasource:
     url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:diy_bracelet}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
     username: ${MYSQL_USER:diy_bracelet}
@@ -31,7 +36,7 @@ app:
     jwt-issuer: ${CUSTOMER_JWT_ISSUER:diy-bracelet-customer}
     identity-pepper: ${CUSTOMER_IDENTITY_PEPPER:local-identity-pepper-change-me-32-bytes}
   file-storage:
-    max-size-bytes: ${FILE_STORAGE_MAX_SIZE_BYTES:5242880}
+    max-size-bytes: ${FILE_STORAGE_MAX_SIZE_BYTES:5000000}
     local:
       root: ${FILE_STORAGE_LOCAL_ROOT:storage/catalog}
 

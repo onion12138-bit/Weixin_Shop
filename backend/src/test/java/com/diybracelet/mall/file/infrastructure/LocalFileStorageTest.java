@@ -18,14 +18,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 class LocalFileStorageTest {
 
-    private static final long FIVE_MEBIBYTES = 5L * 1024 * 1024;
+    private static final long FIVE_MEGABYTES = 5_000_000L;
 
     @TempDir
     Path root;
 
     @Test
     void shouldStoreInsideConfiguredRoot() throws Exception {
-        LocalFileStorage storage = new LocalFileStorage(root, FIVE_MEBIBYTES);
+        LocalFileStorage storage = new LocalFileStorage(root, FIVE_MEGABYTES);
         byte[] content = "image-data".getBytes(StandardCharsets.UTF_8);
 
         var stored = storage.store("bracelet.png", "image/png", content);
@@ -40,7 +40,7 @@ class LocalFileStorageTest {
 
     @Test
     void shouldRejectExecutableAndTraversalName() {
-        LocalFileStorage storage = new LocalFileStorage(root, FIVE_MEBIBYTES);
+        LocalFileStorage storage = new LocalFileStorage(root, FIVE_MEGABYTES);
 
         assertThatThrownBy(() ->
                 storage.store("../attack.sh", "text/x-shellscript", new byte[0])
@@ -60,5 +60,32 @@ class LocalFileStorageTest {
         )
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("4");
+    }
+
+    @Test
+    void shouldUseTheDecimalFiveMegabyteBoundary() {
+        LocalFileStorage storage = new LocalFileStorage(root, FIVE_MEGABYTES);
+
+        assertThatThrownBy(() -> storage.store(
+                "large.webp",
+                "image/webp",
+                new byte[5_000_001]
+        ))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("5000000");
+    }
+
+    @Test
+    void shouldAcceptExactlyFiveDecimalMegabytes() throws Exception {
+        LocalFileStorage storage = new LocalFileStorage(root, FIVE_MEGABYTES);
+
+        var stored = storage.store(
+                "boundary.webp",
+                "image/webp",
+                new byte[5_000_000]
+        );
+
+        assertThat(Files.size(root.resolve(stored.storageKey())))
+                .isEqualTo(FIVE_MEGABYTES);
     }
 }

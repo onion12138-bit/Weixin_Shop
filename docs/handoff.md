@@ -1,14 +1,14 @@
 # Codex 项目交接说明
 
-最后更新：2026-07-14 07:17（Asia/Shanghai）
+最后更新：2026-07-17 02:08（Asia/Shanghai）
 
-## 0. 2026-07-13 商品与 AI 推荐里程碑摘要
+## 0. 2026-07-17 后台目录与 AI 配置修复摘要
 
-`codex/catalog-ai-recommendation` 已完成商品创建初始库存、3 款图片演示散珠幂等导入、DeepSeek 后台单例配置、后端校验单套推荐和小程序一次性进入 DIY。默认后端端口已经统一为 8081。
+当前 `main` 工作树已完成后台散珠真实封面与放大预览、搜索清空、分类/属性筛选、可编辑自动 SKU 和精确 5MB 上传限制。AI 配置保存失败已定位为本地后端缺少有效的 32 字节加密主密钥；一键启动现在会在 `.local-secrets/` 生成并稳定复用该密钥，并安全重启缺少此能力的同项目旧后端。
 
-真实证据：后端 176 项、管理后台 37 项并完成构建、小程序 85 项通过；catalog/diy/order 三个真实 HTTP smoke 均通过；推荐 smoke 以 `NOT_CONFIGURED → AI_NOT_CONFIGURED` 通过并明确没有调用 DeepSeek、没有本地降级；3 款 demo 首次创建后第二次全部跳过。
+真实证据：`./scripts/verify.sh` 后端 181 项、管理后台 43 项并完成生产构建、小程序 85 项全部通过；一键启动脚本测试覆盖并发主密钥与旧后端安全重启；catalog 真实 HTTP smoke 通过；浏览器已验收图片预览、筛选、搜索清空、SKU 和布局；AI 配置加密保存与清除真实 HTTP 探针通过，未调用 DeepSeek 且未保留探针 Key。
 
-唯一必须保留的 AI 验收待办：需要用户在后台安全输入有效 DeepSeek Key，并确保后端以 Base64 32 字节 `AI_CONFIG_ENCRYPTION_KEY` 启动，然后执行一次 opt-in live `/test` 和单套推荐。当前没有真实调用 DeepSeek，不得将模拟网关测试或暂停 smoke 写成 live 成功。
+唯一必须保留的 AI 验收待办：用户需在后台安全输入有效 DeepSeek Key，保存并点击“测试连接”，然后完成一次单套推荐。当前没有真实调用 DeepSeek，不得将加密保存探针、模拟网关测试或暂停 smoke 写成 live 成功；无可用配置时继续显示暂停使用，不启用本地降级。
 
 ## 1. 新任务接手方式
 
@@ -31,12 +31,12 @@
 - 本地根目录：`/Users/onion/Desktop/AI_Testing/Weixin_Shop`
 - GitHub：`https://github.com/onion12138-bit/Weixin_Shop`
 - 当前主分支：`main`
-- 当前主分支基线提交：`42567cd55d715dd0b51d5a3a12a96c4d7d29241c`
-- 当前提交说明：`docs: plan catalog stability and AI recommendation`
-- 当前本地 `main` 比 `origin/main` ahead 7；`origin/main` 当前为 `fa24d184138f7912f6f992463c6221346a276eb5`。不得把两者写成已对齐。
+- 当前主分支基线提交：`13fea1c`
+- 当前提交说明：`fix: close milestone review gaps`
+- 本轮开始时本地 `main` 与 `origin/main` 对齐；目录与 AI 修复的最终提交以 `git log` 为准。
 - `2370ed8 feat: complete order and mock payment vertical slice` 是更早的订单里程碑，不是当前基线。
 - 本仓库仅配置 `http.version=HTTP/1.1`，用于规避当前网络环境下 Git HTTPS/2 的 TLS 中断；这不是代理配置。
-- 当前功能 worktree 分支为 `codex/catalog-ai-recommendation`，实现基线为 `f897594`；本里程碑同时包含 Task 10 验证脚本与文档，最终提交号以 `git log` 为准。上述 `main/42567cd` 是主工作树基线，不代表当前功能分支 HEAD。
+- 当前直接在主工作树 `main` 上工作，没有额外功能 worktree。
 
 ### 2.1 必须保留的未提交改动
 
@@ -44,7 +44,8 @@
 
 - 已修改的 `miniprogram/project.config.json`；
 - 未跟踪的 `.pnpm-store/`；
-- 未跟踪的 `Pic/`。
+- 未跟踪的 `Pic/`；
+- 未跟踪的 `Temporary review and recommendations/`、`backend/storage/` 和本机项目私有配置文件。
 
 其中微信开发者工具对 `miniprogram/project.config.json` 的改动包括：
 
@@ -90,10 +91,10 @@
 - 后台制作、BOM、发货和完成履约。
 - DeepSeek 后台单例配置、AES-GCM Key 保存、后端校验单套推荐和小程序一次性 DIY handoff。
 
-最近一次完整自动化验证：
+最近一次完整自动化验证（2026-07-17）：
 
-- 后端：176 项测试通过；
-- 管理后台：6 个文件、37 项测试、类型检查和生产构建通过；
+- 后端：181 项测试通过；
+- 管理后台：7 个文件、43 项测试、类型检查和生产构建通过；
 - 小程序：14 个套件、85 项测试和 TypeScript 检查通过；
 - 商品、DIY、订单真实 HTTP 冒烟通过；推荐暂停路径 HTTP 冒烟通过。
 
@@ -116,7 +117,7 @@
 
 不得误杀 Jenkins，也不得再用 8080 启动或验证本项目。后端、管理后台默认 API、小程序 runtime 和 smoke 现在统一使用 `http://localhost:8081`；`BACKEND_BASE_URL` 只传 origin，不附加 `/api`。
 
-交接时 Spring Boot 和 Vue 开发服务器未确认仍在运行；新任务必须按 `docs/setup.md` 重新检查和启动。Docker 容器此前显示 MySQL、Redis 均为 healthy，但也应重新执行 `docker compose ps` 验证。
+交接时 `启动管理后台.command` 已在持久 Terminal 会话中运行，管理后台地址为 `http://localhost:5173`，后端健康接口返回 `aiEncryptionReady: true`。新任务仍应先检查实际进程状态；Terminal 被关闭后需重新双击启动文件。
 
 ## 6. 微信开发者工具现状
 
@@ -158,8 +159,8 @@
 ## 8. 下一步执行顺序
 
 1. 读取本交接文档与 `docs/progress.md`，执行 `git status`，保护 `miniprogram/project.config.json` 和所有用户改动；
-2. 在 8081 启动当前功能分支后端，确认 `AI_CONFIG_ENCRYPTION_KEY` 使用仓库外安全值；
-3. 用户通过后台“AI 模型”页面输入有效 Key，保存官方 Base URL、`deepseek-v4-flash`、超时与启用状态，点击“测试连接”；
+2. 双击 `启动管理后台.command`，确认后台可打开且 `/api/public/project-health` 的 `aiEncryptionReady` 为 `true`；
+3. 用户通过后台“AI 模型”页面输入有效 Key，保存官方 Base URL、`deepseek-v4-flash`、超时与启用状态，点击“测试连接”；不要删除 `.local-secrets/ai-config-encryption-key`；
 4. 仅在用户明确授权 live 后，以环境变量 opt-in 运行 `scripts/recommendation-smoke.sh`，记录真实 `/test` + 单套推荐结果；绝不回显 Key；
 5. 在微信开发者工具验收推荐暂停/可用页面、服务端价格、免责声明和一次性进入 DIY，并继续验收既有商品/DIY/订单页面；
 6. 复跑 `./scripts/verify.sh` 与四个真实 HTTP smoke，更新进度后提交/推送；

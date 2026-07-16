@@ -58,6 +58,8 @@ class AiSecretCipherTest {
         String invalidKey = Base64.getEncoder().encodeToString(new byte[31]);
         AiSecretCipher wrongLengthCipher = new AiSecretCipher(invalidKey);
 
+        assertThat(emptyKeyCipher.isReady()).isFalse();
+        assertThat(new AiSecretCipher(MASTER_KEY).isReady()).isTrue();
         assertThat(emptyKeyCipher.toString()).doesNotContain(MASTER_KEY);
         assertThatThrownBy(() -> emptyKeyCipher.encrypt("secret"))
             .isInstanceOf(IllegalStateException.class)

@@ -6,10 +6,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpMethod;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
  * 验证业务异常对外暴露的 HTTP 与 JSON 契约。
@@ -41,6 +43,14 @@ class GlobalExceptionHandlerTest {
             .andExpect(jsonPath("$.traceId").isNotEmpty());
     }
 
+    @Test
+    void shouldPreserveFrameworkNotFoundStatus() throws Exception {
+        mockMvc.perform(get("/test/missing-resource"))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code").value("COMMON_NOT_FOUND"))
+            .andExpect(jsonPath("$.traceId").isNotEmpty());
+    }
+
     /**
      * 仅服务于异常契约测试的控制器，不会进入生产应用上下文。
      */
@@ -50,6 +60,14 @@ class GlobalExceptionHandlerTest {
         @GetMapping("/test/business-error")
         void fail() {
             throw new BusinessException(ErrorCode.COMMON_CONFLICT, "状态冲突");
+        }
+
+        @GetMapping("/test/missing-resource")
+        void missingResource() throws NoResourceFoundException {
+            throw new NoResourceFoundException(
+                HttpMethod.GET,
+                "/test/missing-resource"
+            );
         }
     }
 }

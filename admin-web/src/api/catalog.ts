@@ -22,6 +22,7 @@ export interface BeadSku {
   costPrice: number
   stockAlertThreshold: number
   coverAssetId: number | null
+  coverUrl: string | null
   tagsJson: string
   status: CatalogStatus
 }
@@ -36,6 +37,8 @@ export interface PageResponse<T> {
 export interface BeadQuery {
   keyword?: string
   status?: CatalogStatus | ''
+  categoryId?: number | ''
+  attribute?: string
   page?: number
   size?: number
 }
@@ -149,6 +152,8 @@ export function listAdminBeads(
   const params = new URLSearchParams()
   if (query.keyword) params.set('keyword', query.keyword)
   if (query.status) params.set('status', query.status)
+  if (query.categoryId) params.set('categoryId', String(query.categoryId))
+  if (query.attribute) params.set('attribute', query.attribute)
   params.set('page', String(query.page || 1))
   params.set('size', String(query.size || 20))
   return request<PageResponse<BeadSku>>(

@@ -51,7 +51,7 @@ public class LocalFileStorage implements FileStorage {
     public LocalFileStorage(
             @Value("${app.file-storage.local.root:storage/catalog}")
             String rootDirectory,
-            @Value("${app.file-storage.max-size-bytes:5242880}")
+            @Value("${app.file-storage.max-size-bytes:5000000}")
             long maxSizeBytes
     ) {
         this(Path.of(rootDirectory), maxSizeBytes);

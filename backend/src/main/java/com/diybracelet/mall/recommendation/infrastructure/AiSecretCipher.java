@@ -86,6 +86,19 @@ public final class AiSecretCipher {
         }
     }
 
+    /**
+     * 仅报告主密钥是否可用于 AES-256，不返回密钥或任何派生内容。
+     * 启动器据此判断旧 JVM 是否需要在补齐本地密钥后重启。
+     */
+    public boolean isReady() {
+        try {
+            masterKey();
+            return true;
+        } catch (IllegalStateException error) {
+            return false;
+        }
+    }
+
     private SecretKeySpec masterKey() {
         if (encodedMasterKey == null) {
             throw new IllegalStateException(KEY_ERROR);

@@ -3,9 +3,13 @@ package com.diybracelet.mall.shared.error;
 import com.diybracelet.mall.shared.api.ApiResponse;
 import jakarta.validation.ConstraintViolationException;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -20,6 +24,10 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(
+        GlobalExceptionHandler.class
+    );
 
     /**
      * 将可预期业务异常映射为其错误码对应的 HTTP 状态。
@@ -83,6 +91,51 @@ public class GlobalExceptionHandler {
             .body(ApiResponse.failure(
                 ErrorCode.COMMON_CONFLICT.name(),
                 "数据与现有记录冲突",
+                traceId
+            ));
+    }
+
+    /**
+     * 未预期异常只返回稳定通用信息；同一追踪号写入日志，便于从截图定位根因。
+     */
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnexpectedException(
+        Exception exception
+    ) {
+        String traceId = UUID.randomUUID().toString();
+        if (exception instanceof ErrorResponse errorResponse) {
+            HttpStatusCode status = errorResponse.getStatusCode();
+            if (status.is5xxServerError()) {
+                LOGGER.error(
+                    "Unhandled request failure, traceId={}",
+                    traceId,
+                    exception
+                );
+            }
+            ErrorCode errorCode = status.is5xxServerError()
+                ? ErrorCode.COMMON_INTERNAL_ERROR
+                : status.value() == 404
+                    ? ErrorCode.COMMON_NOT_FOUND
+                    : ErrorCode.COMMON_BAD_REQUEST;
+            String message = status.is5xxServerError()
+                ? "服务暂时不可用，请稍后重试"
+                : status.value() == 404
+                    ? "请求的接口不存在"
+                    : "请求无法处理";
+            return ResponseEntity
+                .status(status)
+                .body(ApiResponse.failure(
+                    errorCode.name(),
+                    message,
+                    traceId
+                ));
+        }
+        LOGGER.error("Unhandled request failure, traceId={}", traceId, exception);
+        return ResponseEntity
+            .status(ErrorCode.COMMON_INTERNAL_ERROR.status())
+            .body(ApiResponse.failure(
+                ErrorCode.COMMON_INTERNAL_ERROR.name(),
+                "服务暂时不可用，请稍后重试",
                 traceId
             ));
     }
