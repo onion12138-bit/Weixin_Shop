@@ -338,7 +338,22 @@ Provider 固定为 `DEEPSEEK`，Base URL 只接受 DeepSeek 官方 HTTPS origin�
 ```
 
 手工素材仍先通过 `POST /api/admin/files` 上传。服务端验证托盘为 160×160、画布为
-512×512，且都是带透明通道的 PNG 或 WebP；不合格素材返回 422。
+512×512，且都是带透明通道、大小不超过 500 KB 的 PNG 或 WebP；尺寸、透明通道或大小不合格
+返回 HTTP 400 与 `COMMON_BAD_REQUEST`。
+
+视觉历史读取返回：
+
+```json
+{
+  "publishedVisualVersionId": 31,
+  "versions": [{"id": 31, "version": 3, "sourceType": "MANUAL", "status": "PUBLISHED"}]
+}
+```
+
+`POST /manual`、`POST /{versionId}/publish` 和 `POST /{versionId}/rollback` 的 `data` 均为
+`BeadVisualVersionView`：`id`、`version`、`sourceType`、`status`、`trayAssetId`、`trayUrl`、
+`canvasAssetId`、`canvasUrl`、`failureCode`、`failureMessage`、`createdBy`、`publishedBy`、
+`publishedAt`、`createdAt`。历史中的每个 `versions` 项也是同一形状。
 
 公共 `GET /api/public/catalog/beads/{id}`（以及公共珠子列表）只在 SKU 指针指向
 `PUBLISHED` 版本时返回 `diyVisual`，形状如下；未发布时为 `null`：

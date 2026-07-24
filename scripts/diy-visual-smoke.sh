@@ -37,21 +37,53 @@ process.stdout.write(response.data.accessToken)
 ' "${login}")"
 
 encoded_sku="$(node -e 'process.stdout.write(encodeURIComponent(process.argv[1]))' "${DIY_VISUAL_SMOKE_SKU}")"
-beads="$(curl -fsS \
-  -H "Authorization: Bearer ${admin_token}" \
-  "${base_url}/api/admin/catalog/beads?keyword=${encoded_sku}&page=1&size=100")"
-sku_id="$(node -e '
+catalog_page_size=100
+catalog_page=1
+catalog_total=0
+catalog_matches='[]'
+
+# Keyword search is fuzzy. Exhaust its bounded pages and keep only exact SKU matches
+# before any upload can create persistent assets.
+while :; do
+  beads="$(curl -fsS \
+    -H "Authorization: Bearer ${admin_token}" \
+    "${base_url}/api/admin/catalog/beads?keyword=${encoded_sku}&page=${catalog_page}&size=${catalog_page_size}")"
+  catalog_page_summary="$(node -e '
 const response = JSON.parse(process.argv[1])
 const skuCode = process.argv[2]
-const bead = response.data?.items?.find((item) => item.skuCode === skuCode)
-if (response.code !== "OK" || !bead?.id) {
-  throw new Error(`configured smoke SKU was not found: ${skuCode}`)
+const data = response.data
+if (response.code !== "OK" || !Array.isArray(data?.items) || !Number.isInteger(data?.total) || data.total < 0) {
+  throw new Error("admin catalog search did not return a usable page")
 }
-if (bead.status !== "ON_SALE") {
-  throw new Error(`configured smoke SKU is not on sale: ${skuCode}`)
-}
-process.stdout.write(String(bead.id))
+process.stdout.write(JSON.stringify({
+  total: data.total,
+  itemCount: data.items.length,
+  exactMatches: data.items.filter((item) => item.skuCode === skuCode),
+}))
 ' "${beads}" "${DIY_VISUAL_SMOKE_SKU}")"
+  catalog_total="$(node -e 'process.stdout.write(String(JSON.parse(process.argv[1]).total))' "${catalog_page_summary}")"
+  catalog_item_count="$(node -e 'process.stdout.write(String(JSON.parse(process.argv[1]).itemCount))' "${catalog_page_summary}")"
+  catalog_matches="$(node -e '
+const accumulated = JSON.parse(process.argv[1])
+const pageMatches = JSON.parse(process.argv[2]).exactMatches
+process.stdout.write(JSON.stringify([...accumulated, ...pageMatches]))
+' "${catalog_matches}" "${catalog_page_summary}")"
+
+  if (( catalog_item_count == 0 || catalog_page * catalog_page_size >= catalog_total )); then
+    break
+  fi
+  ((catalog_page += 1))
+done
+
+sku_id="$(node -e '
+const matches = JSON.parse(process.argv[1])
+const skuCode = process.argv[2]
+const onSaleMatches = matches.filter((item) => item.status === "ON_SALE")
+if (onSaleMatches.length !== 1 || !onSaleMatches[0]?.id) {
+  throw new Error(`configured smoke SKU must have exactly one ON_SALE match: ${skuCode}`)
+}
+process.stdout.write(String(onSaleMatches[0].id))
+' "${catalog_matches}" "${DIY_VISUAL_SMOKE_SKU}")"
 
 tray_upload="$(curl -fsS \
   -H "Authorization: Bearer ${admin_token}" \
