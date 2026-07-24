@@ -48,6 +48,10 @@ declare function App<T extends Record<string, unknown>>(options: T): void
 
 declare function getApp<T>(): T
 
+declare function setTimeout(callback: () => void, delay: number): number
+
+declare function clearTimeout(handle: number): void
+
 declare function Page<T extends { data: Record<string, unknown> }>(
   options: T &
     ThisType<

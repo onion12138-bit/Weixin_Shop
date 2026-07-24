@@ -24,7 +24,7 @@ function instantiate(definition: Record<string, any>): Record<string, any> {
     canvasImages: {},
     canvasImageQueue: [],
     activeCanvasImageLoads: 0,
-    canvasRedrawScheduled: false,
+    canvasRedrawTimer: null,
   }
   instance.setData = jest.fn((patch: Record<string, unknown>) => {
     Object.assign(instance.data, patch)
@@ -209,40 +209,170 @@ describe('DIY published visual integration', () => {
     expect(images[4].src).toBe('https://shop.test/canvas-4.webp')
   })
 
-  it('coalesces a burst of image completions into one scheduled redraw', async () => {
-    const page = instantiate(loadEditorDefinition())
-    page.drawBracelet = jest.fn()
-    const images: Array<{
-      src: string
-      onload: () => void
-      onerror: () => void
-    }> = []
-    const canvas = {
-      createImage: jest.fn(() => {
-        const image = {
-          src: '',
-          onload: () => undefined,
-          onerror: () => undefined,
-        }
-        images.push(image)
-        return image
-      }),
-    }
-    page.editorActive = true
-    page.editorGeneration = 1
-    page.canvasNode = canvas
+  it('coalesces image completions across microtasks into one frame redraw', async () => {
+    jest.useFakeTimers()
+    try {
+      const page = instantiate(loadEditorDefinition())
+      page.drawBracelet = jest.fn()
+      const images: Array<{
+        src: string
+        onload: () => void
+        onerror: () => void
+      }> = []
+      const canvas = {
+        createImage: jest.fn(() => {
+          const image = {
+            src: '',
+            onload: () => undefined,
+            onerror: () => undefined,
+          }
+          images.push(image)
+          return image
+        }),
+      }
+      page.editorActive = true
+      page.editorGeneration = 1
+      page.canvasNode = canvas
 
-    for (let index = 0; index < 4; index += 1) {
+      for (let index = 0; index < 4; index += 1) {
+        page.resolveCanvasImage(canvas, {
+          canvasImageUrl: `https://shop.test/canvas-${index}.webp`,
+          coverImageUrl: '',
+          visualVersion: index,
+        })
+      }
+      images[0].onload()
+      await Promise.resolve()
+      images[1].onerror()
+      await Promise.resolve()
+      images[2].onload()
+      await Promise.resolve()
+
+      expect(page.drawBracelet).not.toHaveBeenCalled()
+      expect(jest.getTimerCount()).toBe(1)
+
+      jest.advanceTimersByTime(16)
+
+      expect(page.drawBracelet).toHaveBeenCalledTimes(1)
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
+  it('cancels the pending frame redraw on editor unload', () => {
+    jest.useFakeTimers()
+    try {
+      const page = instantiate(loadEditorDefinition())
+      page.drawBracelet = jest.fn()
+      const images: Array<{
+        src: string
+        onload: () => void
+        onerror: () => void
+      }> = []
+      const canvas = {
+        createImage: jest.fn(() => {
+          const image = {
+            src: '',
+            onload: () => undefined,
+            onerror: () => undefined,
+          }
+          images.push(image)
+          return image
+        }),
+      }
+      page.editorActive = true
+      page.editorGeneration = 1
+      page.canvasNode = canvas
       page.resolveCanvasImage(canvas, {
-        canvasImageUrl: `https://shop.test/canvas-${index}.webp`,
+        canvasImageUrl: 'https://shop.test/canvas.webp',
         coverImageUrl: '',
-        visualVersion: index,
+        visualVersion: 3,
       })
-    }
-    images.forEach((image) => image.onload())
-    await Promise.resolve()
+      images[0].onload()
 
-    expect(page.drawBracelet).toHaveBeenCalledTimes(1)
+      expect(jest.getTimerCount()).toBe(1)
+
+      page.onUnload()
+
+      expect(jest.getTimerCount()).toBe(0)
+      jest.advanceTimersByTime(16)
+      expect(page.drawBracelet).not.toHaveBeenCalled()
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
+  it('cancels the pending frame redraw when the canvas is replaced', () => {
+    jest.useFakeTimers()
+    try {
+      const page = instantiate(loadEditorDefinition())
+      page.editorActive = true
+      page.editorGeneration = 1
+      page.renderCanvas = jest.fn()
+      const drawBracelet = page.drawBracelet.bind(page)
+      page.drawBracelet = jest.fn()
+      const images: Array<{
+        src: string
+        onload: () => void
+        onerror: () => void
+      }> = []
+      const oldCanvas = {
+        createImage: jest.fn(() => {
+          const image = {
+            src: '',
+            onload: () => undefined,
+            onerror: () => undefined,
+          }
+          images.push(image)
+          return image
+        }),
+      }
+      const newCanvas = {
+        width: 0,
+        height: 0,
+        getContext: jest.fn(() => ({
+          scale: jest.fn(),
+        })),
+      }
+      page.canvasNode = oldCanvas
+      page.resolveCanvasImage(oldCanvas, {
+        canvasImageUrl: 'https://shop.test/canvas.webp',
+        coverImageUrl: '',
+        visualVersion: 3,
+      })
+      images[0].onload()
+
+      expect(jest.getTimerCount()).toBe(1)
+
+      const query: Record<string, jest.Mock> = {
+        exec: jest.fn(),
+        in: jest.fn(),
+        select: jest.fn(),
+      }
+      const node = {
+        fields: jest.fn((
+          _fields: Record<string, boolean>,
+          callback: (result: unknown) => void,
+        ) => {
+          callback({ node: newCanvas, width: 320, height: 240 })
+          return query
+        }),
+      }
+      query.in.mockReturnValue(query)
+      query.select.mockReturnValue(node)
+      ;(globalThis as any).wx = {
+        createSelectorQuery: jest.fn(() => query),
+        getSystemInfoSync: jest.fn(() => ({ pixelRatio: 2 })),
+      }
+
+      drawBracelet()
+
+      expect(jest.getTimerCount()).toBe(0)
+      jest.advanceTimersByTime(16)
+      expect(page.renderCanvas).toHaveBeenCalledTimes(1)
+    } finally {
+      jest.useRealTimers()
+    }
   })
 
   it('reuses the current page canvas context and logical dimensions', () => {

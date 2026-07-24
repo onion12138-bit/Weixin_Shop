@@ -155,6 +155,7 @@ const DEFAULT_NAME = '我的手串'
 const FIT_TYPES: FitType[] = ['SNUG', 'STANDARD', 'LOOSE']
 const FIT_TYPE_LABELS = ['贴手', '标准', '宽松']
 const MAX_CONCURRENT_CANVAS_IMAGE_LOADS = 4
+const CANVAS_REDRAW_FRAME_MS = 16
 
 Page({
   data: {
@@ -213,7 +214,7 @@ Page({
   >,
   canvasImageQueue: [] as CanvasImageLoadRequest[],
   activeCanvasImageLoads: 0,
-  canvasRedrawScheduled: false,
+  canvasRedrawTimer: null as ReturnType<typeof setTimeout> | null,
   editorActive: false,
   editorGeneration: 0,
   dragFromIndex: -1,
@@ -221,6 +222,7 @@ Page({
   pendingAiRecommendationRaw: null as unknown,
 
   onLoad(options: Record<string, string>) {
+    this.cancelCanvasRedraw()
     this.editorActive = true
     this.editorGeneration += 1
     this.canvasNode = null
@@ -231,7 +233,6 @@ Page({
     this.canvasImages = {}
     this.canvasImageQueue = []
     this.activeCanvasImageLoads = 0
-    this.canvasRedrawScheduled = false
     if (options.source === 'ai') {
       try {
         this.pendingAiRecommendationRaw = wx.getStorageSync(
@@ -261,6 +262,7 @@ Page({
   },
 
   onUnload() {
+    this.cancelCanvasRedraw()
     this.editorActive = false
     this.editorGeneration += 1
     this.canvasNode = null
@@ -271,7 +273,6 @@ Page({
     this.canvasImages = {}
     this.canvasImageQueue = []
     this.activeCanvasImageLoads = 0
-    this.canvasRedrawScheduled = false
   },
 
   async bootstrap(options: Record<string, string>) {
@@ -896,9 +897,9 @@ Page({
           return
         }
         if (this.canvasNode && this.canvasNode !== canvas) {
+          this.cancelCanvasRedraw()
           this.canvasImages = {}
           this.canvasImageQueue = []
-          this.canvasRedrawScheduled = false
         }
         this.canvasNode = canvas
         const dpr = wx.getSystemInfoSync().pixelRatio || 1
@@ -1026,9 +1027,9 @@ Page({
   },
 
   scheduleCanvasRedraw(canvas: CanvasNode, generation: number) {
-    if (this.canvasRedrawScheduled) return
-    this.canvasRedrawScheduled = true
-    Promise.resolve().then(() => {
+    if (this.canvasRedrawTimer !== null) return
+    this.canvasRedrawTimer = setTimeout(() => {
+      this.canvasRedrawTimer = null
       if (
         !this.editorActive
         || generation !== this.editorGeneration
@@ -1036,9 +1037,14 @@ Page({
       ) {
         return
       }
-      this.canvasRedrawScheduled = false
       this.drawBracelet()
-    })
+    }, CANVAS_REDRAW_FRAME_MS)
+  },
+
+  cancelCanvasRedraw() {
+    if (this.canvasRedrawTimer === null) return
+    clearTimeout(this.canvasRedrawTimer)
+    this.canvasRedrawTimer = null
   },
 
   async uploadPreviewSafely(schemeId: number) {
