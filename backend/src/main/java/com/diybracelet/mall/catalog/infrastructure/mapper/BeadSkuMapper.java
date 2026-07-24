@@ -14,6 +14,9 @@ import java.util.List;
 @Mapper
 public interface BeadSkuMapper extends BaseMapper<BeadSku> {
 
+    @Select("select * from bead_sku where id = #{id} for update")
+    BeadSku selectByIdForUpdate(@Param("id") Long id);
+
     /**
      * 查询小程序公开可见的散珠。
      *

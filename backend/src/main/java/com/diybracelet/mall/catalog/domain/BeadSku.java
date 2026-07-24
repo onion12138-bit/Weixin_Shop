@@ -40,6 +40,8 @@ public class BeadSku {
 
     private Long coverAssetId;
 
+    private Long publishedVisualVersionId;
+
     private String tagsJson;
 
     private CatalogStatus status;
@@ -140,6 +142,14 @@ public class BeadSku {
 
     public void setCoverAssetId(Long coverAssetId) {
         this.coverAssetId = coverAssetId;
+    }
+
+    public Long getPublishedVisualVersionId() {
+        return publishedVisualVersionId;
+    }
+
+    public void setPublishedVisualVersionId(Long publishedVisualVersionId) {
+        this.publishedVisualVersionId = publishedVisualVersionId;
     }
 
     public String getTagsJson() {
