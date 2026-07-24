@@ -1299,6 +1299,158 @@ tbody tr:hover {
   font-weight: 700;
 }
 
+.visual-drawer {
+  display: grid;
+  width: min(860px, 94vw);
+  height: auto;
+  max-height: calc(100vh - 56px);
+  gap: 20px;
+  border-radius: 20px;
+  box-shadow: 0 24px 80px rgb(31 22 26 / 24%);
+}
+
+.visual-drawer > header p:last-child,
+.visual-create-panel header small,
+.visual-create-panel label small,
+.visual-history-row small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.visual-current-panel,
+.visual-create-panel,
+.visual-history-panel {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #faf8f6;
+}
+
+.visual-current-panel > header,
+.visual-create-panel > header,
+.visual-history-panel > header {
+  display: block;
+  margin-bottom: 14px;
+}
+
+.visual-preview-grid,
+.visual-file-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.visual-preview-grid figure {
+  display: grid;
+  gap: 8px;
+  min-height: 126px;
+  padding: 10px;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+  background: white;
+}
+
+.visual-preview-grid img {
+  width: 100%;
+  height: 112px;
+  object-fit: contain;
+}
+
+.visual-preview-grid span {
+  display: grid;
+  min-height: 112px;
+  place-items: center;
+  background: #f4eff0;
+}
+
+.visual-preview-grid figcaption {
+  font-size: 11px;
+}
+
+.visual-file-grid {
+  margin-bottom: 14px;
+}
+
+.visual-file-grid label {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px dashed #cdbec3;
+  border-radius: 10px;
+  background: white;
+}
+
+.visual-file-grid input {
+  width: 100%;
+}
+
+.visual-history-list {
+  display: grid;
+  gap: 8px;
+}
+
+.visual-history-row {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: white;
+}
+
+.visual-history-row > div:first-child {
+  min-width: 0;
+}
+
+.visual-history-row .status-pill,
+.visual-source {
+  margin-left: 8px;
+}
+
+.visual-source {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.visual-row-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.visual-status-ready {
+  color: var(--amber);
+  background: var(--amber-soft);
+}
+
+.visual-status-published {
+  color: var(--green);
+  background: var(--green-soft);
+}
+
+.visual-status-failed {
+  color: #943a42;
+  background: #fff0f1;
+}
+
+.visual-status-archived,
+.visual-status-draft,
+.visual-status-generating {
+  color: #776e72;
+  background: #eeeae8;
+}
+
+.visual-failure {
+  color: #943a42 !important;
+}
+
 @media (max-width: 1180px) {
   .admin-content {
     padding-right: 28px;

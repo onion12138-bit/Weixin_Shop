@@ -5,6 +5,10 @@ import {
   createAdminBead,
   downloadBeadImportTemplate,
   importAdminBeads,
+  listBeadVisuals,
+  createManualBeadVisual,
+  publishBeadVisual,
+  rollbackBeadVisual,
   listAdminBeads,
   listAdminCategories,
   listAdminPackages,
@@ -29,6 +33,10 @@ vi.mock('../api/catalog', () => ({
   updateAdminPackage: vi.fn(),
   changePackageStatus: vi.fn(),
   uploadCatalogFile: vi.fn(),
+  listBeadVisuals: vi.fn(),
+  createManualBeadVisual: vi.fn(),
+  publishBeadVisual: vi.fn(),
+  rollbackBeadVisual: vi.fn(),
 }))
 
 /**
@@ -94,6 +102,10 @@ describe('CatalogView', () => {
       failureCount: 0,
       errors: [],
     })
+    vi.mocked(listBeadVisuals).mockResolvedValue({
+      publishedVisualVersionId: null,
+      versions: [],
+    })
   })
 
   it('loads catalog rows through the API module', async () => {
@@ -118,6 +130,17 @@ describe('CatalogView', () => {
       .attributes('src')).toContain('white-crystal.png')
     await wrapper.get('[aria-label="关闭大图预览"]').trigger('click')
     expect(wrapper.find('[aria-label="商品封面大图预览"]').exists()).toBe(false)
+  })
+
+  it('opens the DIY visual workflow for the selected bead', async () => {
+    const wrapper = mount(CatalogView)
+    await flushPromises()
+
+    await wrapper.get('[data-test="manage-bead-visual-2001"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('白水晶 8mm')
+    expect(wrapper.find('[data-test="tray-file"]').exists()).toBe(true)
   })
 
   it('clears search immediately and sends category and attribute filters', async () => {

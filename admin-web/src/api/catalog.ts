@@ -113,6 +113,41 @@ export interface UploadedFile {
   publicUrl: string
 }
 
+export type BeadVisualStatus =
+  | 'DRAFT'
+  | 'GENERATING'
+  | 'READY'
+  | 'FAILED'
+  | 'PUBLISHED'
+  | 'ARCHIVED'
+
+export interface BeadVisualVersion {
+  id: number
+  version: number
+  sourceType: 'AUTO' | 'MANUAL'
+  status: BeadVisualStatus
+  trayAssetId: number | null
+  trayUrl: string | null
+  canvasAssetId: number | null
+  canvasUrl: string | null
+  failureCode: string | null
+  failureMessage: string | null
+  createdBy: string
+  publishedBy: string | null
+  publishedAt: string | null
+  createdAt: string
+}
+
+export interface BeadVisualHistory {
+  publishedVisualVersionId: number | null
+  versions: BeadVisualVersion[]
+}
+
+export interface CreateManualBeadVisualRequest {
+  trayAssetId: number
+  canvasAssetId: number
+}
+
 export interface CatalogImportError {
   rowNumber: number
   skuCode: string
@@ -259,6 +294,47 @@ export function uploadCatalogFile(file: File): Promise<UploadedFile> {
     method: 'POST',
     body: formData,
   })
+}
+
+/** 读取指定散珠的 DIY 固定视觉版本历史。 */
+export function listBeadVisuals(beadId: number): Promise<BeadVisualHistory> {
+  return request<BeadVisualHistory>(`/admin/catalog/beads/${beadId}/visuals`)
+}
+
+/** 将两份人工上传的透明素材保存为可发布的视觉版本。 */
+export function createManualBeadVisual(
+  beadId: number,
+  payload: CreateManualBeadVisualRequest,
+): Promise<BeadVisualVersion> {
+  return request<BeadVisualVersion>(
+    `/admin/catalog/beads/${beadId}/visuals/manual`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+  )
+}
+
+/** 发布状态为 READY 的视觉版本。 */
+export function publishBeadVisual(
+  beadId: number,
+  versionId: number,
+): Promise<BeadVisualVersion> {
+  return request<BeadVisualVersion>(
+    `/admin/catalog/beads/${beadId}/visuals/${versionId}/publish`,
+    { method: 'POST' },
+  )
+}
+
+/** 基于历史版本立即生成并发布新的回滚版本。 */
+export function rollbackBeadVisual(
+  beadId: number,
+  versionId: number,
+): Promise<BeadVisualVersion> {
+  return request<BeadVisualVersion>(
+    `/admin/catalog/beads/${beadId}/visuals/${versionId}/rollback`,
+    { method: 'POST' },
+  )
 }
 
 /** 下载包含当前分类下拉项和填写说明的 Excel 模板。 */

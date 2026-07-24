@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ApiError, resolveApiResourceUrl } from '../api/http'
+import BeadVisualPanel from '../components/BeadVisualPanel.vue'
 import { generateBeadSku } from '../catalog/generate-sku'
 import {
   changeBeadStatus,
@@ -37,6 +38,7 @@ const importErrorMessage = ref('')
 const importResult = ref<CatalogImportResult | null>(null)
 const editingBeadId = ref<number | null>(null)
 const enlargedCoverUrl = ref('')
+const visualBead = ref<BeadSku | null>(null)
 const MAX_COVER_SIZE_BYTES = 5_000_000
 const MAX_IMPORT_SIZE_BYTES = 10_000_000
 const ACCEPTED_COVER_TYPES = new Set([
@@ -204,6 +206,14 @@ function openEditForm(bead: BeadSku): void {
     ? resolveApiResourceUrl(bead.coverUrl)
     : ''
   showCreateForm.value = true
+}
+
+function openVisualPanel(bead: BeadSku): void {
+  visualBead.value = bead
+}
+
+function handleVisualPublished(): void {
+  void loadCatalog()
 }
 
 async function uploadCoverFile(file: File): Promise<void> {
@@ -537,6 +547,13 @@ onMounted(loadCatalog)
                 >
                   编辑
                 </button>
+                <button
+                  class="text-button"
+                  :data-test="`manage-bead-visual-${bead.id}`"
+                  @click="openVisualPanel(bead)"
+                >
+                  DIY 效果
+                </button>
                 <button class="text-button" @click="toggleStatus(bead)">
                   {{ bead.status === 'ON_SALE' ? '下架' : '上架' }}
                 </button>
@@ -840,5 +857,13 @@ onMounted(loadCatalog)
         <img :src="enlargedCoverUrl" alt="商品封面大图" />
       </section>
     </div>
+    <BeadVisualPanel
+      v-if="visualBead"
+      :bead-id="visualBead.id"
+      :bead-name="visualBead.name"
+      @close="visualBead = null"
+      @published="handleVisualPublished"
+    />
+
   </section>
 </template>

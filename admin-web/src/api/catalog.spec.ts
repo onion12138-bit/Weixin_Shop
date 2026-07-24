@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  createManualBeadVisual,
   downloadBeadImportTemplate,
   importAdminBeads,
+  listBeadVisuals,
+  publishBeadVisual,
+  rollbackBeadVisual,
 } from './catalog'
 import { request, requestBlob } from './http'
 
@@ -38,5 +42,45 @@ describe('catalog Excel import API contract', () => {
     expect(init?.method).toBe('POST')
     expect(init?.body).toBeInstanceOf(FormData)
     expect((init?.body as FormData).get('file')).toBe(file)
+  })
+})
+
+describe('bead visual API contract', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(request).mockResolvedValue(undefined)
+  })
+
+  it('uses the admin visual endpoints for manual creation, history, publish and rollback', async () => {
+    await createManualBeadVisual(2001, {
+      trayAssetId: 901,
+      canvasAssetId: 902,
+    })
+    await listBeadVisuals(2001)
+    await publishBeadVisual(2001, 31)
+    await rollbackBeadVisual(2001, 17)
+
+    expect(request).toHaveBeenNthCalledWith(
+      1,
+      '/admin/catalog/beads/2001/visuals/manual',
+      {
+        method: 'POST',
+        body: JSON.stringify({ trayAssetId: 901, canvasAssetId: 902 }),
+      },
+    )
+    expect(request).toHaveBeenNthCalledWith(
+      2,
+      '/admin/catalog/beads/2001/visuals',
+    )
+    expect(request).toHaveBeenNthCalledWith(
+      3,
+      '/admin/catalog/beads/2001/visuals/31/publish',
+      { method: 'POST' },
+    )
+    expect(request).toHaveBeenNthCalledWith(
+      4,
+      '/admin/catalog/beads/2001/visuals/17/rollback',
+      { method: 'POST' },
+    )
   })
 })
