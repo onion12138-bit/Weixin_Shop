@@ -196,11 +196,17 @@ Page({
   layoutPoints: [] as BeadLayoutPoint[],
   canvasNode: null as CanvasNode | null,
   canvasImages: {} as Record<string, CanvasImage | 'loading' | 'error'>,
+  editorActive: false,
+  editorGeneration: 0,
   dragFromIndex: -1,
   dragToIndex: -1,
   pendingAiRecommendationRaw: null as unknown,
 
   onLoad(options: Record<string, string>) {
+    this.editorActive = true
+    this.editorGeneration += 1
+    this.canvasNode = null
+    this.canvasImages = {}
     if (options.source === 'ai') {
       try {
         this.pendingAiRecommendationRaw = wx.getStorageSync(
@@ -227,6 +233,13 @@ Page({
       }
     }
     void this.bootstrap(options)
+  },
+
+  onUnload() {
+    this.editorActive = false
+    this.editorGeneration += 1
+    this.canvasNode = null
+    this.canvasImages = {}
   },
 
   async bootstrap(options: Record<string, string>) {
@@ -414,14 +427,20 @@ Page({
     }
   }) {
     const skuId = Number(event.currentTarget.dataset.id || 0)
+    const initiatingKey = String(
+      event.currentTarget.dataset.visualKey || '',
+    )
+    let matched = false
     const catalog = this.data.catalog.map((item) => {
       if (item.id !== skuId) return item
+      if (initiatingKey !== trayVisualKey(item)) return item
+      matched = true
       const coverFallback = item.trayImageUrl !== item.coverImageUrl
         ? item.coverImageUrl
         : ''
       return { ...item, trayImageUrl: coverFallback }
     })
-    this.setData({ catalog })
+    if (matched) this.setData({ catalog })
   },
 
   addCatalogBead(event: WechatMiniprogram.TouchEvent) {
@@ -784,9 +803,21 @@ Page({
   },
 
   drawBracelet() {
-    wx.createSelectorQuery()
+    if (!this.editorActive) return
+    const initiatingGeneration = this.editorGeneration
+    const query = wx.createSelectorQuery() as WechatMiniprogram.SelectorQuery & {
+      in?(component: object): WechatMiniprogram.SelectorQuery
+    }
+    const scopedQuery = query.in ? query.in(this) : query
+    scopedQuery
       .select('#bracelet-canvas')
       .fields({ node: true, size: true }, (result) => {
+        if (
+          !this.editorActive
+          || initiatingGeneration !== this.editorGeneration
+        ) {
+          return
+        }
         const canvasResult = result as {
           node?: CanvasNode
           width?: number
@@ -806,6 +837,9 @@ Page({
             colorHex: catalogMap[point.skuId]?.colorHex,
           }))
           return
+        }
+        if (this.canvasNode && this.canvasNode !== canvas) {
+          this.canvasImages = {}
         }
         this.canvasNode = canvas
         const dpr = wx.getSystemInfoSync().pixelRatio || 1
@@ -867,12 +901,27 @@ Page({
       if (cached === 'loading') return null
       if (cached === 'error') continue
       const image = canvas.createImage()
+      const initiatingGeneration = this.editorGeneration
       this.canvasImages[cacheKey] = 'loading'
       image.onload = () => {
+        if (
+          !this.editorActive
+          || initiatingGeneration !== this.editorGeneration
+          || canvas !== this.canvasNode
+        ) {
+          return
+        }
         this.canvasImages[cacheKey] = image
         this.drawBracelet()
       }
       image.onerror = () => {
+        if (
+          !this.editorActive
+          || initiatingGeneration !== this.editorGeneration
+          || canvas !== this.canvasNode
+        ) {
+          return
+        }
         this.canvasImages[cacheKey] = 'error'
         this.drawBracelet()
       }
@@ -980,6 +1029,13 @@ function visualImageFields(bead: {
     coverImageUrl: bead.coverUrl || '',
     visualVersion: bead.diyVisual?.version || 0,
   }
+}
+
+function trayVisualKey(item: Pick<
+  CatalogItem,
+  'trayImageUrl' | 'visualVersion'
+>): string {
+  return `${item.visualVersion}:${item.trayImageUrl}`
 }
 
 function toBraceletDrawingContext(

@@ -143,6 +143,9 @@ describe('DIY published visual integration', () => {
       coverImageUrl: 'https://shop.test/cover.png',
       visualVersion: 3,
     }
+    page.editorActive = true
+    page.editorGeneration = 1
+    page.canvasNode = canvas
 
     expect(page.resolveCanvasImage(canvas, item)).toBeNull()
     expect(Object.keys(page.canvasImages)).toContain(
@@ -158,21 +161,144 @@ describe('DIY published visual integration', () => {
     expect(canvas.createImage).toHaveBeenCalledTimes(2)
   })
 
+  it('scopes selector queries and ignores image callbacks from an old editor', () => {
+    const page = instantiate(loadEditorDefinition())
+    page.editorActive = true
+    page.editorGeneration = 7
+    const query: Record<string, jest.Mock> = {
+      exec: jest.fn(),
+      in: jest.fn(),
+      select: jest.fn(),
+    }
+    const node = {
+      fields: jest.fn(() => query),
+    }
+    query.in.mockReturnValue(query)
+    query.select.mockReturnValue(node)
+    ;(globalThis as any).wx = {
+      createSelectorQuery: jest.fn(() => query),
+    }
+
+    page.drawBracelet()
+
+    expect(query.in).toHaveBeenCalledWith(page)
+
+    const images: Array<{
+      src: string
+      onload: () => void
+      onerror: () => void
+    }> = []
+    const canvas = {
+      createImage: jest.fn(() => {
+        const image = {
+          src: '',
+          onload: () => undefined,
+          onerror: () => undefined,
+        }
+        images.push(image)
+        return image
+      }),
+    }
+    page.canvasNode = canvas
+    page.drawBracelet = jest.fn()
+    page.resolveCanvasImage(canvas, {
+      canvasImageUrl: 'https://shop.test/canvas.webp',
+      coverImageUrl: 'https://shop.test/cover.png',
+      visualVersion: 3,
+    })
+
+    page.onUnload()
+    images[0].onload()
+
+    expect(page.drawBracelet).not.toHaveBeenCalled()
+  })
+
+  it('ignores an image callback from a Canvas that is no longer current', () => {
+    const page = instantiate(loadEditorDefinition())
+    page.editorActive = true
+    page.editorGeneration = 3
+    page.drawBracelet = jest.fn()
+    const images: Array<{
+      src: string
+      onload: () => void
+      onerror: () => void
+    }> = []
+    const initiatingCanvas = {
+      createImage: jest.fn(() => {
+        const image = {
+          src: '',
+          onload: () => undefined,
+          onerror: () => undefined,
+        }
+        images.push(image)
+        return image
+      }),
+    }
+    page.canvasNode = initiatingCanvas
+    page.resolveCanvasImage(initiatingCanvas, {
+      canvasImageUrl: 'https://shop.test/canvas.webp',
+      coverImageUrl: 'https://shop.test/cover.png',
+      visualVersion: 3,
+    })
+
+    page.canvasNode = {}
+    images[0].onerror()
+
+    expect(page.drawBracelet).not.toHaveBeenCalled()
+  })
+
   it('falls the tray image through the cover and then the color placeholder', () => {
     const page = instantiate(loadEditorDefinition())
     page.data.catalog = [{
       id: 2001,
       trayImageUrl: 'https://shop.test/tray.webp',
       coverImageUrl: 'https://shop.test/cover.png',
+      visualVersion: 3,
     }]
-    const event = { currentTarget: { dataset: { id: 2001 } } }
+    const trayEvent = {
+      currentTarget: {
+        dataset: {
+          id: 2001,
+          visualKey: '3:https://shop.test/tray.webp',
+        },
+      },
+    }
 
-    page.onTrayImageError(event)
+    page.onTrayImageError(trayEvent)
     expect(page.data.catalog[0].trayImageUrl)
       .toBe('https://shop.test/cover.png')
 
-    page.onTrayImageError(event)
+    page.onTrayImageError({
+      currentTarget: {
+        dataset: {
+          id: 2001,
+          visualKey: '3:https://shop.test/cover.png',
+        },
+      },
+    })
     expect(page.data.catalog[0].trayImageUrl).toBe('')
+  })
+
+  it('ignores a tray error from a visual that has already changed', () => {
+    const page = instantiate(loadEditorDefinition())
+    page.data.catalog = [{
+      id: 2001,
+      trayImageUrl: 'https://shop.test/new-tray.webp',
+      coverImageUrl: 'https://shop.test/new-cover.png',
+      visualVersion: 4,
+    }]
+
+    page.onTrayImageError({
+      currentTarget: {
+        dataset: {
+          id: 2001,
+          visualKey: '3:https://shop.test/old-tray.webp',
+        },
+      },
+    })
+
+    expect(page.data.catalog[0].trayImageUrl)
+      .toBe('https://shop.test/new-tray.webp')
   })
 
   it('exports the same live canvas node used by the editor preview', async () => {

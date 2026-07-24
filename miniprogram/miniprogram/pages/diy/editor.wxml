@@ -81,6 +81,7 @@
           src="{{item.trayImageUrl}}"
           mode="aspectFit"
           data-id="{{item.id}}"
+          data-visual-key="{{item.visualVersion}}:{{item.trayImageUrl}}"
           binderror="onTrayImageError"
         />
         <view
