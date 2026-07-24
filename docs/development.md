@@ -83,3 +83,22 @@
 ```
 
 数据库集成测试必须连接真实 Docker MySQL，而不是 H2。
+
+## 9. 手工固定视图素材与冒烟
+
+准备两张透明 PNG 或 WebP：托盘图必须为 160×160，Canvas 合成图必须为 512×512。使用本地绝对
+路径，并由服务端在创建手工视觉版本时复核透明通道和尺寸；不要把素材路径、管理员令牌或真实素材
+提交进仓库。
+
+`scripts/diy-visual-smoke.sh` 默认不会由 `verify.sh` 调用。它必须显式提供一个在售 SKU 和两份素材：
+
+```bash
+DIY_VISUAL_SMOKE_SKU=BEAD-CRYSTAL-001 \
+DIY_VISUAL_TRAY_FILE=/absolute/path/tray.png \
+DIY_VISUAL_CANVAS_FILE=/absolute/path/canvas.png \
+bash scripts/diy-visual-smoke.sh
+```
+
+该命令会登录管理员、上传素材、创建并发布一个新视觉版本，然后读取公共散珠验证
+`diyVisual.version/trayUrl/canvasUrl`。它不删除数据，也不修改商品价格、库存或上下架字段，但发布会
+改变该 SKU 的当前展示图，故只能在明确选定的可接受 SKU 上运行。

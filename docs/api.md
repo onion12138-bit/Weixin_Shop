@@ -318,3 +318,39 @@ Provider 固定为 `DEEPSEEK`，Base URL 只接受 DeepSeek 官方 HTTPS origin�
 - DIY 真实 HTTP 冒烟：`./scripts/diy-smoke.sh`
 - 订单与履约真实 HTTP 冒烟：`./scripts/order-smoke.sh`
 - AI 推荐暂停/live 双路径冒烟：`./scripts/recommendation-smoke.sh`（live 必须显式提供 Key）
+
+## 11. 固定视图手工视觉版本
+
+管理端的散珠视觉接口均要求管理员 JWT，路径前缀为
+`/api/admin/catalog/beads/{skuId}/visuals`：
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/` | 读取版本历史和 `publishedVisualVersionId` |
+| POST | `/manual` | 以已上传的托盘、画布素材创建 `MANUAL/READY` 版本，成功返回 201 |
+| POST | `/{versionId}/publish` | 发布 `READY` 版本，并将该 SKU 的已发布指针切到该版本 |
+| POST | `/{versionId}/rollback` | 从历史版本创建并发布一个新的版本，不改写历史版本 |
+
+`POST /manual` 请求为：
+
+```json
+{"trayAssetId": 901, "canvasAssetId": 902}
+```
+
+手工素材仍先通过 `POST /api/admin/files` 上传。服务端验证托盘为 160×160、画布为
+512×512，且都是带透明通道的 PNG 或 WebP；不合格素材返回 422。
+
+公共 `GET /api/public/catalog/beads/{id}`（以及公共珠子列表）只在 SKU 指针指向
+`PUBLISHED` 版本时返回 `diyVisual`，形状如下；未发布时为 `null`：
+
+```json
+{
+  "diyVisual": {
+    "trayUrl": "/api/public/files/...",
+    "canvasUrl": "/api/public/files/...",
+    "version": 3
+  }
+}
+```
+
+`trayUrl` 与 `canvasUrl` 可独立读取；客户端分别降级到 `coverUrl`，再降级为颜色占位。

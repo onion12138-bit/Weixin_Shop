@@ -181,3 +181,24 @@ Flyway V6 固定创建 `id=1`、`provider=DEEPSEEK` 的单例行。字段包括�
 - 金额映射为 Java `BigDecimal`，前端仅负责显示，不作为最终计价权威。
 
 - 订单、支付记录和履约任务均有唯一业务约束，防止重复支付和重复建任务。
+
+## 9. V9 固定视图视觉版本
+
+### `bead_visual_version`
+
+每个 SKU 的视觉版本以 `(bead_sku_id, version_no)` 唯一，保存来源（当前为 `MANUAL`）、状态、
+托盘/画布 `asset_file` 外键、失败信息、创建人和发布审计字段。手工版本校验成功后为 `READY`，
+发布后为 `PUBLISHED`；历史发布版本会归档，回滚也创建新的版本而非修改历史行。
+
+`bead_sku.published_visual_version_id` 是当前公开版本的唯一指针，必须指向同一 SKU 的
+`PUBLISHED` 视觉版本。公共查询仅解析该指针，缺失时 `diyVisual` 为 `null`。
+
+### `diy_visual_config`
+
+单行全局配置（`id=1`）保存 `canvas_background_color`、`bracelet_shadow_opacity`、
+`bead_shadow_opacity`、`bead_overlap_ratio`、`config_version` 和更新审计。可写范围分别为：
+
+- 背景色：`#RRGGBB`；
+- 手串阴影：0.0～0.4；
+- 珠子阴影：0.0～0.5；
+- 珠子重叠：0.0～0.15。

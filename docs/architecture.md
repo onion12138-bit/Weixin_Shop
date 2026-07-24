@@ -125,3 +125,15 @@ Vue 3 管理后台 ── /api/admin/**  ┐
 - 推荐：当前只有 DeepSeek 适配器且无降级；若未来增加其他 Provider，仍须保持单次调用、服务端复核、隐私和失败语义。
 
 完整设计决策见 `docs/superpowers/specs/2026-07-04-diy-bracelet-mall-design.md` 和实施计划 `docs/superpowers/plans/2026-07-04-diy-editor-pricing.md`。
+
+## 10. 固定视图 2.5D 手工链路
+
+- `catalog.visual` 维护 SKU 的不可变视觉版本、素材校验、发布和回滚；V9 的已发布指针是公共
+  `diyVisual` 的唯一事实来源。
+- 管理后台只上传受校验的透明托盘/画布素材并显式发布；每次发布新版本，旧版本归档，既不修改
+  商品经营字段，也不删除历史素材。
+- 小程序 Canvas 以 `canvasUrl` 在圆环中合成珠子，使用 `trayUrl` 展示选择项；图片加载失败按每个
+  URL 独立降级为 `coverUrl`，最终使用颜色占位，因此缺失视觉版本不会阻断 DIY 编辑。
+- 公共目录与方案快照只读取已发布版本，并携带 `visualVersion` 作为图像缓存键；视觉配置由
+  `diy_visual_config` 提供背景色、手串阴影、珠子阴影和重叠比例。
+- Blender worker 是后续可替换的异步生成者，当前手工上传→发布路径完全不依赖 Blender。

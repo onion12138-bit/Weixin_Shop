@@ -12,6 +12,7 @@
 - DIY 真实 HTTP 冒烟：`./scripts/diy-smoke.sh`
 - 订单与履约真实 HTTP 冒烟：`./scripts/order-smoke.sh`
 - AI 推荐暂停/live 双路径 HTTP 冒烟：`./scripts/recommendation-smoke.sh`
+- 固定视图手工真实 HTTP 冒烟（显式变更数据）：`bash scripts/diy-visual-smoke.sh`，需提供下述三个环境变量。
 
 当前本机如果没有 pnpm 但 `node_modules` 已存在，可临时用 `npm test`、`npm run build`、`npm run typecheck` 执行同名脚本；提交前不得改动锁文件。
 
@@ -121,3 +122,20 @@
 5. 管理后台完成人工烟测：登录、商品维护、DIY 配置、订单履约、AI 配置保存和安全错误显示。
 6. 小程序完成人工烟测：访客身份、DIY/订单闭环、推荐暂停文案、可用时的咨询结果与一次性 handoff。
 7. 文档中的“已实现”和“已验证”必须分开，不能把模拟网关测试或暂停 smoke 写成真实 DeepSeek 成功。
+
+## 6. 固定视图手工冒烟
+
+默认 `./scripts/verify.sh` 仅运行 `diy-visual-smoke.sh` 的 `bash -n` 与端点/公开字段静态契约，
+不会访问后端、更不会创建视觉版本。真实冒烟必须由操作者显式选择运行中的 8081 后端、管理员凭证、
+一个可公开读取的 SKU，以及本地透明素材：
+
+```bash
+DIY_VISUAL_SMOKE_SKU=BEAD-CRYSTAL-001 \
+DIY_VISUAL_TRAY_FILE=/absolute/path/tray.png \
+DIY_VISUAL_CANVAS_FILE=/absolute/path/canvas.png \
+bash scripts/diy-visual-smoke.sh
+```
+
+脚本依次登录管理员、按 SKU 精确定位散珠、上传 160×160 托盘和 512×512 Canvas、创建并发布手工
+版本，最后通过公共散珠接口断言 `diyVisual.version`、`trayUrl`、`canvasUrl`。该操作有意保留上传
+素材和历史版本，且会改变 SKU 当前视觉版本；没有真实调用者素材与明确授权时不得运行。

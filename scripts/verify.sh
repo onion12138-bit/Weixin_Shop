@@ -29,7 +29,12 @@ echo "[2/4] 管理后台测试与构建"
 echo "[3/4] 小程序类型检查与逻辑测试"
 (cd "${project_root}/miniprogram" && run_node_script typecheck && run_node_script test)
 
-echo "[4/4] AI 推荐冒烟脚本静态契约"
+echo "[4/4] 冒烟脚本静态契约"
+bash -n "${project_root}/scripts/diy-visual-smoke.sh"
+grep -Fq '/visuals/manual' "${project_root}/scripts/diy-visual-smoke.sh"
+grep -Fq '/publish' "${project_root}/scripts/diy-visual-smoke.sh"
+grep -Fq 'diyVisual' "${project_root}/scripts/diy-visual-smoke.sh"
+
 bash -n "${project_root}/scripts/recommendation-smoke.sh"
 bash "${project_root}/scripts/recommendation-smoke.test.sh"
 grep -Fq 'DEEPSEEK_API_KEY' "${project_root}/scripts/recommendation-smoke.sh"
