@@ -8,9 +8,15 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.web.servlet.MockMvc;
+
+import java.math.BigDecimal;
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -102,6 +108,9 @@ class DiyConfigurationControllerTest extends MySqlIntegrationTest {
 
     @Autowired
     private JwtService jwtService;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Test
     void shouldReturnPublicConfigurationForCustomer() throws Exception {
@@ -230,6 +239,60 @@ class DiyConfigurationControllerTest extends MySqlIntegrationTest {
                                 }
                                 """))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void shouldRejectVisualConfigWithOmittedFieldWithoutPersistingChanges()
+            throws Exception {
+        mockMvc.perform(put("/api/admin/diy/visual-config")
+                        .header("Authorization", "Bearer " + adminToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "canvasBackgroundColor":"#f8f3ef",
+                                  "braceletShadowOpacity":0.18,
+                                  "beadOverlapRatio":0.08
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+
+        assertPersistedVisualConfigIsUnchanged();
+    }
+
+    @Test
+    void shouldRejectVisualConfigWithExplicitNullWithoutPersistingChanges()
+            throws Exception {
+        mockMvc.perform(put("/api/admin/diy/visual-config")
+                        .header("Authorization", "Bearer " + adminToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "canvasBackgroundColor":"#f8f3ef",
+                                  "braceletShadowOpacity":0.18,
+                                  "beadShadowOpacity":null,
+                                  "beadOverlapRatio":0.08
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+
+        assertPersistedVisualConfigIsUnchanged();
+    }
+
+    private void assertPersistedVisualConfigIsUnchanged() {
+        Map<String, Object> visualConfig = jdbcTemplate.queryForMap("""
+                select canvas_background_color, bracelet_shadow_opacity,
+                    bead_shadow_opacity, bead_overlap_ratio, config_version
+                from diy_visual_config
+                where id = 1
+                """);
+        assertThat(visualConfig.get("canvas_background_color")).isEqualTo("#fffdfb");
+        assertThat(visualConfig.get("bracelet_shadow_opacity"))
+                .isEqualTo(new BigDecimal("0.160"));
+        assertThat(visualConfig.get("bead_shadow_opacity"))
+                .isEqualTo(new BigDecimal("0.200"));
+        assertThat(visualConfig.get("bead_overlap_ratio"))
+                .isEqualTo(new BigDecimal("0.060"));
+        assertThat(visualConfig.get("config_version")).isEqualTo(1L);
     }
 
     private String customerToken() throws Exception {
