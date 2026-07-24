@@ -29,6 +29,25 @@ public record BeadSkuSummary(
         BigDecimal diameterMm,
         BigDecimal salePrice,
         String coverUrl,
-        List<String> tags
+        List<String> tags,
+        DiyVisualView diyVisual
 ) {
+
+    public BeadSkuSummary(
+            Long id,
+            Long categoryId,
+            String skuCode,
+            String name,
+            String material,
+            String color,
+            BigDecimal diameterMm,
+            BigDecimal salePrice,
+            String coverUrl,
+            List<String> tags
+    ) {
+        this(
+                id, categoryId, skuCode, name, material, color, diameterMm,
+                salePrice, coverUrl, tags, null
+        );
+    }
 }

@@ -2,7 +2,9 @@ package com.diybracelet.mall.diy.application;
 
 import com.diybracelet.mall.catalog.domain.BeadSku;
 import com.diybracelet.mall.catalog.domain.CatalogStatus;
+import com.diybracelet.mall.catalog.api.dto.DiyVisualView;
 import com.diybracelet.mall.catalog.infrastructure.mapper.BeadSkuMapper;
+import com.diybracelet.mall.catalog.visual.query.PublishedBeadVisualQuery;
 import com.diybracelet.mall.diy.api.dto.DiySchemeResponse;
 import com.diybracelet.mall.diy.api.dto.SaveDiySchemeRequest;
 import com.diybracelet.mall.diy.domain.DiyDesignCommand;
@@ -52,6 +54,7 @@ public class DiySchemeService {
     private final DiySchemeMapper schemeMapper;
     private final BeadSkuMapper beadSkuMapper;
     private final AssetFileMapper assetFileMapper;
+    private final PublishedBeadVisualQuery publishedBeadVisualQuery;
     private final CustomerIdentityResolver identityResolver;
     private final DiyPricingService pricingService;
     private final ObjectMapper objectMapper;
@@ -60,6 +63,7 @@ public class DiySchemeService {
             DiySchemeMapper schemeMapper,
             BeadSkuMapper beadSkuMapper,
             AssetFileMapper assetFileMapper,
+            PublishedBeadVisualQuery publishedBeadVisualQuery,
             CustomerIdentityResolver identityResolver,
             DiyPricingService pricingService,
             ObjectMapper objectMapper
@@ -67,6 +71,7 @@ public class DiySchemeService {
         this.schemeMapper = schemeMapper;
         this.beadSkuMapper = beadSkuMapper;
         this.assetFileMapper = assetFileMapper;
+        this.publishedBeadVisualQuery = publishedBeadVisualQuery;
         this.identityResolver = identityResolver;
         this.pricingService = pricingService;
         this.objectMapper = objectMapper;
@@ -264,6 +269,7 @@ public class DiySchemeService {
         List<CatalogSnapshot> snapshots = parseSnapshots(
                 scheme.getCatalogSnapshotJson()
         );
+        Map<Long, DiyVisualView> diyVisuals = resolveDiyVisuals(snapshots);
         return new DiySchemeResponse(
                 scheme.getId(),
                 scheme.getName(),
@@ -273,7 +279,9 @@ public class DiySchemeService {
                 sequence,
                 sequence.size(),
                 evaluation.skuQuantities(),
-                snapshots.stream().map(this::toSnapshotView).toList(),
+                snapshots.stream()
+                        .map(snapshot -> toSnapshotView(snapshot, diyVisuals))
+                        .toList(),
                 currentStatus,
                 evaluation.currentLengthMm(),
                 evaluation.targetLengthMm(),
@@ -390,8 +398,25 @@ public class DiySchemeService {
                 ));
     }
 
+    private Map<Long, DiyVisualView> resolveDiyVisuals(
+            List<CatalogSnapshot> snapshots
+    ) {
+        List<Long> skuIds = snapshots.stream()
+                .map(CatalogSnapshot::skuId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (skuIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        return publishedBeadVisualQuery.resolve(
+                beadSkuMapper.selectBatchIds(skuIds)
+        );
+    }
+
     private DiySchemeResponse.CatalogSnapshotView toSnapshotView(
-            CatalogSnapshot snapshot
+            CatalogSnapshot snapshot,
+            Map<Long, DiyVisualView> diyVisuals
     ) {
         return new DiySchemeResponse.CatalogSnapshotView(
                 snapshot.skuId(),
@@ -399,7 +424,8 @@ public class DiySchemeService {
                 snapshot.name(),
                 snapshot.diameterMm(),
                 snapshot.coverUrl(),
-                snapshot.status()
+                snapshot.status(),
+                diyVisuals.get(snapshot.skuId())
         );
     }
 

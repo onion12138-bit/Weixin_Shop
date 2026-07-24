@@ -1,6 +1,7 @@
 package com.diybracelet.mall.diy.api.dto;
 
 import com.diybracelet.mall.catalog.domain.CatalogStatus;
+import com.diybracelet.mall.catalog.api.dto.DiyVisualView;
 import com.diybracelet.mall.diy.domain.FitType;
 import com.diybracelet.mall.diy.domain.QuoteStatus;
 import com.diybracelet.mall.diy.domain.SizeStatus;
@@ -54,7 +55,19 @@ public record DiySchemeResponse(
             String name,
             BigDecimal diameterMm,
             String coverUrl,
-            CatalogStatus status
-    ) {
+            CatalogStatus status,
+            DiyVisualView diyVisual
+        ) {
+
+        public CatalogSnapshotView(
+                Long skuId,
+                String skuCode,
+                String name,
+                BigDecimal diameterMm,
+                String coverUrl,
+                CatalogStatus status
+        ) {
+            this(skuId, skuCode, name, diameterMm, coverUrl, status, null);
+        }
     }
 }

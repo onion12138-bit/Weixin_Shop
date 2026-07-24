@@ -15,6 +15,8 @@ import com.diybracelet.mall.catalog.infrastructure.mapper.BeadSkuMapper;
 import com.diybracelet.mall.catalog.infrastructure.mapper.CategoryMapper;
 import com.diybracelet.mall.catalog.infrastructure.mapper.PackageItemMapper;
 import com.diybracelet.mall.catalog.infrastructure.mapper.ProductPackageMapper;
+import com.diybracelet.mall.catalog.visual.query.PublishedBeadVisualQuery;
+import com.diybracelet.mall.catalog.api.dto.DiyVisualView;
 import com.diybracelet.mall.file.domain.AssetFile;
 import com.diybracelet.mall.file.infrastructure.AssetFileMapper;
 import com.diybracelet.mall.shared.error.BusinessException;
@@ -51,6 +53,7 @@ public class CatalogQueryService {
     private final ProductPackageMapper productPackageMapper;
     private final PackageItemMapper packageItemMapper;
     private final AssetFileMapper assetFileMapper;
+    private final PublishedBeadVisualQuery publishedBeadVisualQuery;
     private final ObjectMapper objectMapper;
 
     public CatalogQueryService(
@@ -59,6 +62,7 @@ public class CatalogQueryService {
             ProductPackageMapper productPackageMapper,
             PackageItemMapper packageItemMapper,
             AssetFileMapper assetFileMapper,
+            PublishedBeadVisualQuery publishedBeadVisualQuery,
             ObjectMapper objectMapper
     ) {
         this.categoryMapper = categoryMapper;
@@ -66,6 +70,7 @@ public class CatalogQueryService {
         this.productPackageMapper = productPackageMapper;
         this.packageItemMapper = packageItemMapper;
         this.assetFileMapper = assetFileMapper;
+        this.publishedBeadVisualQuery = publishedBeadVisualQuery;
         this.objectMapper = objectMapper;
     }
 
@@ -107,9 +112,11 @@ public class CatalogQueryService {
         Map<Long, String> coverUrls = loadCoverUrls(
                 beads.stream().map(BeadSku::getCoverAssetId).toList()
         );
+        Map<Long, DiyVisualView> diyVisuals = publishedBeadVisualQuery
+                .resolve(beads);
         List<BeadSkuSummary> items = beads
                 .stream()
-                .map(bead -> toBeadSummary(bead, coverUrls))
+                .map(bead -> toBeadSummary(bead, coverUrls, diyVisuals))
                 .toList();
         return new PageResponse<>(items, total, page, size);
     }
@@ -139,7 +146,8 @@ public class CatalogQueryService {
                 bead.getDiameterMm(),
                 bead.getSalePrice(),
                 coverUrl(bead.getCoverAssetId()),
-                parseTags(bead.getTagsJson())
+                parseTags(bead.getTagsJson()),
+                publishedBeadVisualQuery.resolve(List.of(bead)).get(bead.getId())
         );
     }
 
@@ -195,6 +203,9 @@ public class CatalogQueryService {
                 .map(BeadSku::getCoverAssetId)
                 .forEach(coverAssetIds::add);
         Map<Long, String> coverUrls = loadCoverUrls(coverAssetIds);
+        Map<Long, DiyVisualView> diyVisuals = publishedBeadVisualQuery.resolve(
+                new ArrayList<>(beadsById.values())
+        );
         List<PackageDetail.Item> items = packageItems.stream()
                 .map(item -> new PackageDetail.Item(
                         item.getId(),
@@ -203,7 +214,8 @@ public class CatalogQueryService {
                         item.getSortOrder(),
                         toBeadSummary(
                                 requireBead(beadsById, item),
-                                coverUrls
+                                coverUrls,
+                                diyVisuals
                         )
                 ))
                 .toList();
@@ -252,7 +264,8 @@ public class CatalogQueryService {
 
     private BeadSkuSummary toBeadSummary(
             BeadSku bead,
-            Map<Long, String> coverUrls
+            Map<Long, String> coverUrls,
+            Map<Long, DiyVisualView> diyVisuals
     ) {
         return new BeadSkuSummary(
                 bead.getId(),
@@ -264,7 +277,8 @@ public class CatalogQueryService {
                 bead.getDiameterMm(),
                 bead.getSalePrice(),
                 coverUrls.get(bead.getCoverAssetId()),
-                parseTags(bead.getTagsJson())
+                parseTags(bead.getTagsJson()),
+                diyVisuals.get(bead.getId())
         );
     }
 

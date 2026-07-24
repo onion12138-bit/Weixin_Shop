@@ -33,6 +33,7 @@ class PublicCatalogControllerTest extends MySqlIntegrationTest {
                 .andExpect(jsonPath("$.code").value("OK"))
                 .andExpect(jsonPath("$.data.items[0].skuCode").isNotEmpty())
                 .andExpect(jsonPath("$.data.items[0].costPrice").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].diyVisual").isEmpty())
                 .andExpect(jsonPath("$.data.total").isNumber())
                 .andExpect(jsonPath("$.data.page").value(1))
                 .andExpect(jsonPath("$.data.size").value(20));
