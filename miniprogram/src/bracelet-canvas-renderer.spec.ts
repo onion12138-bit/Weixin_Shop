@@ -9,38 +9,56 @@ import type { BeadLayoutPoint } from '../miniprogram/domain/diy-types'
 class RecordingContext implements BraceletDrawingContext {
   width = 200
   height = 200
-  fillStyle = ''
-  globalAlpha = 1
-  lineWidth = 1
-  strokeStyle = ''
+  fillStyle = 'sentinel-fill'
+  globalAlpha = 0.73
+  lineWidth = 7
+  strokeStyle = 'sentinel-stroke'
   operations: string[] = []
-  private scaleDepth = 0
-  private lastArcRadius = 0
+  private scaled = false
+  private readonly states: Array<{
+    fillStyle: string
+    globalAlpha: number
+    lineWidth: number
+    scaled: boolean
+    strokeStyle: string
+  }> = []
 
   save() {
-    this.scaleDepth += 1
+    this.states.push({
+      fillStyle: this.fillStyle,
+      globalAlpha: this.globalAlpha,
+      lineWidth: this.lineWidth,
+      scaled: this.scaled,
+      strokeStyle: this.strokeStyle,
+    })
   }
 
   restore() {
-    this.scaleDepth -= 1
+    const state = this.states.pop()
+    if (!state) throw new Error('restore without save')
+    this.fillStyle = state.fillStyle
+    this.globalAlpha = state.globalAlpha
+    this.lineWidth = state.lineWidth
+    this.scaled = state.scaled
+    this.strokeStyle = state.strokeStyle
   }
 
   translate() {}
 
-  scale() {}
+  scale() {
+    this.scaled = true
+  }
 
   beginPath() {}
 
-  arc(_x: number, _y: number, radius: number) {
-    this.lastArcRadius = radius
-  }
+  arc() {}
 
   fillRect() {
     this.operations.push('background')
   }
 
   fill() {
-    if (this.scaleDepth > 0) {
+    if (this.scaled) {
       this.operations.push('bracelet-shadow')
     } else if (this.globalAlpha < 1) {
       this.operations.push(`bead-shadow(${this.operations.filter((item) => item.startsWith('bead-shadow')).length})`)
@@ -98,5 +116,63 @@ describe('bracelet canvas renderer', () => {
       'bead-image(1)',
       'selection',
     ])
+  })
+
+  it('restores caller canvas state after a normal render', () => {
+    const ctx = new RecordingContext()
+    const plan = buildBraceletRenderPlan(
+      [{ index: 0, skuId: 101, x: 100, y: 100, radius: 10, angle: 0 }],
+      {
+        canvasBackgroundColor: '#fffdfb',
+        braceletShadowOpacity: 0.16,
+        beadShadowOpacity: 0.20,
+        beadOverlapRatio: 0.10,
+      },
+      -1,
+    )
+
+    renderBraceletCanvas(ctx, plan, () => null)
+
+    expect({
+      globalAlpha: ctx.globalAlpha,
+      fillStyle: ctx.fillStyle,
+      strokeStyle: ctx.strokeStyle,
+      lineWidth: ctx.lineWidth,
+    }).toEqual({
+      globalAlpha: 0.73,
+      fillStyle: 'sentinel-fill',
+      strokeStyle: 'sentinel-stroke',
+      lineWidth: 7,
+    })
+  })
+
+  it('restores caller canvas state when image resolution throws', () => {
+    const ctx = new RecordingContext()
+    const plan = buildBraceletRenderPlan(
+      [{ index: 0, skuId: 101, x: 100, y: 100, radius: 10, angle: 0 }],
+      {
+        canvasBackgroundColor: '#fffdfb',
+        braceletShadowOpacity: 0.16,
+        beadShadowOpacity: 0.20,
+        beadOverlapRatio: 0.10,
+      },
+      -1,
+    )
+    const failure = new Error('image lookup failed')
+
+    expect(() => renderBraceletCanvas(ctx, plan, () => {
+      throw failure
+    })).toThrow(failure)
+    expect({
+      globalAlpha: ctx.globalAlpha,
+      fillStyle: ctx.fillStyle,
+      strokeStyle: ctx.strokeStyle,
+      lineWidth: ctx.lineWidth,
+    }).toEqual({
+      globalAlpha: 0.73,
+      fillStyle: 'sentinel-fill',
+      strokeStyle: 'sentinel-stroke',
+      lineWidth: 7,
+    })
   })
 })
