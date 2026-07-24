@@ -3,6 +3,8 @@ import {
   request,
   upload,
 } from './request'
+import type { BraceletVisualConfig } from '../domain/diy-types'
+import type { DiyVisual } from '../utils/catalog-view-model'
 
 export type FitType = 'SNUG' | 'STANDARD' | 'LOOSE'
 export type QuoteStatus = 'NOT_QUOTED' | 'VALID' | 'STALE' | 'INVALID'
@@ -35,6 +37,9 @@ export interface DiyConfiguration {
     sortOrder: number
     optionVersion: number
   }>
+  visualConfig: BraceletVisualConfig & {
+    configVersion: number
+  }
 }
 
 export interface DiyDesignPayload {
@@ -80,9 +85,11 @@ export interface DiySchemeResponse extends DiyQuoteResponse {
     skuId: number
     skuCode: string
     name: string
+    color: string | null
     diameterMm: number | null
     coverUrl: string | null
     status: string | null
+    diyVisual: DiyVisual | null
   }>
   quoteStatus: QuoteStatus
   previewAssetId: number | null
@@ -173,6 +180,13 @@ function normalizeScheme(scheme: DiySchemeResponse): DiySchemeResponse {
     catalogSnapshot: scheme.catalogSnapshot.map((item) => ({
       ...item,
       coverUrl: absolutePublicUrl(item.coverUrl),
+      diyVisual: item.diyVisual
+        ? {
+          ...item.diyVisual,
+          trayUrl: absolutePublicUrl(item.diyVisual.trayUrl),
+          canvasUrl: absolutePublicUrl(item.diyVisual.canvasUrl),
+        }
+        : null,
     })),
   }
 }

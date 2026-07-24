@@ -213,6 +213,11 @@
   box-shadow: 0 8rpx 18rpx rgba(87, 54, 66, .18);
 }
 
+.tray-bead-image {
+  display: block;
+  background: transparent;
+}
+
 .quote-issues {
   display: flex;
   flex-direction: column;

@@ -1,3 +1,9 @@
+export interface DiyVisual {
+  trayUrl: string | null
+  canvasUrl: string | null
+  version: number | null
+}
+
 export interface PublicBead {
   id: number
   skuCode: string
@@ -7,6 +13,7 @@ export interface PublicBead {
   diameterMm: number
   salePrice: number
   coverUrl: string | null
+  diyVisual: DiyVisual | null
   tags: string[]
 }
 

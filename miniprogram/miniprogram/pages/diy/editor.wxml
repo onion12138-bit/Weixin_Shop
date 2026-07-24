@@ -75,7 +75,19 @@
         data-id="{{item.id}}"
         bindtap="addCatalogBead"
       >
-        <view class="tray-bead" style="background: {{item.colorHex}};" />
+        <image
+          wx:if="{{item.trayImageUrl}}"
+          class="tray-bead tray-bead-image"
+          src="{{item.trayImageUrl}}"
+          mode="aspectFit"
+          data-id="{{item.id}}"
+          binderror="onTrayImageError"
+        />
+        <view
+          wx:else
+          class="tray-bead"
+          style="background: {{item.colorHex}};"
+        />
         <text>{{item.name}}</text>
       </button>
     </scroll-view>

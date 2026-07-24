@@ -50,10 +50,7 @@ export async function listBeads(
   )
   return {
     ...page,
-    items: page.items.map((item) => ({
-      ...item,
-      coverUrl: absolutePublicUrl(item.coverUrl),
-    })),
+    items: page.items.map(normalizePublicBead),
   }
 }
 
@@ -76,10 +73,7 @@ export async function listAllPublicBeads(): Promise<PublicBead[]> {
 
 export async function getBead(id: number): Promise<PublicBead> {
   const bead = await request<PublicBead>(`/public/catalog/beads/${id}`)
-  return {
-    ...bead,
-    coverUrl: absolutePublicUrl(bead.coverUrl),
-  }
+  return normalizePublicBead(bead)
 }
 
 export async function listPackages(
@@ -109,11 +103,22 @@ export async function getPackage(
     coverUrl: absolutePublicUrl(item.coverUrl),
     items: item.items.map((packageItem) => ({
       ...packageItem,
-      bead: {
-        ...packageItem.bead,
-        coverUrl: absolutePublicUrl(packageItem.bead.coverUrl),
-      },
+      bead: normalizePublicBead(packageItem.bead),
     })),
+  }
+}
+
+function normalizePublicBead(bead: PublicBead): PublicBead {
+  return {
+    ...bead,
+    coverUrl: absolutePublicUrl(bead.coverUrl),
+    diyVisual: bead.diyVisual
+      ? {
+        ...bead.diyVisual,
+        trayUrl: absolutePublicUrl(bead.diyVisual.trayUrl),
+        canvasUrl: absolutePublicUrl(bead.diyVisual.canvasUrl),
+      }
+      : null,
   }
 }
 

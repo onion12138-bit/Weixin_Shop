@@ -46,6 +46,20 @@ import {
   restorePackageSequence,
   type EditorSummary,
 } from '../../utils/diy-view-model'
+import {
+  resolveCanvasUrl,
+  resolveTrayUrl,
+} from '../../domain/diy-visual-fallback'
+import { buildBraceletRenderPlan } from '../../domain/bracelet-render-plan'
+import {
+  renderBraceletCanvas,
+  type BraceletDrawingContext,
+  type CanvasImageLike,
+} from '../../domain/bracelet-canvas-renderer'
+import type {
+  DiyVisual,
+  PublicBead,
+} from '../../utils/catalog-view-model'
 
 interface CatalogItem {
   id: number
@@ -54,7 +68,10 @@ interface CatalogItem {
   color: string
   diameterMm: number
   salePriceCents: number
-  imageUrl: string
+  trayImageUrl: string
+  canvasImageUrl: string
+  coverImageUrl: string
+  visualVersion: number
   colorHex: string
 }
 
@@ -96,7 +113,11 @@ interface CanvasImage {
 }
 
 interface CanvasRenderingContext {
-  clearRect(x: number, y: number, width: number, height: number): void
+  fillRect(x: number, y: number, width: number, height: number): void
+  save(): void
+  restore(): void
+  translate(x: number, y: number): void
+  scale(x: number, y: number): void
   beginPath(): void
   arc(
     x: number,
@@ -115,13 +136,10 @@ interface CanvasRenderingContext {
     width: number,
     height: number,
   ): void
-  scale(x: number, y: number): void
+  globalAlpha: number
   lineWidth: number
   strokeStyle: string
   fillStyle: string
-  font: string
-  textAlign: 'center' | 'left' | 'right'
-  textBaseline: 'middle' | 'top' | 'bottom'
 }
 
 const DRAFT_CACHE_KEY = 'diy_editor_draft'
@@ -340,11 +358,11 @@ Page({
       id: item.skuId,
       name: item.name,
       material: item.skuCode,
-      color: item.status || '方案珠',
+      color: item.color || '方案珠',
       diameterMm: item.diameterMm || 8,
       salePriceCents: 0,
-      imageUrl: item.coverUrl || '',
-      colorHex: colorFromText(item.name),
+      ...visualImageFields(item),
+      colorHex: colorFromText(item.color || item.name),
     })))
     return {
       schemeId: scheme.id,
@@ -388,6 +406,22 @@ Page({
         errorMessage: error instanceof Error ? error.message : '珠子加载失败',
       })
     }
+  },
+
+  onTrayImageError(event: {
+    currentTarget: {
+      dataset: Record<string, string | number | boolean | undefined>
+    }
+  }) {
+    const skuId = Number(event.currentTarget.dataset.id || 0)
+    const catalog = this.data.catalog.map((item) => {
+      if (item.id !== skuId) return item
+      const coverFallback = item.trayImageUrl !== item.coverImageUrl
+        ? item.coverImageUrl
+        : ''
+      return { ...item, trayImageUrl: coverFallback }
+    })
+    this.setData({ catalog })
   },
 
   addCatalogBead(event: WechatMiniprogram.TouchEvent) {
@@ -727,7 +761,6 @@ Page({
     diameterMm: number
     salePriceCents: number
     colorHex: string
-    imageUrl: string
     name: string
   }> {
     return Object.fromEntries(this.data.catalog.map((item) => [
@@ -736,7 +769,6 @@ Page({
         diameterMm: item.diameterMm,
         salePriceCents: item.salePriceCents,
         colorHex: item.colorHex,
-        imageUrl: item.imageUrl,
         name: item.name,
       },
     ]))
@@ -764,11 +796,15 @@ Page({
         const width = canvasResult.width || 300
         const height = canvasResult.height || 300
         if (!canvas) {
+          const catalogMap = this.catalogMap()
           this.layoutPoints = layoutBracelet(
             this.data.sequence,
-            this.catalogMap(),
+            catalogMap,
             { width, height },
-          )
+          ).map((point) => ({
+            ...point,
+            colorHex: catalogMap[point.skuId]?.colorHex,
+          }))
           return
         }
         this.canvasNode = canvas
@@ -777,11 +813,15 @@ Page({
         canvas.height = height * dpr
         const ctx = canvas.getContext('2d')
         ctx.scale(dpr, dpr)
+        const catalogMap = this.catalogMap()
         this.layoutPoints = layoutBracelet(
           this.data.sequence,
-          this.catalogMap(),
+          catalogMap,
           { width, height },
-        )
+        ).map((point) => ({
+          ...point,
+          colorHex: catalogMap[point.skuId]?.colorHex,
+        }))
         this.renderCanvas(ctx, canvas, width, height)
       })
       .exec()
@@ -793,66 +833,52 @@ Page({
     width: number,
     height: number,
   ) {
-    const catalogMap = this.catalogMap()
-    ctx.clearRect(0, 0, width, height)
-    ctx.beginPath()
-    ctx.arc(width / 2, height / 2, Math.min(width, height) * 0.34, 0, Math.PI * 2)
-    ctx.lineWidth = 2
-    ctx.strokeStyle = this.currentCord()?.colorHex || '#8f6775'
-    ctx.stroke()
-
-    for (const point of this.layoutPoints) {
-      const item = catalogMap[point.skuId]
-      const image = this.resolveCanvasImage(canvas, item?.imageUrl || '')
-      if (image) {
-        ctx.drawImage(
-          image,
-          point.x - point.radius,
-          point.y - point.radius,
-          point.radius * 2,
-          point.radius * 2,
-        )
-      } else {
-        ctx.beginPath()
-        ctx.arc(point.x, point.y, point.radius, 0, Math.PI * 2)
-        ctx.fillStyle = item?.colorHex || '#b8899a'
-        ctx.fill()
-      }
-      if (point.index === this.data.selectedIndex) {
-        ctx.beginPath()
-        ctx.arc(point.x, point.y, point.radius + 4, 0, Math.PI * 2)
-        ctx.lineWidth = 2
-        ctx.strokeStyle = '#7a4457'
-        ctx.stroke()
-      }
-    }
-
-    ctx.fillStyle = '#4a3941'
-    ctx.font = '14px sans-serif'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText(this.data.countText, width / 2, height / 2 - 10)
-    ctx.fillText(this.data.sizeText, width / 2, height / 2 + 12)
+    const visualConfig = this.config?.visualConfig
+    if (!visualConfig) return
+    const plan = buildBraceletRenderPlan(
+      this.layoutPoints,
+      visualConfig,
+      this.data.selectedIndex,
+    )
+    const drawingContext = toBraceletDrawingContext(ctx, width, height)
+    renderBraceletCanvas(drawingContext, plan, (point) => {
+      const item = this.data.catalog.find(
+        (catalogItem) => catalogItem.id === point.skuId,
+      )
+      return item ? this.resolveCanvasImage(canvas, item) : null
+    })
   },
 
   resolveCanvasImage(
     canvas: CanvasNode,
-    imageUrl: string,
+    item: Pick<
+      CatalogItem,
+      'canvasImageUrl' | 'coverImageUrl' | 'visualVersion'
+    >,
   ): CanvasImage | null {
-    if (!imageUrl || !canvas.createImage) return null
-    const cached = this.canvasImages[imageUrl]
-    if (cached && cached !== 'loading' && cached !== 'error') return cached
-    if (cached === 'loading' || cached === 'error') return null
-    const image = canvas.createImage()
-    this.canvasImages[imageUrl] = 'loading'
-    image.onload = () => {
-      this.canvasImages[imageUrl] = image
-      this.drawBracelet()
+    if (!canvas.createImage) return null
+    const imageUrls = Array.from(new Set(
+      [item.canvasImageUrl, item.coverImageUrl].filter(Boolean),
+    ))
+    for (const canvasImageUrl of imageUrls) {
+      const cacheKey = `${item.visualVersion}:${canvasImageUrl}`
+      const cached = this.canvasImages[cacheKey]
+      if (cached && cached !== 'loading' && cached !== 'error') return cached
+      if (cached === 'loading') return null
+      if (cached === 'error') continue
+      const image = canvas.createImage()
+      this.canvasImages[cacheKey] = 'loading'
+      image.onload = () => {
+        this.canvasImages[cacheKey] = image
+        this.drawBracelet()
+      }
+      image.onerror = () => {
+        this.canvasImages[cacheKey] = 'error'
+        this.drawBracelet()
+      }
+      image.src = canvasImageUrl
+      return null
     }
-    image.onerror = () => {
-      this.canvasImages[imageUrl] = 'error'
-    }
-    image.src = imageUrl
     return null
   },
 
@@ -925,15 +951,7 @@ function confirmResumeDraft(): Promise<boolean> {
   })
 }
 
-function toCatalogItem(bead: {
-  id: number
-  name: string
-  material: string
-  color: string
-  diameterMm: number
-  salePrice: number
-  coverUrl: string | null
-}): CatalogItem {
+function toCatalogItem(bead: PublicBead): CatalogItem {
   return {
     id: bead.id,
     name: bead.name,
@@ -941,8 +959,83 @@ function toCatalogItem(bead: {
     color: bead.color,
     diameterMm: bead.diameterMm,
     salePriceCents: yuanToCents(bead.salePrice),
-    imageUrl: bead.coverUrl || '',
+    ...visualImageFields(bead),
     colorHex: colorFromText(`${bead.material}${bead.color}${bead.name}`),
+  }
+}
+
+function visualImageFields(bead: {
+  coverUrl: string | null
+  diyVisual: DiyVisual | null
+}): Pick<
+  CatalogItem,
+  | 'trayImageUrl'
+  | 'canvasImageUrl'
+  | 'coverImageUrl'
+  | 'visualVersion'
+> {
+  return {
+    trayImageUrl: resolveTrayUrl(bead),
+    canvasImageUrl: resolveCanvasUrl(bead),
+    coverImageUrl: bead.coverUrl || '',
+    visualVersion: bead.diyVisual?.version || 0,
+  }
+}
+
+function toBraceletDrawingContext(
+  ctx: CanvasRenderingContext,
+  width: number,
+  height: number,
+): BraceletDrawingContext {
+  return {
+    width,
+    height,
+    get fillStyle() {
+      return ctx.fillStyle
+    },
+    set fillStyle(value: string) {
+      ctx.fillStyle = value
+    },
+    get globalAlpha() {
+      return ctx.globalAlpha
+    },
+    set globalAlpha(value: number) {
+      ctx.globalAlpha = value
+    },
+    get lineWidth() {
+      return ctx.lineWidth
+    },
+    set lineWidth(value: number) {
+      ctx.lineWidth = value
+    },
+    get strokeStyle() {
+      return ctx.strokeStyle
+    },
+    set strokeStyle(value: string) {
+      ctx.strokeStyle = value
+    },
+    save: () => ctx.save(),
+    restore: () => ctx.restore(),
+    translate: (x, y) => ctx.translate(x, y),
+    scale: (x, y) => ctx.scale(x, y),
+    beginPath: () => ctx.beginPath(),
+    arc: (x, y, radius, startAngle, endAngle) => (
+      ctx.arc(x, y, radius, startAngle, endAngle)
+    ),
+    fillRect: (x, y, rectWidth, rectHeight) => (
+      ctx.fillRect(x, y, rectWidth, rectHeight)
+    ),
+    fill: () => ctx.fill(),
+    stroke: () => ctx.stroke(),
+    drawImage: (image: CanvasImageLike, x, y, imageWidth, imageHeight) => (
+      ctx.drawImage(
+        image as CanvasImage,
+        x,
+        y,
+        imageWidth,
+        imageHeight,
+      )
+    ),
   }
 }
 

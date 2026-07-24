@@ -1,4 +1,16 @@
+jest.mock('../miniprogram/services/request', () => ({
+  absolutePublicUrl: jest.fn((url: string | null) => (
+    url ? `https://shop.test${url}` : url
+  )),
+  request: jest.fn(),
+}))
+
+import { listBeads } from '../miniprogram/services/catalog'
+import { getScheme } from '../miniprogram/services/diy'
+import { request } from '../miniprogram/services/request'
 import { toBeadCard } from './catalog-view-model'
+
+const requestMock = request as jest.MockedFunction<typeof request>
 
 /**
  * 商品接口数据必须经过纯函数转换后再进入页面，统一金额、规格和缺图展示。
@@ -15,6 +27,7 @@ describe('catalog view model', () => {
         diameterMm: 8,
         salePrice: 12.8,
         coverUrl: null,
+        diyVisual: null,
         tags: ['净化'],
       }),
     ).toEqual({
@@ -24,6 +37,96 @@ describe('catalog view model', () => {
       priceText: '¥12.80 / 颗',
       imageUrl: '/assets/images/bead-placeholder.svg',
       tags: ['净化'],
+    })
+  })
+
+  it('normalizes cover, tray and canvas URLs from the public catalog', async () => {
+    requestMock.mockResolvedValueOnce({
+      items: [{
+        id: 2001,
+        skuCode: 'BEAD-CRYSTAL-001',
+        name: '白水晶 8mm',
+        material: '水晶',
+        color: '透明',
+        diameterMm: 8,
+        salePrice: 12.8,
+        coverUrl: '/api/public/files/cover.png',
+        diyVisual: {
+          trayUrl: '/api/public/files/tray.webp',
+          canvasUrl: '/api/public/files/canvas.webp',
+          version: 3,
+        },
+        tags: ['净化'],
+      }],
+      total: 1,
+      page: 1,
+      size: 20,
+    })
+
+    const page = await listBeads({ page: 1, size: 20 })
+
+    expect(page.items[0]).toMatchObject({
+      coverUrl: 'https://shop.test/api/public/files/cover.png',
+      diyVisual: {
+        trayUrl: 'https://shop.test/api/public/files/tray.webp',
+        canvasUrl: 'https://shop.test/api/public/files/canvas.webp',
+        version: 3,
+      },
+    })
+  })
+
+  it('normalizes cover, tray and canvas URLs in scheme snapshots', async () => {
+    requestMock.mockResolvedValueOnce({
+      id: 91,
+      name: '快照方案',
+      wristCircumferenceMm: 160,
+      fitType: 'STANDARD',
+      cordOptionId: 6001,
+      sequence: [2001],
+      beadCount: 1,
+      catalogSnapshot: [{
+        skuId: 2001,
+        skuCode: 'BEAD-CRYSTAL-001',
+        name: '白水晶 8mm',
+        color: '透明',
+        diameterMm: 8,
+        coverUrl: '/api/public/files/cover.png',
+        status: 'ACTIVE',
+        diyVisual: {
+          trayUrl: '/api/public/files/tray.webp',
+          canvasUrl: '/api/public/files/canvas.webp',
+          version: 3,
+        },
+      }],
+      quoteStatus: 'NOT_QUOTED',
+      previewAssetId: null,
+      previewUrl: null,
+      version: 1,
+      createdAt: '2026-07-25T00:00:00',
+      updatedAt: '2026-07-25T00:00:00',
+      quotable: false,
+      issues: [],
+      skuQuantities: { 2001: 1 },
+      currentLengthMm: 8,
+      targetLengthMm: 170,
+      deviationMm: -162,
+      sizeStatus: 'TOO_SHORT',
+      beadAmount: 12.8,
+      craftFee: 0,
+      cordFee: 0,
+      totalAmount: 12.8,
+      quoteFingerprint: null,
+    })
+
+    const scheme = await getScheme(91)
+
+    expect(scheme.catalogSnapshot[0]).toMatchObject({
+      coverUrl: 'https://shop.test/api/public/files/cover.png',
+      diyVisual: {
+        trayUrl: 'https://shop.test/api/public/files/tray.webp',
+        canvasUrl: 'https://shop.test/api/public/files/canvas.webp',
+        version: 3,
+      },
     })
   })
 })
