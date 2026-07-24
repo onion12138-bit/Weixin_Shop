@@ -144,8 +144,14 @@ function boundedNumber(
   max: number,
   label: string,
 ): number {
+  if (value.trim() === '') {
+    throw new Error(`${label}不能为空`)
+  }
   const parsed = Number(value)
-  if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`${label}必须是有效数字`)
+  }
+  if (parsed < min || parsed > max) {
     throw new Error(`${label}必须在 ${min} 到 ${max} 之间`)
   }
   return parsed

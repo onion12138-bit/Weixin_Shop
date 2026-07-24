@@ -131,4 +131,15 @@ describe('DiySettingsView', () => {
     expect(wrapper.text()).toContain('珠子重叠比例必须在 0 到 0.15 之间')
     expect(saveDiyVisualConfig).not.toHaveBeenCalled()
   })
+
+  it('blocks a blank overlap ratio', async () => {
+    const wrapper = mount(DiySettingsView)
+    await flushPromises()
+
+    await wrapper.get('[data-test="bead-overlap-ratio"]').setValue('')
+    await wrapper.get('[data-test="save-visual-config"]').trigger('click')
+
+    expect(wrapper.text()).toContain('珠子重叠比例不能为空')
+    expect(saveDiyVisualConfig).not.toHaveBeenCalled()
+  })
 })
