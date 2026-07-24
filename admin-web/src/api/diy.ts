@@ -32,13 +32,27 @@ export interface CordOption {
   optionVersion: number
 }
 
+export interface DiyVisualConfig {
+  canvasBackgroundColor: string
+  braceletShadowOpacity: number
+  beadShadowOpacity: number
+  beadOverlapRatio: number
+  configVersion: number
+}
+
 export interface DiyConfiguration {
   rule: DiyRule
   craftFeeRules: CraftFeeRule[]
   cordOptions: CordOption[]
+  visualConfig: DiyVisualConfig
 }
 
 export type SaveDiyRulePayload = Omit<DiyRule, 'configVersion'>
+
+export type SaveDiyVisualConfigPayload = Omit<
+  DiyVisualConfig,
+  'configVersion'
+>
 
 export interface SaveCraftFeeRulePayload {
   minBeadCount: number
@@ -58,6 +72,14 @@ export const saveDiyRule = (
   payload: SaveDiyRulePayload,
 ): Promise<DiyConfiguration> =>
   request<DiyConfiguration>('/admin/diy/config', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+
+export const saveDiyVisualConfig = (
+  payload: SaveDiyVisualConfigPayload,
+): Promise<DiyConfiguration> =>
+  request<DiyConfiguration>('/admin/diy/visual-config', {
     method: 'PUT',
     body: JSON.stringify(payload),
   })

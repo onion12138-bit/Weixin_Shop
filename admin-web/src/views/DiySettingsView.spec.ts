@@ -5,18 +5,21 @@ import {
   getAdminDiyConfiguration,
   saveCraftFeeRules,
   saveDiyRule,
+  saveDiyVisualConfig,
 } from '../api/diy'
 
 vi.mock('../api/diy', () => ({
   getAdminDiyConfiguration: vi.fn(),
   saveDiyRule: vi.fn(),
   saveCraftFeeRules: vi.fn(),
+  saveDiyVisualConfig: vi.fn(),
   createCordOption: vi.fn(),
   updateCordOption: vi.fn(),
 }))
 
 describe('DiySettingsView', () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     vi.mocked(getAdminDiyConfiguration).mockResolvedValue({
       rule: {
         minWristMm: 120,
@@ -49,6 +52,13 @@ describe('DiySettingsView', () => {
           optionVersion: 1,
         },
       ],
+      visualConfig: {
+        canvasBackgroundColor: '#fffdfb',
+        braceletShadowOpacity: 0.16,
+        beadShadowOpacity: 0.2,
+        beadOverlapRatio: 0.06,
+        configVersion: 1,
+      },
     })
     vi.mocked(saveDiyRule).mockResolvedValue({
       rule: {
@@ -63,6 +73,13 @@ describe('DiySettingsView', () => {
       },
       craftFeeRules: [],
       cordOptions: [],
+      visualConfig: {
+        canvasBackgroundColor: '#fffdfb',
+        braceletShadowOpacity: 0.16,
+        beadShadowOpacity: 0.2,
+        beadOverlapRatio: 0.06,
+        configVersion: 1,
+      },
     })
   })
 
@@ -87,5 +104,31 @@ describe('DiySettingsView', () => {
 
     expect(wrapper.text()).toContain('工艺费区间不能重叠或留空档')
     expect(saveCraftFeeRules).not.toHaveBeenCalled()
+  })
+
+  it('saves global 2.5D visual configuration', async () => {
+    const wrapper = mount(DiySettingsView)
+    await flushPromises()
+
+    await wrapper.get('[data-test="bead-overlap-ratio"]').setValue('0.08')
+    await wrapper.get('[data-test="save-visual-config"]').trigger('click')
+
+    expect(saveDiyVisualConfig).toHaveBeenCalledWith({
+      canvasBackgroundColor: '#fffdfb',
+      braceletShadowOpacity: 0.16,
+      beadShadowOpacity: 0.2,
+      beadOverlapRatio: 0.08,
+    })
+  })
+
+  it('blocks an overlap ratio above 0.15', async () => {
+    const wrapper = mount(DiySettingsView)
+    await flushPromises()
+
+    await wrapper.get('[data-test="bead-overlap-ratio"]').setValue('0.16')
+    await wrapper.get('[data-test="save-visual-config"]').trigger('click')
+
+    expect(wrapper.text()).toContain('珠子重叠比例必须在 0 到 0.15 之间')
+    expect(saveDiyVisualConfig).not.toHaveBeenCalled()
   })
 })

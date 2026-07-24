@@ -6,14 +6,17 @@ import {
   getAdminDiyConfiguration,
   saveCraftFeeRules,
   saveDiyRule,
+  saveDiyVisualConfig,
   updateCordOption,
   type CordOption,
   type CraftFeeRule,
   type DiyRule,
+  type DiyVisualConfig,
   type OptionStatus,
   type SaveCordOptionPayload,
   type SaveCraftFeeRulePayload,
   type SaveDiyRulePayload,
+  type SaveDiyVisualConfigPayload,
 } from '../api/diy'
 
 type CraftFeeDraft = SaveCraftFeeRulePayload & {
@@ -25,6 +28,7 @@ const loading = ref(false)
 const savingRule = ref(false)
 const savingCraft = ref(false)
 const savingCord = ref(false)
+const savingVisual = ref(false)
 const errorMessage = ref('')
 const successMessage = ref('')
 const cordOptions = ref<CordOption[]>([])
@@ -39,6 +43,14 @@ const rule = reactive<DiyRule>({
   looseAllowanceMm: 15,
   toleranceMm: 4,
   maxBeadCount: 60,
+  configVersion: 0,
+})
+
+const visualConfig = reactive<DiyVisualConfig>({
+  canvasBackgroundColor: '#fffdfb',
+  braceletShadowOpacity: 0.16,
+  beadShadowOpacity: 0.2,
+  beadOverlapRatio: 0.06,
   configVersion: 0,
 })
 
@@ -83,8 +95,10 @@ function applyConfiguration(config: {
   rule: DiyRule
   craftFeeRules: CraftFeeRule[]
   cordOptions: CordOption[]
+  visualConfig: DiyVisualConfig
 }): void {
   Object.assign(rule, config.rule)
+  Object.assign(visualConfig, config.visualConfig)
   craftRules.value = config.craftFeeRules.map((item) => ({
     id: item.id,
     minBeadCount: item.minBeadCount,
@@ -124,6 +138,43 @@ function rulePayload(): SaveDiyRulePayload {
   }
 }
 
+function boundedNumber(
+  value: string,
+  min: number,
+  max: number,
+  label: string,
+): number {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+    throw new Error(`${label}必须在 ${min} 到 ${max} 之间`)
+  }
+  return parsed
+}
+
+function visualConfigPayload(): SaveDiyVisualConfigPayload {
+  return {
+    canvasBackgroundColor: visualConfig.canvasBackgroundColor,
+    braceletShadowOpacity: boundedNumber(
+      String(visualConfig.braceletShadowOpacity),
+      0,
+      0.4,
+      '手串阴影透明度',
+    ),
+    beadShadowOpacity: boundedNumber(
+      String(visualConfig.beadShadowOpacity),
+      0,
+      0.5,
+      '珠子阴影透明度',
+    ),
+    beadOverlapRatio: boundedNumber(
+      String(visualConfig.beadOverlapRatio),
+      0,
+      0.15,
+      '珠子重叠比例',
+    ),
+  }
+}
+
 async function saveRuleConfig(): Promise<void> {
   savingRule.value = true
   clearMessages()
@@ -135,6 +186,20 @@ async function saveRuleConfig(): Promise<void> {
     errorMessage.value = readableError(error)
   } finally {
     savingRule.value = false
+  }
+}
+
+async function saveVisualConfig(): Promise<void> {
+  savingVisual.value = true
+  clearMessages()
+  try {
+    await saveDiyVisualConfig(visualConfigPayload())
+    successMessage.value = '2.5D 拼串效果已保存'
+    await loadConfiguration()
+  } catch (error) {
+    errorMessage.value = readableError(error)
+  } finally {
+    savingVisual.value = false
   }
 }
 
@@ -333,6 +398,65 @@ onMounted(loadConfiguration)
           @click="saveRuleConfig"
         >
           {{ savingRule ? '保存中…' : '保存尺寸规则' }}
+        </button>
+      </footer>
+    </section>
+
+    <section class="settings-card">
+      <header>
+        <div>
+          <p class="section-kicker">2.5D VISUAL</p>
+          <h2>2.5D 拼串效果</h2>
+        </div>
+        <span class="version-pill">v{{ visualConfig.configVersion }}</span>
+      </header>
+
+      <div class="form-grid three-columns">
+        <label>
+          <span>画布背景色</span>
+          <input v-model="visualConfig.canvasBackgroundColor" type="color" />
+        </label>
+        <label>
+          <span>手串阴影透明度</span>
+          <input
+            v-model.number="visualConfig.braceletShadowOpacity"
+            type="number"
+            min="0"
+            max="0.4"
+            step="0.01"
+          />
+        </label>
+        <label>
+          <span>珠子阴影透明度</span>
+          <input
+            v-model.number="visualConfig.beadShadowOpacity"
+            type="number"
+            min="0"
+            max="0.5"
+            step="0.01"
+          />
+        </label>
+        <label>
+          <span>珠子重叠比例</span>
+          <input
+            v-model.number="visualConfig.beadOverlapRatio"
+            data-test="bead-overlap-ratio"
+            type="number"
+            min="0"
+            max="0.15"
+            step="0.01"
+          />
+        </label>
+      </div>
+
+      <footer>
+        <button
+          class="primary-button"
+          data-test="save-visual-config"
+          :disabled="savingVisual"
+          @click="saveVisualConfig"
+        >
+          {{ savingVisual ? '保存中…' : '保存 2.5D 效果' }}
         </button>
       </footer>
     </section>
