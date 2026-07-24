@@ -13,8 +13,16 @@ export interface BraceletCanvas {
 export interface BeadLayoutPoint {
   index: number
   skuId: number
+  colorHex?: string
   x: number
   y: number
   radius: number
   angle: number
+}
+
+export interface BraceletVisualConfig {
+  canvasBackgroundColor: string
+  braceletShadowOpacity: number
+  beadShadowOpacity: number
+  beadOverlapRatio: number
 }
