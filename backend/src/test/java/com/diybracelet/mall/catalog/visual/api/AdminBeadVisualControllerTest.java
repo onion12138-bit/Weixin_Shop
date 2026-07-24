@@ -9,6 +9,7 @@ import com.diybracelet.mall.file.domain.StoredFile;
 import com.diybracelet.mall.support.MySqlIntegrationTest;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -52,6 +53,16 @@ class AdminBeadVisualControllerTest extends MySqlIntegrationTest {
 
     @Autowired
     private InMemoryFileStorage fileStorage;
+
+    @BeforeEach
+    void clearVisualVersionsForTestSku() {
+        jdbcTemplate.update(
+                "update bead_sku set published_visual_version_id = null where id = 2001"
+        );
+        jdbcTemplate.update(
+                "delete from bead_visual_version where bead_sku_id = 2001"
+        );
+    }
 
     @Test
     void shouldCreateManualVersionAndPublishIt() throws Exception {
@@ -112,6 +123,81 @@ class AdminBeadVisualControllerTest extends MySqlIntegrationTest {
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("COMMON_CONFLICT"));
+    }
+
+    @Test
+    void shouldResolvePublishedTrayAndCanvasIndependentlyWhenSiblingInactive()
+            throws Exception {
+        String token = jwtService.issueAccessToken("admin");
+        insertActivePng(921L, "partial-tray.png", 160, 160);
+        insertActivePng(922L, "partial-canvas.png", 512, 512);
+        Long versionId = createManual(token, 921L, 922L);
+        publish(token, 2001L, versionId);
+
+        jdbcTemplate.update(
+                "update asset_file set status = 'INACTIVE' where id = 921"
+        );
+        mockMvc.perform(get("/api/public/catalog/beads/2001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.diyVisual.trayUrl").isEmpty())
+                .andExpect(jsonPath("$.data.diyVisual.canvasUrl")
+                        .value("/api/public/files/partial-canvas.png"));
+
+        jdbcTemplate.update(
+                "update asset_file set status = 'ACTIVE' where id = 921"
+        );
+        jdbcTemplate.update(
+                "update asset_file set status = 'INACTIVE' where id = 922"
+        );
+        mockMvc.perform(get("/api/public/catalog/beads/2001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.diyVisual.trayUrl")
+                        .value("/api/public/files/partial-tray.png"))
+                .andExpect(jsonPath("$.data.diyVisual.canvasUrl").isEmpty());
+    }
+
+    @Test
+    void shouldCreateAndPublishANewVersionWhenRollingBack() throws Exception {
+        String token = jwtService.issueAccessToken("admin");
+        insertActivePng(931L, "rollback-tray.png", 160, 160);
+        insertActivePng(932L, "rollback-canvas.png", 512, 512);
+        Long historicalId = createManual(token, 931L, 932L);
+        publish(token, 2001L, historicalId);
+
+        String response = mockMvc.perform(post("/api/admin/catalog/beads/2001/visuals/"
+                        + historicalId + "/rollback")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.sourceType").value("MANUAL"))
+                .andExpect(jsonPath("$.data.status").value("PUBLISHED"))
+                .andExpect(jsonPath("$.data.version").value(2))
+                .andReturn().getResponse().getContentAsString();
+        Long replacementId = objectMapper.readTree(response).path("data")
+                .path("id").asLong();
+
+        assertThat(replacementId).isNotEqualTo(historicalId);
+        assertThat(visualVersionMapper.selectById(historicalId).getStatus())
+                .isEqualTo(BeadVisualStatus.ARCHIVED);
+        assertThat(jdbcTemplate.queryForObject(
+                "select published_visual_version_id from bead_sku where id = 2001",
+                Long.class
+        )).isEqualTo(replacementId);
+    }
+
+    @Test
+    void shouldExposePublishedVisualForPackageBead() throws Exception {
+        String token = jwtService.issueAccessToken("admin");
+        insertActivePng(941L, "package-tray.png", 160, 160);
+        insertActivePng(942L, "package-canvas.png", 512, 512);
+        Long versionId = createManual(token, 941L, 942L);
+        publish(token, 2001L, versionId);
+
+        mockMvc.perform(get("/api/public/catalog/packages/3001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].bead.diyVisual.trayUrl")
+                        .value("/api/public/files/package-tray.png"))
+                .andExpect(jsonPath("$.data.items[0].bead.diyVisual.canvasUrl")
+                        .value("/api/public/files/package-canvas.png"));
     }
 
     private Long createManual(String token, Long trayAssetId, Long canvasAssetId) throws Exception {

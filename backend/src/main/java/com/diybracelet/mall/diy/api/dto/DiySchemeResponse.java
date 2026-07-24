@@ -53,6 +53,7 @@ public record DiySchemeResponse(
             Long skuId,
             String skuCode,
             String name,
+            String color,
             BigDecimal diameterMm,
             String coverUrl,
             CatalogStatus status,
@@ -65,9 +66,27 @@ public record DiySchemeResponse(
                 String name,
                 BigDecimal diameterMm,
                 String coverUrl,
+                CatalogStatus status,
+                DiyVisualView diyVisual
+        ) {
+            this(
+                    skuId, skuCode, name, null, diameterMm, coverUrl, status,
+                    diyVisual
+            );
+        }
+
+        public CatalogSnapshotView(
+                Long skuId,
+                String skuCode,
+                String name,
+                BigDecimal diameterMm,
+                String coverUrl,
                 CatalogStatus status
         ) {
-            this(skuId, skuCode, name, diameterMm, coverUrl, status, null);
+            this(
+                    skuId, skuCode, name, null, diameterMm, coverUrl, status,
+                    null
+            );
         }
     }
 }

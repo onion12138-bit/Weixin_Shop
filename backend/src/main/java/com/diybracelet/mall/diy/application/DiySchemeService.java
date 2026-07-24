@@ -95,9 +95,17 @@ public class DiySchemeService {
     @Transactional(readOnly = true)
     public List<DiySchemeResponse> list() {
         Long customerId = identityResolver.requireCustomerIdentityId();
-        return schemeMapper.selectOwnedList(customerId)
+        List<DiyScheme> schemes = schemeMapper.selectOwnedList(customerId);
+        Map<Long, DiyVisualView> diyVisuals = resolveDiyVisuals(
+                schemes.stream()
+                        .flatMap(scheme -> parseSnapshots(
+                                scheme.getCatalogSnapshotJson()
+                        ).stream())
+                        .toList()
+        );
+        return schemes
                 .stream()
-                .map(this::toResponse)
+                .map(scheme -> toResponse(scheme, diyVisuals))
                 .toList();
     }
 
@@ -258,6 +266,28 @@ public class DiySchemeService {
     }
 
     private DiySchemeResponse toResponse(DiyScheme scheme) {
+        List<CatalogSnapshot> snapshots = parseSnapshots(
+                scheme.getCatalogSnapshotJson()
+        );
+        return toResponse(scheme, snapshots, resolveDiyVisuals(snapshots));
+    }
+
+    private DiySchemeResponse toResponse(
+            DiyScheme scheme,
+            Map<Long, DiyVisualView> diyVisuals
+    ) {
+        return toResponse(
+                scheme,
+                parseSnapshots(scheme.getCatalogSnapshotJson()),
+                diyVisuals
+        );
+    }
+
+    private DiySchemeResponse toResponse(
+            DiyScheme scheme,
+            List<CatalogSnapshot> snapshots,
+            Map<Long, DiyVisualView> diyVisuals
+    ) {
         List<Long> sequence = parseSequence(scheme.getSequenceJson());
         DiyEvaluation evaluation = pricingService.evaluate(new DiyDesignCommand(
                 scheme.getWristCircumferenceMm(),
@@ -266,10 +296,6 @@ public class DiySchemeService {
                 sequence
         ));
         QuoteStatus currentStatus = currentQuoteStatus(scheme, evaluation);
-        List<CatalogSnapshot> snapshots = parseSnapshots(
-                scheme.getCatalogSnapshotJson()
-        );
-        Map<Long, DiyVisualView> diyVisuals = resolveDiyVisuals(snapshots);
         return new DiySchemeResponse(
                 scheme.getId(),
                 scheme.getName(),
@@ -365,6 +391,7 @@ public class DiySchemeService {
                         "SKU #" + skuId,
                         null,
                         null,
+                        null,
                         null
                 ));
             } else {
@@ -372,6 +399,7 @@ public class DiySchemeService {
                         bead.getId(),
                         bead.getSkuCode(),
                         bead.getName(),
+                        bead.getColor(),
                         bead.getDiameterMm(),
                         coverUrls.get(bead.getCoverAssetId()),
                         bead.getStatus()
@@ -422,6 +450,7 @@ public class DiySchemeService {
                 snapshot.skuId(),
                 snapshot.skuCode(),
                 snapshot.name(),
+                snapshot.color(),
                 snapshot.diameterMm(),
                 snapshot.coverUrl(),
                 snapshot.status(),
@@ -471,6 +500,7 @@ public class DiySchemeService {
             Long skuId,
             String skuCode,
             String name,
+            String color,
             BigDecimal diameterMm,
             String coverUrl,
             CatalogStatus status

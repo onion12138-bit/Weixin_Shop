@@ -17,6 +17,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -119,6 +121,8 @@ class AppDiySchemeControllerTest extends MySqlIntegrationTest {
                 .andExpect(jsonPath("$.data.sequence[12]").value(2002))
                 .andExpect(jsonPath("$.data.beadCount").value(21))
                 .andExpect(jsonPath("$.data.quoteStatus").value("VALID"))
+                .andExpect(jsonPath("$.data.catalogSnapshot[0].color")
+                        .value("透明"))
                 .andExpect(jsonPath("$.data.totalAmount").value(314.80));
 
         mockMvc.perform(put("/api/app/diy/schemes/{id}", schemeId)
@@ -214,12 +218,66 @@ class AppDiySchemeControllerTest extends MySqlIntegrationTest {
                 .andExpect(jsonPath("$.data.totalAmount").value(326.80));
     }
 
+    @Test
+    void shouldPersistColorAndExposePublishedVisualInSchemeSnapshot()
+            throws Exception {
+        insertPublishedVisualForWhiteCrystal();
+        String customerToken = customerToken(
+                "3f6f7816-0f1a-4aa0-870f-f34f9195a2ec"
+        );
+        JsonNode response = createScheme(
+                customerToken,
+                "带视觉的方案",
+                sequence(12, 9)
+        );
+
+        assertThat(response.path("catalogSnapshot").get(0).path("color")
+                .asText()).isEqualTo("透明");
+        assertThat(response.path("catalogSnapshot").get(0)
+                .path("diyVisual").path("trayUrl").asText())
+                .isEqualTo("/api/public/files/scheme-tray.png");
+        String persistedSnapshot = jdbcTemplate.queryForObject(
+                "select catalog_snapshot_json from diy_scheme where id = ?",
+                String.class,
+                response.path("id").asLong()
+        );
+        assertThat(objectMapper.readTree(persistedSnapshot).get(0)
+                .path("color").asText()).isEqualTo("透明");
+    }
+
+    private void insertPublishedVisualForWhiteCrystal() {
+        jdbcTemplate.update("""
+                insert into asset_file (
+                    id, storage_key, original_name, content_type,
+                    size_bytes, public_url, status
+                ) values
+                    (981, 'scheme-tray.png', 'scheme-tray.png', 'image/png',
+                     128, '/api/public/files/scheme-tray.png', 'ACTIVE'),
+                    (982, 'scheme-canvas.png', 'scheme-canvas.png', 'image/png',
+                     128, '/api/public/files/scheme-canvas.png', 'ACTIVE')
+                """);
+        jdbcTemplate.update("""
+                insert into bead_visual_version (
+                    bead_sku_id, version_no, source_type, status,
+                    tray_asset_id, canvas_asset_id, created_by
+                ) values (2001, 1, 'MANUAL', 'PUBLISHED', 981, 982, 'test')
+                """);
+        Long versionId = jdbcTemplate.queryForObject("""
+                select id from bead_visual_version
+                where bead_sku_id = 2001 and tray_asset_id = 981
+                """, Long.class);
+        jdbcTemplate.update(
+                "update bead_sku set published_visual_version_id = ? where id = 2001",
+                versionId
+        );
+    }
+
     private JsonNode createScheme(
             String customerToken,
             String name,
             List<Long> sequence
     ) throws Exception {
-        String responseBody = mockMvc.perform(post("/api/app/diy/schemes")
+        byte[] responseBody = mockMvc.perform(post("/api/app/diy/schemes")
                         .header("Authorization", "Bearer " + customerToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(payload(name, sequence, 0)))
@@ -230,7 +288,7 @@ class AppDiySchemeControllerTest extends MySqlIntegrationTest {
                 .andExpect(jsonPath("$.data.beadCount").value(21))
                 .andReturn()
                 .getResponse()
-                .getContentAsString();
+                .getContentAsByteArray();
         return objectMapper.readTree(responseBody).path("data");
     }
 

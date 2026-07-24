@@ -43,6 +43,18 @@ class VisualAssetValidatorTest {
                 .hasMessageContaining("500 KB");
     }
 
+    @Test
+    void shouldAcceptExtendedAlphaWebpAtRequiredDimensions() {
+        validator.validateTray(activeWebpAsset(webpExtended(160, 160)));
+        validator.validateCanvas(activeWebpAsset(webpExtended(512, 512)));
+    }
+
+    @Test
+    void shouldAcceptLosslessAlphaWebpAtRequiredDimensions() {
+        validator.validateTray(activeWebpAsset(webpLossless(160, 160)));
+        validator.validateCanvas(activeWebpAsset(webpLossless(512, 512)));
+    }
+
     private AssetFile activeAsset(
             int width,
             int height,
@@ -66,6 +78,15 @@ class VisualAssetValidatorTest {
         return asset;
     }
 
+    private AssetFile activeWebpAsset(byte[] content) {
+        String storageKey = "test-" + storage.size() + ".webp";
+        storage.put(storageKey, content);
+        AssetFile asset = activeAssetWithSize(content.length);
+        asset.setStorageKey(storageKey);
+        asset.setContentType("image/webp");
+        return asset;
+    }
+
     private byte[] png(int width, int height, boolean alpha) {
         ByteBuffer bytes = ByteBuffer.allocate(33).order(ByteOrder.BIG_ENDIAN);
         bytes.put(new byte[] {(byte) 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a});
@@ -80,6 +101,50 @@ class VisualAssetValidatorTest {
         bytes.put((byte) 0);
         bytes.putInt(0);
         return bytes.array();
+    }
+
+    private byte[] webpExtended(int width, int height) {
+        byte[] bytes = webpHeader("VP8X", 10);
+        bytes[20] = 0x10;
+        put24LittleEndian(bytes, 24, width - 1);
+        put24LittleEndian(bytes, 27, height - 1);
+        return bytes;
+    }
+
+    private byte[] webpLossless(int width, int height) {
+        byte[] bytes = webpHeader("VP8L", 5);
+        int encodedWidth = width - 1;
+        int encodedHeight = height - 1;
+        bytes[20] = 0x2f;
+        bytes[21] = (byte) encodedWidth;
+        bytes[22] = (byte) ((encodedWidth >>> 8 & 0x3f)
+                | ((encodedHeight & 0x03) << 6));
+        bytes[23] = (byte) (encodedHeight >>> 2);
+        bytes[24] = (byte) (((encodedHeight >>> 10) & 0x0f) | 0x10);
+        return bytes;
+    }
+
+    private byte[] webpHeader(String chunkType, int chunkSize) {
+        byte[] bytes = new byte[20 + chunkSize];
+        bytes[0] = 'R';
+        bytes[1] = 'I';
+        bytes[2] = 'F';
+        bytes[3] = 'F';
+        bytes[8] = 'W';
+        bytes[9] = 'E';
+        bytes[10] = 'B';
+        bytes[11] = 'P';
+        for (int index = 0; index < 4; index++) {
+            bytes[12 + index] = (byte) chunkType.charAt(index);
+        }
+        bytes[16] = (byte) chunkSize;
+        return bytes;
+    }
+
+    private void put24LittleEndian(byte[] bytes, int offset, int value) {
+        bytes[offset] = (byte) value;
+        bytes[offset + 1] = (byte) (value >>> 8);
+        bytes[offset + 2] = (byte) (value >>> 16);
     }
 
     private static final class InMemoryFileStorage implements FileStorage {

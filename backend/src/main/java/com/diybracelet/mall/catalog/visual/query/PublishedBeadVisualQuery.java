@@ -95,10 +95,10 @@ public class PublishedBeadVisualQuery {
             }
             AssetFile tray = assets.get(version.getTrayAssetId());
             AssetFile canvas = assets.get(version.getCanvasAssetId());
-            if (tray != null && canvas != null) {
+            if (tray != null || canvas != null) {
                 resolved.put(bead.getId(), new DiyVisualView(
-                        tray.getPublicUrl(),
-                        canvas.getPublicUrl(),
+                        tray == null ? null : tray.getPublicUrl(),
+                        canvas == null ? null : canvas.getPublicUrl(),
                         version.getVersionNo()
                 ));
             }
