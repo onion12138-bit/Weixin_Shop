@@ -12,11 +12,13 @@ import java.util.List;
  * @param rule 尺寸规则
  * @param craftFeeRules 启用工艺费区间
  * @param cordOptions 启用绳材选项
+ * @param visualConfig 固定视图渲染配置
  */
 public record DiyConfigurationView(
         Rule rule,
         List<CraftFee> craftFeeRules,
-        List<Cord> cordOptions
+        List<Cord> cordOptions,
+        VisualConfig visualConfig
 ) {
 
     /**
@@ -56,6 +58,16 @@ public record DiyConfigurationView(
             String colorHex,
             BigDecimal extraFee,
             Long optionVersion
+    ) {
+    }
+
+    /** 固定视图渲染配置。 */
+    public record VisualConfig(
+            String canvasBackgroundColor,
+            BigDecimal braceletShadowOpacity,
+            BigDecimal beadShadowOpacity,
+            BigDecimal beadOverlapRatio,
+            Long configVersion
     ) {
     }
 }

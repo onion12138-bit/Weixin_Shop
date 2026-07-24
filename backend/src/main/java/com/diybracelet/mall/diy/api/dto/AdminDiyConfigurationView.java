@@ -13,11 +13,13 @@ import java.util.List;
  * @param rule 尺寸规则
  * @param craftFeeRules 工艺费区间
  * @param cordOptions 全量绳材选项
+ * @param visualConfig 固定视图渲染配置
  */
 public record AdminDiyConfigurationView(
         DiyConfigurationView.Rule rule,
         List<DiyConfigurationView.CraftFee> craftFeeRules,
-        List<Cord> cordOptions
+        List<Cord> cordOptions,
+        DiyConfigurationView.VisualConfig visualConfig
 ) {
 
     /**

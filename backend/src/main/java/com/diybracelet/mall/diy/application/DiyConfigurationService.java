@@ -6,13 +6,16 @@ import com.diybracelet.mall.diy.api.dto.DiyConfigurationView;
 import com.diybracelet.mall.diy.api.dto.SaveCordOptionRequest;
 import com.diybracelet.mall.diy.api.dto.SaveCraftFeeRulesRequest;
 import com.diybracelet.mall.diy.api.dto.SaveDiyRuleConfigRequest;
+import com.diybracelet.mall.diy.api.dto.SaveDiyVisualConfigRequest;
 import com.diybracelet.mall.diy.domain.CordOption;
 import com.diybracelet.mall.diy.domain.CraftFeeRule;
 import com.diybracelet.mall.diy.domain.DiyRuleConfig;
+import com.diybracelet.mall.diy.domain.DiyVisualConfig;
 import com.diybracelet.mall.diy.domain.OptionStatus;
 import com.diybracelet.mall.diy.infrastructure.mapper.CordOptionMapper;
 import com.diybracelet.mall.diy.infrastructure.mapper.CraftFeeRuleMapper;
 import com.diybracelet.mall.diy.infrastructure.mapper.DiyRuleConfigMapper;
+import com.diybracelet.mall.diy.infrastructure.mapper.DiyVisualConfigMapper;
 import com.diybracelet.mall.shared.error.BusinessException;
 import com.diybracelet.mall.shared.error.ErrorCode;
 import org.springframework.stereotype.Service;
@@ -32,19 +35,23 @@ import java.util.List;
 public class DiyConfigurationService {
 
     private static final long SINGLETON_RULE_ID = 1L;
+    private static final long SINGLETON_VISUAL_CONFIG_ID = 1L;
 
     private final DiyRuleConfigMapper ruleConfigMapper;
     private final CraftFeeRuleMapper craftFeeRuleMapper;
     private final CordOptionMapper cordOptionMapper;
+    private final DiyVisualConfigMapper visualConfigMapper;
 
     public DiyConfigurationService(
             DiyRuleConfigMapper ruleConfigMapper,
             CraftFeeRuleMapper craftFeeRuleMapper,
-            CordOptionMapper cordOptionMapper
+            CordOptionMapper cordOptionMapper,
+            DiyVisualConfigMapper visualConfigMapper
     ) {
         this.ruleConfigMapper = ruleConfigMapper;
         this.craftFeeRuleMapper = craftFeeRuleMapper;
         this.cordOptionMapper = cordOptionMapper;
+        this.visualConfigMapper = visualConfigMapper;
     }
 
     /**
@@ -56,7 +63,7 @@ public class DiyConfigurationService {
         DiyRuleConfig rule = requireRuleConfig();
         List<CraftFeeRule> craftFeeRules = enabledCraftFeeRules();
         List<CordOption> cordOptions = enabledCordOptions();
-        return toPublicView(rule, craftFeeRules, cordOptions);
+        return toPublicView(rule, craftFeeRules, cordOptions, requireVisualConfig());
     }
 
     /**
@@ -68,7 +75,7 @@ public class DiyConfigurationService {
         DiyRuleConfig rule = requireRuleConfig();
         List<CraftFeeRule> craftFeeRules = enabledCraftFeeRules();
         List<CordOption> cordOptions = allCordOptions();
-        return toAdminView(rule, craftFeeRules, cordOptions);
+        return toAdminView(rule, craftFeeRules, cordOptions, requireVisualConfig());
     }
 
     /**
@@ -96,6 +103,23 @@ public class DiyConfigurationService {
         current.setConfigVersion(current.getConfigVersion() + 1);
         ruleConfigMapper.updateById(current);
         return getPublicConfiguration();
+    }
+
+    /** 保存固定视图渲染配置并递增配置版本。 */
+    @Transactional
+    public AdminDiyConfigurationView saveVisualConfig(
+            SaveDiyVisualConfigRequest request,
+            String actor
+    ) {
+        DiyVisualConfig current = requireVisualConfig();
+        current.setCanvasBackgroundColor(request.canvasBackgroundColor());
+        current.setBraceletShadowOpacity(request.braceletShadowOpacity());
+        current.setBeadShadowOpacity(request.beadShadowOpacity());
+        current.setBeadOverlapRatio(request.beadOverlapRatio());
+        current.setConfigVersion(current.getConfigVersion() + 1);
+        current.setUpdatedBy(actor);
+        visualConfigMapper.updateById(current);
+        return getAdminConfiguration();
     }
 
     /**
@@ -228,6 +252,19 @@ public class DiyConfigurationService {
         return ruleConfig;
     }
 
+    private DiyVisualConfig requireVisualConfig() {
+        DiyVisualConfig visualConfig = visualConfigMapper.selectById(
+                SINGLETON_VISUAL_CONFIG_ID
+        );
+        if (visualConfig == null) {
+            throw new BusinessException(
+                    ErrorCode.COMMON_INTERNAL_ERROR,
+                    "DIY 视图渲染配置缺失"
+            );
+        }
+        return visualConfig;
+    }
+
     private List<CraftFeeRule> enabledCraftFeeRules() {
         return craftFeeRuleMapper.selectList(
                 Wrappers.lambdaQuery(CraftFeeRule.class)
@@ -280,24 +317,28 @@ public class DiyConfigurationService {
     private DiyConfigurationView toPublicView(
             DiyRuleConfig rule,
             List<CraftFeeRule> craftFeeRules,
-            List<CordOption> cordOptions
+            List<CordOption> cordOptions,
+            DiyVisualConfig visualConfig
     ) {
         return new DiyConfigurationView(
                 toRuleView(rule),
                 craftFeeRules.stream().map(this::toCraftFeeView).toList(),
-                cordOptions.stream().map(this::toPublicCordView).toList()
+                cordOptions.stream().map(this::toPublicCordView).toList(),
+                toVisualConfigView(visualConfig)
         );
     }
 
     private AdminDiyConfigurationView toAdminView(
             DiyRuleConfig rule,
             List<CraftFeeRule> craftFeeRules,
-            List<CordOption> cordOptions
+            List<CordOption> cordOptions,
+            DiyVisualConfig visualConfig
     ) {
         return new AdminDiyConfigurationView(
                 toRuleView(rule),
                 craftFeeRules.stream().map(this::toCraftFeeView).toList(),
-                cordOptions.stream().map(this::toAdminCordView).toList()
+                cordOptions.stream().map(this::toAdminCordView).toList(),
+                toVisualConfigView(visualConfig)
         );
     }
 
@@ -311,6 +352,18 @@ public class DiyConfigurationService {
                 rule.getToleranceMm(),
                 rule.getMaxBeadCount(),
                 rule.getConfigVersion()
+        );
+    }
+
+    private DiyConfigurationView.VisualConfig toVisualConfigView(
+            DiyVisualConfig visualConfig
+    ) {
+        return new DiyConfigurationView.VisualConfig(
+                visualConfig.getCanvasBackgroundColor(),
+                visualConfig.getBraceletShadowOpacity(),
+                visualConfig.getBeadShadowOpacity(),
+                visualConfig.getBeadOverlapRatio(),
+                visualConfig.getConfigVersion()
         );
     }
 

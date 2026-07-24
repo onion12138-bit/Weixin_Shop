@@ -40,6 +40,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "delete from diy_scheme",
         "delete from craft_fee_rule",
         "delete from cord_option",
+        "delete from diy_visual_config",
         "delete from diy_rule_config",
         """
         insert into diy_rule_config (
@@ -79,6 +80,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
             (6001, 'ELASTIC-CLEAR', '透明弹力绳', '#E8E4DC', 0.00, 'ENABLED', 10, 1),
             (6002, 'ELASTIC-BLACK', '黑色弹力绳', '#272523', 0.00, 'ENABLED', 20, 1),
             (6003, 'ELASTIC-BROWN', '棕色弹力绳', '#72513C', 0.00, 'ENABLED', 30, 1);
+        """,
+        """
+        insert into diy_visual_config (
+            id,
+            canvas_background_color,
+            bracelet_shadow_opacity,
+            bead_shadow_opacity,
+            bead_overlap_ratio,
+            config_version
+        ) values (1, '#fffdfb', 0.160, 0.200, 0.060, 1);
         """
 })
 class DiyConfigurationControllerTest extends MySqlIntegrationTest {
@@ -100,6 +111,9 @@ class DiyConfigurationControllerTest extends MySqlIntegrationTest {
                 .andExpect(jsonPath("$.code").value("OK"))
                 .andExpect(jsonPath("$.data.rule.maxBeadCount").value(60))
                 .andExpect(jsonPath("$.data.rule.configVersion").value(1))
+                .andExpect(jsonPath("$.data.visualConfig.canvasBackgroundColor")
+                        .value("#fffdfb"))
+                .andExpect(jsonPath("$.data.visualConfig.configVersion").value(1))
                 .andExpect(jsonPath("$.data.craftFeeRules.length()").value(1))
                 .andExpect(jsonPath("$.data.cordOptions.length()").value(3))
                 .andExpect(jsonPath("$.data.cordOptions[0].status")
@@ -181,6 +195,41 @@ class DiyConfigurationControllerTest extends MySqlIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.rule.toleranceMm").value(5.00))
                 .andExpect(jsonPath("$.data.rule.configVersion").value(2));
+    }
+
+    @Test
+    void shouldSaveVisualConfigAndIncrementVersion() throws Exception {
+        mockMvc.perform(put("/api/admin/diy/visual-config")
+                        .header("Authorization", "Bearer " + adminToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "canvasBackgroundColor":"#f8f3ef",
+                                  "braceletShadowOpacity":0.18,
+                                  "beadShadowOpacity":0.22,
+                                  "beadOverlapRatio":0.08
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.visualConfig.canvasBackgroundColor")
+                        .value("#f8f3ef"))
+                .andExpect(jsonPath("$.data.visualConfig.configVersion").value(2));
+    }
+
+    @Test
+    void shouldRejectVisualConfigOverlapRatioAboveMaximum() throws Exception {
+        mockMvc.perform(put("/api/admin/diy/visual-config")
+                        .header("Authorization", "Bearer " + adminToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "canvasBackgroundColor":"#f8f3ef",
+                                  "braceletShadowOpacity":0.18,
+                                  "beadShadowOpacity":0.22,
+                                  "beadOverlapRatio":0.16
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
     }
 
     private String customerToken() throws Exception {
