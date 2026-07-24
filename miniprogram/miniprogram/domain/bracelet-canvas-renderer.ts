@@ -74,7 +74,7 @@ export function renderBraceletCanvas(
     ctx.beginPath()
     ctx.arc(centerX, centerY, braceletRadius, 0, FULL_CIRCLE)
     ctx.lineWidth = 2
-    ctx.strokeStyle = '#8f6775'
+    ctx.strokeStyle = plan.cordColor
     ctx.stroke()
 
     for (const item of plan.beads) {

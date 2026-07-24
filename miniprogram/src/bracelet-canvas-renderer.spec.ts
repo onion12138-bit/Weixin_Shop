@@ -14,6 +14,7 @@ class RecordingContext implements BraceletDrawingContext {
   lineWidth = 7
   strokeStyle = 'sentinel-stroke'
   operations: string[] = []
+  strokeStyles: string[] = []
   private scaled = false
   private readonly states: Array<{
     fillStyle: string
@@ -69,6 +70,7 @@ class RecordingContext implements BraceletDrawingContext {
 
   stroke() {
     const hasCord = this.operations.includes('cord')
+    this.strokeStyles.push(this.strokeStyle)
     this.operations.push(hasCord ? 'selection' : 'cord')
   }
 
@@ -174,5 +176,24 @@ describe('bracelet canvas renderer', () => {
       strokeStyle: 'sentinel-stroke',
       lineWidth: 7,
     })
+  })
+
+  it('draws the cord with the selected cord color', () => {
+    const ctx = new RecordingContext()
+    const plan = buildBraceletRenderPlan(
+      [],
+      {
+        canvasBackgroundColor: '#fffdfb',
+        braceletShadowOpacity: 0.16,
+        beadShadowOpacity: 0.20,
+        beadOverlapRatio: 0.10,
+      },
+      -1,
+      { cordColor: '#234567' },
+    )
+
+    renderBraceletCanvas(ctx, plan, () => null)
+
+    expect(ctx.strokeStyles[0]).toBe('#234567')
   })
 })

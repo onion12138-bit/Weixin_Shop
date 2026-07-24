@@ -1395,17 +1395,22 @@ tbody tr:hover {
 }
 
 .visual-history-row {
-  display: flex;
+  display: grid;
   gap: 14px;
-  align-items: center;
-  justify-content: space-between;
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: white;
 }
 
-.visual-history-row > div:first-child {
+.visual-history-summary {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.visual-history-summary > div:first-child {
   min-width: 0;
 }
 
@@ -1423,6 +1428,11 @@ tbody tr:hover {
   display: flex;
   flex: 0 0 auto;
   gap: 8px;
+}
+
+.visual-history-preview {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
 }
 
 .visual-status-ready {

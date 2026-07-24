@@ -1,12 +1,17 @@
 package com.diybracelet.mall.diy.api;
 
 import com.diybracelet.mall.auth.infrastructure.JwtService;
+import com.diybracelet.mall.diy.api.dto.SaveDiyVisualConfigRequest;
+import com.diybracelet.mall.diy.application.DiyConfigurationService;
+import com.diybracelet.mall.diy.domain.DiyVisualConfig;
+import com.diybracelet.mall.diy.infrastructure.mapper.DiyVisualConfigMapper;
 import com.diybracelet.mall.support.MySqlIntegrationTest;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
@@ -15,8 +20,15 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.doAnswer;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -111,6 +123,12 @@ class DiyConfigurationControllerTest extends MySqlIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private DiyConfigurationService diyConfigurationService;
+
+    @SpyBean
+    private DiyVisualConfigMapper visualConfigMapper;
 
     @Test
     void shouldReturnPublicConfigurationForCustomer() throws Exception {
@@ -226,6 +244,55 @@ class DiyConfigurationControllerTest extends MySqlIntegrationTest {
     }
 
     @Test
+    void shouldIncrementVisualVersionForBothConcurrentSuccessfulSaves()
+            throws Exception {
+        CountDownLatch bothReadsFinished = new CountDownLatch(2);
+        AtomicInteger coordinatedReads = new AtomicInteger();
+        doAnswer(invocation -> {
+            DiyVisualConfig result = readVisualConfig();
+            if (coordinatedReads.incrementAndGet() <= 2) {
+                bothReadsFinished.countDown();
+                awaitBriefly(bothReadsFinished);
+            }
+            return result;
+        }).when(visualConfigMapper).selectById(1L);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        SaveDiyVisualConfigRequest request = new SaveDiyVisualConfigRequest(
+                "#f8f3ef",
+                new BigDecimal("0.18"),
+                new BigDecimal("0.22"),
+                new BigDecimal("0.08")
+        );
+        try {
+            Future<?> first = executor.submit(() -> {
+                ready.countDown();
+                await(start);
+                diyConfigurationService.saveVisualConfig(request, "admin-one");
+            });
+            Future<?> second = executor.submit(() -> {
+                ready.countDown();
+                await(start);
+                diyConfigurationService.saveVisualConfig(request, "admin-two");
+            });
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+
+            first.get(10, TimeUnit.SECONDS);
+            second.get(10, TimeUnit.SECONDS);
+
+            Long configVersion = jdbcTemplate.queryForObject(
+                    "select config_version from diy_visual_config where id = 1",
+                    Long.class
+            );
+            assertThat(configVersion).isEqualTo(3L);
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
     void shouldRejectVisualConfigOverlapRatioAboveMaximum() throws Exception {
         mockMvc.perform(put("/api/admin/diy/visual-config")
                         .header("Authorization", "Bearer " + adminToken())
@@ -293,6 +360,65 @@ class DiyConfigurationControllerTest extends MySqlIntegrationTest {
         assertThat(visualConfig.get("bead_overlap_ratio"))
                 .isEqualTo(new BigDecimal("0.060"));
         assertThat(visualConfig.get("config_version")).isEqualTo(1L);
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(5, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("并发保存未按时开始");
+            }
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("并发保存被中断", error);
+        }
+    }
+
+    private static void awaitBriefly(CountDownLatch latch) {
+        try {
+            latch.await(1, TimeUnit.SECONDS);
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("并发读取被中断", error);
+        }
+    }
+
+    private DiyVisualConfig readVisualConfig() {
+        return jdbcTemplate.queryForObject("""
+                select id, canvas_background_color,
+                    bracelet_shadow_opacity, bead_shadow_opacity,
+                    bead_overlap_ratio, config_version, updated_by,
+                    created_at, updated_at
+                from diy_visual_config
+                where id = 1
+                """, (resultSet, rowNumber) -> {
+            DiyVisualConfig config = new DiyVisualConfig();
+            config.setId(resultSet.getLong("id"));
+            config.setCanvasBackgroundColor(
+                    resultSet.getString("canvas_background_color")
+            );
+            config.setBraceletShadowOpacity(
+                    resultSet.getBigDecimal("bracelet_shadow_opacity")
+            );
+            config.setBeadShadowOpacity(
+                    resultSet.getBigDecimal("bead_shadow_opacity")
+            );
+            config.setBeadOverlapRatio(
+                    resultSet.getBigDecimal("bead_overlap_ratio")
+            );
+            config.setConfigVersion(resultSet.getLong("config_version"));
+            config.setUpdatedBy(resultSet.getString("updated_by"));
+            if (resultSet.getTimestamp("created_at") != null) {
+                config.setCreatedAt(
+                        resultSet.getTimestamp("created_at").toLocalDateTime()
+                );
+            }
+            if (resultSet.getTimestamp("updated_at") != null) {
+                config.setUpdatedAt(
+                        resultSet.getTimestamp("updated_at").toLocalDateTime()
+                );
+            }
+            return config;
+        });
     }
 
     private String customerToken() throws Exception {

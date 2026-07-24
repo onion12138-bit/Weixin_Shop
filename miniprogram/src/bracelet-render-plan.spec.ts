@@ -53,4 +53,20 @@ describe('bracelet render plan', () => {
 
     expect(plan.config.canvasBackgroundColor).toBe('#fffdfb')
   })
+
+  it('keeps the selected cord color in the render plan', () => {
+    const plan = buildBraceletRenderPlan(
+      [],
+      {
+        canvasBackgroundColor: '#fffdfb',
+        braceletShadowOpacity: 0.16,
+        beadShadowOpacity: 0.20,
+        beadOverlapRatio: 0.10,
+      },
+      -1,
+      { cordColor: '#234567' },
+    )
+
+    expect(plan.cordColor).toBe('#234567')
+  })
 })

@@ -121,6 +121,71 @@ describe('DiySettingsView', () => {
     })
   })
 
+  it('refreshes only visual settings and preserves unsaved sibling drafts', async () => {
+    vi.mocked(saveDiyVisualConfig).mockResolvedValue({
+      rule: {
+        minWristMm: 120,
+        maxWristMm: 250,
+        snugAllowanceMm: 5,
+        standardAllowanceMm: 10,
+        looseAllowanceMm: 15,
+        toleranceMm: 4,
+        maxBeadCount: 60,
+        configVersion: 1,
+      },
+      craftFeeRules: [
+        {
+          id: 5001,
+          minBeadCount: 1,
+          maxBeadCount: 60,
+          fee: 10,
+          ruleVersion: 1,
+        },
+      ],
+      cordOptions: [
+        {
+          id: 6001,
+          code: 'ELASTIC-CLEAR',
+          name: '透明弹力绳',
+          colorHex: '#E8E4DC',
+          extraFee: 0,
+          status: 'ENABLED',
+          sortOrder: 10,
+          optionVersion: 1,
+        },
+      ],
+      visualConfig: {
+        canvasBackgroundColor: '#f8f3ef',
+        braceletShadowOpacity: 0.18,
+        beadShadowOpacity: 0.22,
+        beadOverlapRatio: 0.08,
+        configVersion: 2,
+      },
+    })
+    const wrapper = mount(DiySettingsView)
+    await flushPromises()
+
+    const craftFee = wrapper.get<HTMLInputElement>(
+      '.editable-row:not(.table-head) input:nth-of-type(3)',
+    )
+    const cordName = wrapper.get<HTMLInputElement>(
+      '.cord-layout form input[required][maxlength="80"]',
+    )
+    await wrapper.get('[data-test="max-bead-count"]').setValue('55')
+    await craftFee.setValue('18')
+    await cordName.setValue('未保存的新绳材')
+    await wrapper.get('[data-test="bead-overlap-ratio"]').setValue('0.08')
+    await wrapper.get('[data-test="save-visual-config"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get<HTMLInputElement>('[data-test="max-bead-count"]')
+      .element.value).toBe('55')
+    expect(craftFee.element.value).toBe('18')
+    expect(cordName.element.value).toBe('未保存的新绳材')
+    expect(wrapper.findAll('.version-pill')[1].text()).toBe('v2')
+    expect(getAdminDiyConfiguration).toHaveBeenCalledTimes(1)
+  })
+
   it('blocks an overlap ratio above 0.15', async () => {
     const wrapper = mount(DiySettingsView)
     await flushPromises()

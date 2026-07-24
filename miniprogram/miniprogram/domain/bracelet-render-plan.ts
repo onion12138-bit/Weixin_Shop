@@ -13,13 +13,21 @@ export interface BeadRenderItem extends BeadLayoutPoint {
 
 export interface BraceletRenderPlan {
   config: BraceletVisualConfig
+  cordColor: string
   beads: BeadRenderItem[]
 }
+
+export interface BraceletRenderOptions {
+  cordColor?: string
+}
+
+const DEFAULT_CORD_COLOR = '#8f6775'
 
 export function buildBraceletRenderPlan(
   points: BeadLayoutPoint[],
   config: BraceletVisualConfig,
   selectedIndex: number,
+  options: BraceletRenderOptions = {},
 ): BraceletRenderPlan {
   const beads = points.map((point) => ({
     ...point,
@@ -30,5 +38,9 @@ export function buildBraceletRenderPlan(
 
   beads.sort((left, right) => left.depth - right.depth || left.index - right.index)
 
-  return { config: { ...config }, beads }
+  return {
+    config: { ...config },
+    cordColor: options.cordColor || DEFAULT_CORD_COLOR,
+    beads,
+  }
 }

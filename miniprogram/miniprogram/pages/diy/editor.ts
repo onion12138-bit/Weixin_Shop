@@ -112,6 +112,13 @@ interface CanvasImage {
   onerror: () => void
 }
 
+interface CanvasImageLoadRequest {
+  canvas: CanvasNode
+  cacheKey: string
+  imageUrl: string
+  generation: number
+}
+
 interface CanvasRenderingContext {
   fillRect(x: number, y: number, width: number, height: number): void
   save(): void
@@ -147,6 +154,7 @@ const PREVIEW_PENDING_KEY = 'diy_preview_pending'
 const DEFAULT_NAME = '我的手串'
 const FIT_TYPES: FitType[] = ['SNUG', 'STANDARD', 'LOOSE']
 const FIT_TYPE_LABELS = ['贴手', '标准', '宽松']
+const MAX_CONCURRENT_CANVAS_IMAGE_LOADS = 4
 
 Page({
   data: {
@@ -195,7 +203,17 @@ Page({
   config: null as DiyConfiguration | null,
   layoutPoints: [] as BeadLayoutPoint[],
   canvasNode: null as CanvasNode | null,
-  canvasImages: {} as Record<string, CanvasImage | 'loading' | 'error'>,
+  canvasContext: null as CanvasRenderingContext | null,
+  canvasLogicalWidth: 0,
+  canvasLogicalHeight: 0,
+  canvasQueryPending: false,
+  canvasImages: {} as Record<
+    string,
+    CanvasImage | 'queued' | 'loading' | 'error'
+  >,
+  canvasImageQueue: [] as CanvasImageLoadRequest[],
+  activeCanvasImageLoads: 0,
+  canvasRedrawScheduled: false,
   editorActive: false,
   editorGeneration: 0,
   dragFromIndex: -1,
@@ -206,7 +224,14 @@ Page({
     this.editorActive = true
     this.editorGeneration += 1
     this.canvasNode = null
+    this.canvasContext = null
+    this.canvasLogicalWidth = 0
+    this.canvasLogicalHeight = 0
+    this.canvasQueryPending = false
     this.canvasImages = {}
+    this.canvasImageQueue = []
+    this.activeCanvasImageLoads = 0
+    this.canvasRedrawScheduled = false
     if (options.source === 'ai') {
       try {
         this.pendingAiRecommendationRaw = wx.getStorageSync(
@@ -239,7 +264,14 @@ Page({
     this.editorActive = false
     this.editorGeneration += 1
     this.canvasNode = null
+    this.canvasContext = null
+    this.canvasLogicalWidth = 0
+    this.canvasLogicalHeight = 0
+    this.canvasQueryPending = false
     this.canvasImages = {}
+    this.canvasImageQueue = []
+    this.activeCanvasImageLoads = 0
+    this.canvasRedrawScheduled = false
   },
 
   async bootstrap(options: Record<string, string>) {
@@ -802,8 +834,40 @@ Page({
     return point?.index ?? -1
   },
 
+  refreshCanvasLayout(width: number, height: number) {
+    const catalogMap = this.catalogMap()
+    this.layoutPoints = layoutBracelet(
+      this.data.sequence,
+      catalogMap,
+      { width, height },
+    ).map((point) => ({
+      ...point,
+      colorHex: catalogMap[point.skuId]?.colorHex,
+    }))
+  },
+
   drawBracelet() {
     if (!this.editorActive) return
+    if (
+      this.canvasNode
+      && this.canvasContext
+      && this.canvasLogicalWidth > 0
+      && this.canvasLogicalHeight > 0
+    ) {
+      this.refreshCanvasLayout(
+        this.canvasLogicalWidth,
+        this.canvasLogicalHeight,
+      )
+      this.renderCanvas(
+        this.canvasContext,
+        this.canvasNode,
+        this.canvasLogicalWidth,
+        this.canvasLogicalHeight,
+      )
+      return
+    }
+    if (this.canvasQueryPending) return
+    this.canvasQueryPending = true
     const initiatingGeneration = this.editorGeneration
     const query = wx.createSelectorQuery() as WechatMiniprogram.SelectorQuery & {
       in?(component: object): WechatMiniprogram.SelectorQuery
@@ -818,6 +882,7 @@ Page({
         ) {
           return
         }
+        this.canvasQueryPending = false
         const canvasResult = result as {
           node?: CanvasNode
           width?: number
@@ -827,19 +892,13 @@ Page({
         const width = canvasResult.width || 300
         const height = canvasResult.height || 300
         if (!canvas) {
-          const catalogMap = this.catalogMap()
-          this.layoutPoints = layoutBracelet(
-            this.data.sequence,
-            catalogMap,
-            { width, height },
-          ).map((point) => ({
-            ...point,
-            colorHex: catalogMap[point.skuId]?.colorHex,
-          }))
+          this.refreshCanvasLayout(width, height)
           return
         }
         if (this.canvasNode && this.canvasNode !== canvas) {
           this.canvasImages = {}
+          this.canvasImageQueue = []
+          this.canvasRedrawScheduled = false
         }
         this.canvasNode = canvas
         const dpr = wx.getSystemInfoSync().pixelRatio || 1
@@ -847,15 +906,10 @@ Page({
         canvas.height = height * dpr
         const ctx = canvas.getContext('2d')
         ctx.scale(dpr, dpr)
-        const catalogMap = this.catalogMap()
-        this.layoutPoints = layoutBracelet(
-          this.data.sequence,
-          catalogMap,
-          { width, height },
-        ).map((point) => ({
-          ...point,
-          colorHex: catalogMap[point.skuId]?.colorHex,
-        }))
+        this.canvasContext = ctx
+        this.canvasLogicalWidth = width
+        this.canvasLogicalHeight = height
+        this.refreshCanvasLayout(width, height)
         this.renderCanvas(ctx, canvas, width, height)
       })
       .exec()
@@ -873,6 +927,7 @@ Page({
       this.layoutPoints,
       visualConfig,
       this.data.selectedIndex,
+      { cordColor: this.currentCord()?.colorHex },
     )
     const drawingContext = toBraceletDrawingContext(ctx, width, height)
     renderBraceletCanvas(drawingContext, plan, (point) => {
@@ -897,38 +952,93 @@ Page({
     for (const canvasImageUrl of imageUrls) {
       const cacheKey = `${item.visualVersion}:${canvasImageUrl}`
       const cached = this.canvasImages[cacheKey]
-      if (cached && cached !== 'loading' && cached !== 'error') return cached
-      if (cached === 'loading') return null
+      if (
+        cached
+        && cached !== 'queued'
+        && cached !== 'loading'
+        && cached !== 'error'
+      ) {
+        return cached
+      }
+      if (cached === 'queued' || cached === 'loading') return null
       if (cached === 'error') continue
-      const image = canvas.createImage()
-      const initiatingGeneration = this.editorGeneration
-      this.canvasImages[cacheKey] = 'loading'
-      image.onload = () => {
-        if (
-          !this.editorActive
-          || initiatingGeneration !== this.editorGeneration
-          || canvas !== this.canvasNode
-        ) {
-          return
-        }
-        this.canvasImages[cacheKey] = image
-        this.drawBracelet()
-      }
-      image.onerror = () => {
-        if (
-          !this.editorActive
-          || initiatingGeneration !== this.editorGeneration
-          || canvas !== this.canvasNode
-        ) {
-          return
-        }
-        this.canvasImages[cacheKey] = 'error'
-        this.drawBracelet()
-      }
-      image.src = canvasImageUrl
+      this.canvasImages[cacheKey] = 'queued'
+      this.canvasImageQueue.push({
+        canvas,
+        cacheKey,
+        imageUrl: canvasImageUrl,
+        generation: this.editorGeneration,
+      })
+      this.pumpCanvasImageQueue()
       return null
     }
     return null
+  },
+
+  pumpCanvasImageQueue() {
+    while (
+      this.activeCanvasImageLoads < MAX_CONCURRENT_CANVAS_IMAGE_LOADS
+      && this.canvasImageQueue.length > 0
+    ) {
+      const request = this.canvasImageQueue.shift()
+      if (!request) return
+      if (
+        !this.editorActive
+        || request.generation !== this.editorGeneration
+        || request.canvas !== this.canvasNode
+        || this.canvasImages[request.cacheKey] !== 'queued'
+        || !request.canvas.createImage
+      ) {
+        continue
+      }
+      const image = request.canvas.createImage()
+      this.activeCanvasImageLoads += 1
+      this.canvasImages[request.cacheKey] = 'loading'
+      image.onload = () => {
+        this.completeCanvasImageLoad(request, image)
+      }
+      image.onerror = () => {
+        this.completeCanvasImageLoad(request, null)
+      }
+      image.src = request.imageUrl
+    }
+  },
+
+  completeCanvasImageLoad(
+    request: CanvasImageLoadRequest,
+    image: CanvasImage | null,
+  ) {
+    if (request.generation !== this.editorGeneration) return
+    this.activeCanvasImageLoads = Math.max(
+      0,
+      this.activeCanvasImageLoads - 1,
+    )
+    if (
+      !this.editorActive
+      || request.canvas !== this.canvasNode
+    ) {
+      this.pumpCanvasImageQueue()
+      return
+    }
+    this.canvasImages[request.cacheKey] = image || 'error'
+    this.pumpCanvasImageQueue()
+    this.scheduleCanvasRedraw(request.canvas, request.generation)
+  },
+
+  scheduleCanvasRedraw(canvas: CanvasNode, generation: number) {
+    if (this.canvasRedrawScheduled) return
+    this.canvasRedrawScheduled = true
+    Promise.resolve().then(() => {
+      if (
+        !this.editorActive
+        || generation !== this.editorGeneration
+        || canvas !== this.canvasNode
+      ) {
+        return
+      }
+      this.canvasRedrawScheduled = false
+      this.drawBracelet()
+    })
   },
 
   async uploadPreviewSafely(schemeId: number) {

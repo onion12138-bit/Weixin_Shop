@@ -199,9 +199,9 @@ async function saveVisualConfig(): Promise<void> {
   savingVisual.value = true
   clearMessages()
   try {
-    await saveDiyVisualConfig(visualConfigPayload())
+    const saved = await saveDiyVisualConfig(visualConfigPayload())
+    Object.assign(visualConfig, saved.visualConfig)
     successMessage.value = '2.5D 拼串效果已保存'
-    await loadConfiguration()
   } catch (error) {
     errorMessage.value = readableError(error)
   } finally {

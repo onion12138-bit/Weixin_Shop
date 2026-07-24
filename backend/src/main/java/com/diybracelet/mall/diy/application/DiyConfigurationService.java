@@ -111,7 +111,7 @@ public class DiyConfigurationService {
             SaveDiyVisualConfigRequest request,
             String actor
     ) {
-        DiyVisualConfig current = requireVisualConfig();
+        DiyVisualConfig current = requireVisualConfigForUpdate();
         current.setCanvasBackgroundColor(request.canvasBackgroundColor());
         current.setBraceletShadowOpacity(request.braceletShadowOpacity());
         current.setBeadShadowOpacity(request.beadShadowOpacity());
@@ -254,6 +254,19 @@ public class DiyConfigurationService {
 
     private DiyVisualConfig requireVisualConfig() {
         DiyVisualConfig visualConfig = visualConfigMapper.selectById(
+                SINGLETON_VISUAL_CONFIG_ID
+        );
+        if (visualConfig == null) {
+            throw new BusinessException(
+                    ErrorCode.COMMON_INTERNAL_ERROR,
+                    "DIY 视图渲染配置缺失"
+            );
+        }
+        return visualConfig;
+    }
+
+    private DiyVisualConfig requireVisualConfigForUpdate() {
+        DiyVisualConfig visualConfig = visualConfigMapper.selectByIdForUpdate(
                 SINGLETON_VISUAL_CONFIG_ID
         );
         if (visualConfig == null) {

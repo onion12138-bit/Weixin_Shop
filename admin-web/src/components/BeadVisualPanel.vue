@@ -67,6 +67,10 @@ function imageUrl(url: string | null): string {
   return url ? resolveApiResourceUrl(url) : ''
 }
 
+function isReviewCandidate(status: BeadVisualStatus): boolean {
+  return status === 'READY' || status === 'ARCHIVED'
+}
+
 function setSelectedFile(kind: 'tray' | 'canvas', file: File | undefined): void {
   errorMessage.value = ''
   successMessage.value = ''
@@ -244,26 +248,53 @@ onMounted(loadVisuals)
         <p v-else-if="history.versions.length === 0" class="muted">暂无视觉版本。</p>
         <div v-else class="visual-history-list">
           <article v-for="version in history.versions" :key="version.id" class="visual-history-row">
-            <div>
-              <strong>V{{ version.version }}</strong>
-              <span class="status-pill" :class="`visual-status-${version.status.toLowerCase()}`">{{ statusLabel(version.status) }}</span>
-              <span class="visual-source">{{ version.sourceType === 'MANUAL' ? '手工上传' : '自动生成' }}</span>
-              <small>{{ version.createdBy }} · {{ version.createdAt }}</small>
-              <small v-if="version.failureMessage" class="visual-failure">{{ version.failureMessage }}</small>
+            <div class="visual-history-summary">
+              <div>
+                <strong>V{{ version.version }}</strong>
+                <span class="status-pill" :class="`visual-status-${version.status.toLowerCase()}`">{{ statusLabel(version.status) }}</span>
+                <span class="visual-source">{{ version.sourceType === 'MANUAL' ? '手工上传' : '自动生成' }}</span>
+                <small>{{ version.createdBy }} · {{ version.createdAt }}</small>
+                <small v-if="version.failureMessage" class="visual-failure">{{ version.failureMessage }}</small>
+              </div>
+              <div class="visual-row-actions">
+                <button
+                  class="text-button"
+                  :data-test="`publish-visual-${version.id}`"
+                  :disabled="version.status !== 'READY' || mutationBusy"
+                  @click="publish(version)"
+                >发布</button>
+                <button
+                  class="text-button"
+                  :data-test="`rollback-visual-${version.id}`"
+                  :disabled="version.status !== 'ARCHIVED' || mutationBusy"
+                  @click="rollback(version)"
+                >回滚</button>
+              </div>
             </div>
-            <div class="visual-row-actions">
-              <button
-                class="text-button"
-                :data-test="`publish-visual-${version.id}`"
-                :disabled="version.status !== 'READY' || mutationBusy"
-                @click="publish(version)"
-              >发布</button>
-              <button
-                class="text-button"
-                :data-test="`rollback-visual-${version.id}`"
-                :disabled="version.status !== 'ARCHIVED' || mutationBusy"
-                @click="rollback(version)"
-              >回滚</button>
+            <div
+              v-if="isReviewCandidate(version.status)"
+              class="visual-preview-grid visual-history-preview"
+            >
+              <figure>
+                <img
+                  v-if="version.trayUrl"
+                  :src="imageUrl(version.trayUrl)"
+                  :alt="`V${version.version} 托盘图`"
+                  :data-test="`history-tray-preview-${version.id}`"
+                />
+                <span v-else>暂无托盘图</span>
+                <figcaption>候选托盘图 · V{{ version.version }}</figcaption>
+              </figure>
+              <figure>
+                <img
+                  v-if="version.canvasUrl"
+                  :src="imageUrl(version.canvasUrl)"
+                  :alt="`V${version.version} 画布图`"
+                  :data-test="`history-canvas-preview-${version.id}`"
+                />
+                <span v-else>暂无画布图</span>
+                <figcaption>候选画布图 · V{{ version.version }}</figcaption>
+              </figure>
             </div>
           </article>
         </div>

@@ -136,6 +136,52 @@ describe('BeadVisualPanel', () => {
     expect(wrapper.emitted('published')).toHaveLength(1)
   })
 
+  it('previews the exact ready candidate with resolved tray and canvas URLs', async () => {
+    vi.mocked(listBeadVisuals).mockResolvedValue({
+      publishedVisualVersionId: null,
+      versions: [readyVersion],
+    })
+    const wrapper = mount(BeadVisualPanel, {
+      props: { beadId: 2001, beadName: '紫水晶' },
+    })
+    await flushPromises()
+
+    expect(
+      wrapper.get('[data-test="history-tray-preview-31"]').attributes('src'),
+    ).toBe('http://localhost:8081/api/public/files/tray.png')
+    expect(
+      wrapper.get('[data-test="history-canvas-preview-31"]').attributes('src'),
+    ).toBe('http://localhost:8081/api/public/files/canvas.png')
+  })
+
+  it('previews the exact archived rollback candidate with resolved URLs', async () => {
+    vi.mocked(listBeadVisuals).mockResolvedValue({
+      publishedVisualVersionId: 31,
+      versions: [
+        readyVersion,
+        {
+          ...readyVersion,
+          id: 17,
+          version: 1,
+          status: 'ARCHIVED',
+          trayUrl: '/api/public/files/archive-tray.webp',
+          canvasUrl: '/api/public/files/archive-canvas.webp',
+        },
+      ],
+    })
+    const wrapper = mount(BeadVisualPanel, {
+      props: { beadId: 2001, beadName: '紫水晶' },
+    })
+    await flushPromises()
+
+    expect(
+      wrapper.get('[data-test="history-tray-preview-17"]').attributes('src'),
+    ).toBe('http://localhost:8081/api/public/files/archive-tray.webp')
+    expect(
+      wrapper.get('[data-test="history-canvas-preview-17"]').attributes('src'),
+    ).toBe('http://localhost:8081/api/public/files/archive-canvas.webp')
+  })
+
   it('keeps a newer refresh when an older history request resolves last', async () => {
     const initialHistory = deferred<Awaited<ReturnType<typeof listBeadVisuals>>>()
     const refreshedHistory = deferred<Awaited<ReturnType<typeof listBeadVisuals>>>()
