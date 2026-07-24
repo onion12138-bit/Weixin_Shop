@@ -48,6 +48,17 @@ async function setFile(
   await input.trigger('change')
 }
 
+function deferred<T>(): {
+  promise: Promise<T>
+  resolve: (value: T) => void
+} {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise
+  })
+  return { promise, resolve }
+}
+
 describe('BeadVisualPanel', () => {
   const trayPng = new File(['tray'], 'tray.png', { type: 'image/png' })
   const canvasPng = new File(['canvas'], 'canvas.webp', { type: 'image/webp' })
@@ -123,6 +134,89 @@ describe('BeadVisualPanel', () => {
 
     expect(publishBeadVisual).toHaveBeenCalledWith(2001, 31)
     expect(wrapper.emitted('published')).toHaveLength(1)
+  })
+
+  it('keeps a newer refresh when an older history request resolves last', async () => {
+    const initialHistory = deferred<Awaited<ReturnType<typeof listBeadVisuals>>>()
+    const refreshedHistory = deferred<Awaited<ReturnType<typeof listBeadVisuals>>>()
+    vi.mocked(listBeadVisuals)
+      .mockReturnValueOnce(initialHistory.promise)
+      .mockReturnValueOnce(refreshedHistory.promise)
+    const wrapper = mount(BeadVisualPanel, {
+      props: { beadId: 2001, beadName: '紫水晶' },
+    })
+    await flushPromises()
+
+    await setFile(wrapper, '[data-test="tray-file"]', trayPng)
+    await setFile(wrapper, '[data-test="canvas-file"]', canvasPng)
+    await wrapper.get('[data-test="create-manual-visual"]').trigger('click')
+    await flushPromises()
+
+    refreshedHistory.resolve({
+      publishedVisualVersionId: null,
+      versions: [{ ...readyVersion, id: 42, version: 4 }],
+    })
+    await flushPromises()
+    initialHistory.resolve({
+      publishedVisualVersionId: null,
+      versions: [{ ...readyVersion, id: 41, version: 3, status: 'DRAFT' }],
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('V4')
+    expect(wrapper.text()).not.toContain('V3')
+  })
+
+  it('only offers rollback for archived historical versions', async () => {
+    vi.mocked(listBeadVisuals).mockResolvedValue({
+      publishedVisualVersionId: 31,
+      versions: [
+        { ...readyVersion, status: 'PUBLISHED' },
+        { ...readyVersion, id: 17, version: 1, status: 'ARCHIVED' },
+      ],
+    })
+    const wrapper = mount(BeadVisualPanel, {
+      props: { beadId: 2001, beadName: '紫水晶' },
+    })
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="rollback-visual-31"]').attributes('disabled'))
+      .toBeDefined()
+    expect(wrapper.get('[data-test="rollback-visual-17"]').attributes('disabled'))
+      .toBeUndefined()
+  })
+
+  it('blocks a second mutation while manual creation is unresolved', async () => {
+    const pendingUploads = deferred<{
+      id: number
+      storageKey: string
+      originalName: string
+      contentType: string
+      sizeBytes: number
+      publicUrl: string
+    }>()
+    vi.mocked(listBeadVisuals).mockResolvedValue({
+      publishedVisualVersionId: null,
+      versions: [readyVersion],
+    })
+    vi.mocked(uploadCatalogFile).mockReset()
+    vi.mocked(uploadCatalogFile).mockImplementation(() => pendingUploads.promise)
+    const wrapper = mount(BeadVisualPanel, {
+      props: { beadId: 2001, beadName: '紫水晶' },
+    })
+    await flushPromises()
+
+    await setFile(wrapper, '[data-test="tray-file"]', trayPng)
+    await setFile(wrapper, '[data-test="canvas-file"]', canvasPng)
+    await wrapper.get('[data-test="create-manual-visual"]').trigger('click')
+    await flushPromises()
+
+    const publishButton = wrapper.get('[data-test="publish-visual-31"]')
+    expect(publishButton.attributes('disabled')).toBeDefined()
+    await publishButton.trigger('click')
+    await flushPromises()
+
+    expect(publishBeadVisual).not.toHaveBeenCalled()
   })
 
   it('keeps selected files and exposes the API trace ID when creation fails', async () => {

@@ -34,8 +34,10 @@ const canvasFile = ref<File | null>(null)
 const loading = ref(false)
 const creating = ref(false)
 const actionVersionId = ref<number | null>(null)
+const mutationBusy = ref(false)
 const errorMessage = ref('')
 const successMessage = ref('')
+let latestVisualRequest = 0
 
 const publishedVisual = computed(() => history.value.versions.find(
   (version) => version.id === history.value.publishedVisualVersionId,
@@ -91,22 +93,30 @@ function handleFileChange(kind: 'tray' | 'canvas', event: Event): void {
 }
 
 async function loadVisuals(): Promise<void> {
+  const requestId = ++latestVisualRequest
   loading.value = true
   errorMessage.value = ''
   try {
-    history.value = await listBeadVisuals(props.beadId)
+    const nextHistory = await listBeadVisuals(props.beadId)
+    if (requestId !== latestVisualRequest) return
+    history.value = nextHistory
   } catch (error) {
+    if (requestId !== latestVisualRequest) return
     errorMessage.value = readableError(error)
   } finally {
-    loading.value = false
+    if (requestId === latestVisualRequest) {
+      loading.value = false
+    }
   }
 }
 
 async function createManual(): Promise<void> {
+  if (mutationBusy.value) return
   if (!trayFile.value || !canvasFile.value) {
     errorMessage.value = '请先选择托盘图和画布图'
     return
   }
+  mutationBusy.value = true
   creating.value = true
   errorMessage.value = ''
   successMessage.value = ''
@@ -125,10 +135,13 @@ async function createManual(): Promise<void> {
     errorMessage.value = readableError(error)
   } finally {
     creating.value = false
+    mutationBusy.value = false
   }
 }
 
 async function publish(version: BeadVisualVersion): Promise<void> {
+  if (mutationBusy.value || version.status !== 'READY') return
+  mutationBusy.value = true
   actionVersionId.value = version.id
   errorMessage.value = ''
   successMessage.value = ''
@@ -141,11 +154,14 @@ async function publish(version: BeadVisualVersion): Promise<void> {
     errorMessage.value = readableError(error)
   } finally {
     actionVersionId.value = null
+    mutationBusy.value = false
   }
 }
 
 async function rollback(version: BeadVisualVersion): Promise<void> {
+  if (mutationBusy.value || version.status !== 'ARCHIVED') return
   if (!window.confirm(`确定回滚到视觉版本 V${version.version} 吗？`)) return
+  mutationBusy.value = true
   actionVersionId.value = version.id
   errorMessage.value = ''
   successMessage.value = ''
@@ -158,6 +174,7 @@ async function rollback(version: BeadVisualVersion): Promise<void> {
     errorMessage.value = readableError(error)
   } finally {
     actionVersionId.value = null
+    mutationBusy.value = false
   }
 }
 
@@ -216,7 +233,7 @@ onMounted(loadVisuals)
         <button
           class="primary-button"
           data-test="create-manual-visual"
-          :disabled="creating || !trayFile || !canvasFile"
+          :disabled="mutationBusy || !trayFile || !canvasFile"
           @click="createManual"
         >{{ creating ? '正在创建…' : '创建手工效果' }}</button>
       </section>
@@ -238,13 +255,13 @@ onMounted(loadVisuals)
               <button
                 class="text-button"
                 :data-test="`publish-visual-${version.id}`"
-                :disabled="version.status !== 'READY' || actionVersionId !== null"
+                :disabled="version.status !== 'READY' || mutationBusy"
                 @click="publish(version)"
               >发布</button>
               <button
                 class="text-button"
                 :data-test="`rollback-visual-${version.id}`"
-                :disabled="!['PUBLISHED', 'ARCHIVED'].includes(version.status) || actionVersionId !== null"
+                :disabled="version.status !== 'ARCHIVED' || mutationBusy"
                 @click="rollback(version)"
               >回滚</button>
             </div>
