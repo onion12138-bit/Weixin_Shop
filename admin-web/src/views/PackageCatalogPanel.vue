@@ -22,11 +22,18 @@ const loading = ref(false)
 const saving = ref(false)
 const editorLoading = ref(false)
 const coverUploading = ref(false)
+const coverDropActive = ref(false)
 const showForm = ref(false)
 const editingId = ref<number | null>(null)
 const errorMessage = ref('')
 const successMessage = ref('')
 const coverPreviewUrl = ref('')
+const MAX_COVER_SIZE_BYTES = 5_000_000
+const ACCEPTED_COVER_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+])
 
 const filters = reactive({
   keyword: '',
@@ -166,10 +173,15 @@ function moveItem(index: number, offset: -1 | 1): void {
   form.items.splice(target, 0, current)
 }
 
-async function uploadCover(event: Event): Promise<void> {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file) return
+async function uploadCoverFile(file: File): Promise<void> {
+  if (!ACCEPTED_COVER_TYPES.has(file.type)) {
+    errorMessage.value = '封面图片仅支持 PNG、JPEG 或 WebP'
+    return
+  }
+  if (file.size > MAX_COVER_SIZE_BYTES) {
+    errorMessage.value = '封面图片不能超过 5 MB'
+    return
+  }
   coverUploading.value = true
   errorMessage.value = ''
   try {
@@ -178,9 +190,25 @@ async function uploadCover(event: Event): Promise<void> {
     coverPreviewUrl.value = resolveApiResourceUrl(uploaded.publicUrl)
   } catch (error) {
     errorMessage.value = readableError(error)
-    input.value = ''
   } finally {
     coverUploading.value = false
+  }
+}
+
+async function uploadCover(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (file) {
+    await uploadCoverFile(file)
+  }
+  input.value = ''
+}
+
+function handleCoverDrop(event: DragEvent): void {
+  coverDropActive.value = false
+  const file = event.dataTransfer?.files?.[0]
+  if (file) {
+    void uploadCoverFile(file)
   }
 }
 
@@ -442,13 +470,24 @@ onMounted(loadPackages)
             </div>
           </section>
 
-          <label class="cover-upload">
+          <label
+            class="cover-upload file-dropzone cover-dropzone"
+            :class="{ 'is-dragging': coverDropActive }"
+            data-test="package-cover-dropzone"
+            @dragenter.prevent="coverDropActive = true"
+            @dragover.prevent="coverDropActive = true"
+            @dragleave.prevent="coverDropActive = false"
+            @drop.prevent="handleCoverDrop"
+          >
             <span>封面图片（PNG / JPEG / WebP，最大 5 MB）</span>
             <input
               type="file"
               accept="image/png,image/jpeg,image/webp"
               @change="uploadCover"
             />
+            <small v-if="!coverUploading && !form.coverAssetId">
+              点击选择或将图片拖拽到这里上传
+            </small>
             <small v-if="coverUploading">正在上传封面…</small>
             <small v-else-if="form.coverAssetId">
               素材 #{{ form.coverAssetId }} 已选择

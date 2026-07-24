@@ -4,6 +4,7 @@ import com.diybracelet.mall.auth.infrastructure.JwtAuthenticationFilter;
 import com.diybracelet.mall.auth.infrastructure.JwtService;
 import com.diybracelet.mall.auth.infrastructure.SecurityConfiguration;
 import com.diybracelet.mall.catalog.application.AdminCatalogService;
+import com.diybracelet.mall.catalog.application.CatalogExcelImportService;
 import com.diybracelet.mall.catalog.domain.BeadSku;
 import com.diybracelet.mall.catalog.domain.CatalogStatus;
 import com.diybracelet.mall.identity.infrastructure.CustomerJwtAuthenticationFilter;
@@ -74,6 +75,9 @@ class AdminCatalogControllerWebTest {
 
     @MockBean
     private AdminCatalogService adminCatalogService;
+
+    @MockBean
+    private CatalogExcelImportService catalogExcelImportService;
 
     @Test
     void shouldCreateBeadForAuthenticatedAdmin() throws Exception {

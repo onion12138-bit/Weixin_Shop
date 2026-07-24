@@ -1,4 +1,4 @@
-import { request } from './http'
+import { request, requestBlob } from './http'
 
 export type CatalogStatus = 'DRAFT' | 'ON_SALE' | 'OFF_SALE'
 
@@ -111,6 +111,19 @@ export interface UploadedFile {
   contentType: string
   sizeBytes: number
   publicUrl: string
+}
+
+export interface CatalogImportError {
+  rowNumber: number
+  skuCode: string
+  message: string
+}
+
+export interface CatalogImportResult {
+  totalRows: number
+  successCount: number
+  failureCount: number
+  errors: CatalogImportError[]
 }
 
 export function listAdminCategories(): Promise<Category[]> {
@@ -243,6 +256,21 @@ export function uploadCatalogFile(file: File): Promise<UploadedFile> {
   const formData = new FormData()
   formData.append('file', file)
   return request<UploadedFile>('/admin/files', {
+    method: 'POST',
+    body: formData,
+  })
+}
+
+/** 下载包含当前分类下拉项和填写说明的 Excel 模板。 */
+export function downloadBeadImportTemplate(): Promise<Blob> {
+  return requestBlob('/admin/catalog/beads/import-template')
+}
+
+/** 批量导入商品；图片在导入后通过商品编辑页补充。 */
+export function importAdminBeads(file: File): Promise<CatalogImportResult> {
+  const formData = new FormData()
+  formData.append('file', file)
+  return request<CatalogImportResult>('/admin/catalog/beads/import', {
     method: 'POST',
     body: formData,
   })

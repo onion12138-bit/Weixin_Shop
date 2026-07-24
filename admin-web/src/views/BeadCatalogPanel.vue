@@ -5,11 +5,14 @@ import { generateBeadSku } from '../catalog/generate-sku'
 import {
   changeBeadStatus,
   createAdminBead,
+  downloadBeadImportTemplate,
+  importAdminBeads,
   listAdminBeads,
   listAdminCategories,
   updateAdminBead,
   uploadCatalogFile,
   type BeadSku,
+  type CatalogImportResult,
   type CatalogStatus,
   type Category,
   type CreateBeadSkuRequest,
@@ -22,12 +25,25 @@ const total = ref(0)
 const loading = ref(false)
 const saving = ref(false)
 const coverUploading = ref(false)
+const coverDropActive = ref(false)
 const errorMessage = ref('')
 const successMessage = ref('')
 const showCreateForm = ref(false)
+const showImportDialog = ref(false)
+const importFile = ref<File | null>(null)
+const importing = ref(false)
+const importDropActive = ref(false)
+const importErrorMessage = ref('')
+const importResult = ref<CatalogImportResult | null>(null)
 const editingBeadId = ref<number | null>(null)
 const enlargedCoverUrl = ref('')
 const MAX_COVER_SIZE_BYTES = 5_000_000
+const MAX_IMPORT_SIZE_BYTES = 10_000_000
+const ACCEPTED_COVER_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+])
 let latestCatalogRequest = 0
 
 const filters = reactive({
@@ -190,13 +206,13 @@ function openEditForm(bead: BeadSku): void {
   showCreateForm.value = true
 }
 
-async function uploadCover(event: Event): Promise<void> {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file) return
+async function uploadCoverFile(file: File): Promise<void> {
+  if (!ACCEPTED_COVER_TYPES.has(file.type)) {
+    errorMessage.value = '封面图片仅支持 PNG、JPEG 或 WebP'
+    return
+  }
   if (file.size > MAX_COVER_SIZE_BYTES) {
     errorMessage.value = '封面图片不能超过 5 MB'
-    input.value = ''
     return
   }
   coverUploading.value = true
@@ -207,9 +223,97 @@ async function uploadCover(event: Event): Promise<void> {
     coverPreviewUrl.value = resolveApiResourceUrl(uploaded.publicUrl)
   } catch (error) {
     errorMessage.value = readableError(error)
-    input.value = ''
   } finally {
     coverUploading.value = false
+  }
+}
+
+async function uploadCover(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (file) {
+    await uploadCoverFile(file)
+  }
+  input.value = ''
+}
+
+function handleCoverDrop(event: DragEvent): void {
+  coverDropActive.value = false
+  const file = event.dataTransfer?.files?.[0]
+  if (file) {
+    void uploadCoverFile(file)
+  }
+}
+
+function openImportDialog(): void {
+  importFile.value = null
+  importResult.value = null
+  importErrorMessage.value = ''
+  importDropActive.value = false
+  showImportDialog.value = true
+}
+
+function selectImportFile(file: File | undefined): void {
+  importResult.value = null
+  importErrorMessage.value = ''
+  if (!file) return
+  if (!file.name.toLowerCase().endsWith('.xlsx')) {
+    importFile.value = null
+    importErrorMessage.value = '仅支持 .xlsx 格式的 Excel 文件'
+    return
+  }
+  if (file.size > MAX_IMPORT_SIZE_BYTES) {
+    importFile.value = null
+    importErrorMessage.value = 'Excel 文件不能超过 10 MB'
+    return
+  }
+  importFile.value = file
+}
+
+function handleImportFileChange(event: Event): void {
+  const input = event.target as HTMLInputElement
+  selectImportFile(input.files?.[0])
+  input.value = ''
+}
+
+function handleImportDrop(event: DragEvent): void {
+  importDropActive.value = false
+  selectImportFile(event.dataTransfer?.files?.[0])
+}
+
+async function downloadImportTemplate(): Promise<void> {
+  importErrorMessage.value = ''
+  try {
+    const blob = await downloadBeadImportTemplate()
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = '商品批量导入模板.xlsx'
+    link.click()
+    URL.revokeObjectURL(url)
+  } catch (error) {
+    importErrorMessage.value = readableError(error)
+  }
+}
+
+async function submitImport(): Promise<void> {
+  if (!importFile.value) {
+    importErrorMessage.value = '请先选择需要导入的 Excel 文件'
+    return
+  }
+  importing.value = true
+  importErrorMessage.value = ''
+  importResult.value = null
+  try {
+    importResult.value = await importAdminBeads(importFile.value)
+    if (importResult.value.successCount > 0) {
+      successMessage.value = `已成功导入 ${importResult.value.successCount} 个商品`
+      await loadCatalog()
+    }
+  } catch (error) {
+    importErrorMessage.value = readableError(error)
+  } finally {
+    importing.value = false
   }
 }
 
@@ -271,13 +375,22 @@ onMounted(loadCatalog)
         <h1>散珠商品</h1>
         <p class="muted">维护 DIY 设计器和成品手串共用的基础珠子。</p>
       </div>
-      <button
-        class="primary-button"
-        data-test="create-bead"
-        @click="openCreateForm"
-      >
-        ＋ 新增散珠
-      </button>
+      <div class="content-header-actions">
+        <button
+          class="secondary-button"
+          data-test="import-beads"
+          @click="openImportDialog"
+        >
+          Excel 批量导入
+        </button>
+        <button
+          class="primary-button"
+          data-test="create-bead"
+          @click="openCreateForm"
+        >
+          ＋ 新增散珠
+        </button>
+      </div>
     </header>
 
     <div v-if="errorMessage" class="notice error-notice" role="alert">
@@ -452,6 +565,108 @@ onMounted(loadCatalog)
       </footer>
     </section>
 
+    <div
+      v-if="showImportDialog"
+      class="modal-backdrop centered-modal-backdrop"
+      @click.self="!importing && (showImportDialog = false)"
+    >
+      <section
+        class="drawer import-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="import-products-title"
+      >
+        <header>
+          <div>
+            <p class="section-kicker">CATALOG / EXCEL IMPORT</p>
+            <h2 id="import-products-title">Excel 批量导入商品</h2>
+          </div>
+          <button
+            class="icon-button"
+            type="button"
+            aria-label="关闭批量导入"
+            :disabled="importing"
+            @click="showImportDialog = false"
+          >×</button>
+        </header>
+
+        <div class="import-guide">
+          <div>
+            <strong>先下载模板，再填写商品数据</strong>
+            <span>图片无需写入 Excel，导入成功后可在商品编辑页补充。</span>
+          </div>
+          <button
+            class="secondary-button"
+            data-test="download-import-template"
+            type="button"
+            @click="downloadImportTemplate"
+          >
+            下载 Excel 模板
+          </button>
+        </div>
+
+        <label
+          class="file-dropzone import-dropzone"
+          :class="{ 'is-dragging': importDropActive }"
+          data-test="import-dropzone"
+          @dragenter.prevent="importDropActive = true"
+          @dragover.prevent="importDropActive = true"
+          @dragleave.prevent="importDropActive = false"
+          @drop.prevent="handleImportDrop"
+        >
+          <input
+            type="file"
+            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            @change="handleImportFileChange"
+          />
+          <strong>{{ importFile ? importFile.name : '点击选择或拖拽 Excel 到这里' }}</strong>
+          <span>仅支持 .xlsx，最大 10 MB，单次最多 1000 行</span>
+        </label>
+
+        <div v-if="importErrorMessage" class="notice error-notice" role="alert">
+          {{ importErrorMessage }}
+        </div>
+
+        <section
+          v-if="importResult"
+          class="import-result"
+          aria-label="批量导入结果"
+        >
+          <strong>
+            共读取 {{ importResult.totalRows }} 行，成功 {{ importResult.successCount }} 行，
+            失败 {{ importResult.failureCount }} 行
+          </strong>
+          <ul v-if="importResult.errors.length" class="import-error-list">
+            <li v-for="item in importResult.errors" :key="`${item.rowNumber}-${item.skuCode}`">
+              第 {{ item.rowNumber }} 行
+              <template v-if="item.skuCode">（{{ item.skuCode }}）</template>：
+              {{ item.message }}
+            </li>
+          </ul>
+        </section>
+
+        <footer>
+          <button
+            type="button"
+            class="secondary-button"
+            :disabled="importing"
+            @click="showImportDialog = false"
+          >
+            关闭
+          </button>
+          <button
+            type="button"
+            class="primary-button"
+            :disabled="importing || !importFile"
+            data-test="submit-import"
+            @click="submitImport"
+          >
+            {{ importing ? '正在导入…' : '开始导入' }}
+          </button>
+        </footer>
+      </section>
+    </div>
+
     <div v-if="showCreateForm" class="modal-backdrop" @click.self="showCreateForm = false">
       <section class="drawer" aria-labelledby="create-bead-title">
         <header>
@@ -555,13 +770,24 @@ onMounted(loadCatalog)
               placeholder="净化，日常（使用逗号分隔）"
             />
           </label>
-          <label class="cover-upload">
+          <label
+            class="cover-upload file-dropzone cover-dropzone"
+            :class="{ 'is-dragging': coverDropActive }"
+            data-test="cover-dropzone"
+            @dragenter.prevent="coverDropActive = true"
+            @dragover.prevent="coverDropActive = true"
+            @dragleave.prevent="coverDropActive = false"
+            @drop.prevent="handleCoverDrop"
+          >
             <span>封面图片（PNG / JPEG / WebP，最大 5 MB）</span>
             <input
               type="file"
               accept="image/png,image/jpeg,image/webp"
               @change="uploadCover"
             />
+            <small v-if="!coverUploading && !form.coverAssetId">
+              点击选择或将图片拖拽到这里上传
+            </small>
             <small v-if="coverUploading">正在上传封面…</small>
             <small v-else-if="form.coverAssetId">
               素材 #{{ form.coverAssetId }} 已上传

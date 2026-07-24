@@ -103,3 +103,40 @@ export async function request<T>(
 
   return envelope.data
 }
+
+/**
+ * 下载需要管理员鉴权的二进制文件；错误响应仍按统一 JSON 契约解析。
+ */
+export async function requestBlob(
+  path: string,
+  init: RequestInit = {},
+): Promise<Blob> {
+  const headers = new Headers(init.headers)
+  const token = getAccessToken()
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    headers,
+  })
+  if (response.ok) {
+    return response.blob()
+  }
+
+  if (response.status === 401) {
+    clearAccessToken()
+  }
+  let envelope: Partial<ApiEnvelope<unknown>> = {}
+  try {
+    envelope = await response.json() as Partial<ApiEnvelope<unknown>>
+  } catch {
+    // 非 JSON 错误页也只向界面返回稳定提示，不暴露响应正文。
+  }
+  throw new ApiError(
+    envelope.message || '文件下载失败',
+    envelope.code || 'COMMON_INTERNAL_ERROR',
+    response.status,
+    envelope.traceId,
+  )
+}

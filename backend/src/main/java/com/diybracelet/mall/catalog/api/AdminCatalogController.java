@@ -4,11 +4,13 @@ import com.diybracelet.mall.catalog.api.dto.ChangeCatalogStatusRequest;
 import com.diybracelet.mall.catalog.api.dto.CreateBeadSkuRequest;
 import com.diybracelet.mall.catalog.api.dto.AdminBeadSkuView;
 import com.diybracelet.mall.catalog.api.dto.AdminPackageDetail;
+import com.diybracelet.mall.catalog.api.dto.CatalogImportResult;
 import com.diybracelet.mall.catalog.api.dto.PageResponse;
 import com.diybracelet.mall.catalog.api.dto.SaveBeadSkuRequest;
 import com.diybracelet.mall.catalog.api.dto.SaveCategoryRequest;
 import com.diybracelet.mall.catalog.api.dto.SavePackageRequest;
 import com.diybracelet.mall.catalog.application.AdminCatalogService;
+import com.diybracelet.mall.catalog.application.CatalogExcelImportService;
 import com.diybracelet.mall.catalog.domain.BeadSku;
 import com.diybracelet.mall.catalog.domain.CatalogStatus;
 import com.diybracelet.mall.catalog.domain.Category;
@@ -18,6 +20,9 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -29,7 +34,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
 
@@ -45,11 +52,14 @@ import java.util.UUID;
 public class AdminCatalogController {
 
     private final AdminCatalogService adminCatalogService;
+    private final CatalogExcelImportService catalogExcelImportService;
 
     public AdminCatalogController(
-            AdminCatalogService adminCatalogService
+            AdminCatalogService adminCatalogService,
+            CatalogExcelImportService catalogExcelImportService
     ) {
         this.adminCatalogService = adminCatalogService;
+        this.catalogExcelImportService = catalogExcelImportService;
     }
 
     @GetMapping("/categories")
@@ -119,6 +129,36 @@ public class AdminCatalogController {
             @Valid @RequestBody CreateBeadSkuRequest request
     ) {
         return created(adminCatalogService.createBead(request));
+    }
+
+    @GetMapping("/beads/import-template")
+    public ResponseEntity<byte[]> downloadBeadImportTemplate() {
+        byte[] content = catalogExcelImportService.createTemplate();
+        String disposition = ContentDisposition.attachment()
+                .filename(
+                        CatalogExcelImportService.TEMPLATE_FILE_NAME,
+                        StandardCharsets.UTF_8
+                )
+                .build()
+                .toString();
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, disposition)
+                .contentType(MediaType.parseMediaType(
+                        "application/vnd.openxmlformats-officedocument"
+                                + ".spreadsheetml.sheet"
+                ))
+                .contentLength(content.length)
+                .body(content);
+    }
+
+    @PostMapping(
+            value = "/beads/import",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+    )
+    public ApiResponse<CatalogImportResult> importBeads(
+            @RequestParam("file") MultipartFile file
+    ) {
+        return success(catalogExcelImportService.importProducts(file));
     }
 
     @PutMapping("/beads/{id}")

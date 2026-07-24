@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import CatalogView from './CatalogView.vue'
 import {
   createAdminBead,
+  downloadBeadImportTemplate,
+  importAdminBeads,
   listAdminBeads,
   listAdminCategories,
   listAdminPackages,
@@ -16,6 +18,8 @@ vi.mock('../api/catalog', () => ({
   listAdminPackages: vi.fn(),
   getAdminPackage: vi.fn(),
   createAdminBead: vi.fn(),
+  downloadBeadImportTemplate: vi.fn(),
+  importAdminBeads: vi.fn(),
   updateAdminBead: vi.fn(),
   changeBeadStatus: vi.fn(),
   createAdminCategory: vi.fn(),
@@ -80,6 +84,15 @@ describe('CatalogView', () => {
       total: 1,
       page: 1,
       size: 20,
+    })
+    vi.mocked(downloadBeadImportTemplate).mockResolvedValue(
+      new Blob(['template']),
+    )
+    vi.mocked(importAdminBeads).mockResolvedValue({
+      totalRows: 1,
+      successCount: 1,
+      failureCount: 0,
+      errors: [],
     })
   })
 
@@ -272,5 +285,113 @@ describe('CatalogView', () => {
 
     expect(wrapper.text()).toContain('封面图片不能超过 5 MB')
     expect(uploadCatalogFile).not.toHaveBeenCalled()
+  })
+
+  it('downloads the Excel template and reports row-level import errors', async () => {
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      value: vi.fn(() => 'blob:catalog-template'),
+    })
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      value: vi.fn(),
+    })
+    const anchorClick = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => undefined)
+    vi.mocked(importAdminBeads).mockResolvedValueOnce({
+      totalRows: 2,
+      successCount: 1,
+      failureCount: 1,
+      errors: [{
+        rowNumber: 3,
+        skuCode: 'BEAD-DUPLICATE',
+        message: 'SKU 编码已存在',
+      }],
+    })
+    const wrapper = mount(CatalogView)
+    await flushPromises()
+
+    await wrapper.get('[data-test="import-beads"]').trigger('click')
+    expect(wrapper.get('[role="dialog"]').text()).toContain('Excel 批量导入商品')
+    expect(wrapper.get('[role="dialog"]').text()).toContain('图片无需写入 Excel')
+
+    await wrapper.get('[data-test="download-import-template"]').trigger('click')
+    await flushPromises()
+    expect(downloadBeadImportTemplate).toHaveBeenCalledOnce()
+    expect(anchorClick).toHaveBeenCalledOnce()
+
+    const file = new File(['xlsx'], 'catalog.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    await wrapper.get('[data-test="import-dropzone"]').trigger('drop', {
+      dataTransfer: { files: [file] },
+    })
+    expect(wrapper.text()).toContain('catalog.xlsx')
+    await wrapper.get('[data-test="submit-import"]').trigger('click')
+    await flushPromises()
+
+    expect(importAdminBeads).toHaveBeenCalledWith(file)
+    expect(wrapper.text()).toContain('成功 1 行')
+    expect(wrapper.text()).toContain('失败 1 行')
+    expect(wrapper.text()).toContain('第 3 行')
+    expect(wrapper.text()).toContain('BEAD-DUPLICATE')
+    expect(wrapper.text()).toContain('SKU 编码已存在')
+    anchorClick.mockRestore()
+  })
+
+  it('uploads a product cover by dropping an image', async () => {
+    vi.mocked(uploadCatalogFile).mockResolvedValueOnce({
+      id: 5901,
+      storageKey: 'catalog/drop-cover.png',
+      originalName: 'drop-cover.png',
+      contentType: 'image/png',
+      sizeBytes: 1024,
+      publicUrl: '/api/public/files/catalog/drop-cover.png',
+    })
+    const wrapper = mount(CatalogView)
+    await flushPromises()
+    await wrapper.get('[data-test="create-bead"]').trigger('click')
+
+    const image = new File(['image'], 'drop-cover.png', {
+      type: 'image/png',
+    })
+    await wrapper.get('[data-test="cover-dropzone"]').trigger('drop', {
+      dataTransfer: { files: [image] },
+    })
+    await flushPromises()
+
+    expect(uploadCatalogFile).toHaveBeenCalledWith(image)
+    expect(wrapper.text()).toContain('素材 #5901 已上传')
+    expect(wrapper.get('img[alt="新商品封面预览"]')
+      .attributes('src')).toContain('drop-cover.png')
+  })
+
+  it('also accepts a dropped cover in the package editor', async () => {
+    vi.mocked(uploadCatalogFile).mockResolvedValueOnce({
+      id: 5902,
+      storageKey: 'catalog/package-cover.webp',
+      originalName: 'package-cover.webp',
+      contentType: 'image/webp',
+      sizeBytes: 2048,
+      publicUrl: '/api/public/files/catalog/package-cover.webp',
+    })
+    const wrapper = mount(CatalogView)
+    await flushPromises()
+    await wrapper.get('[data-test="tab-packages"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="create-package"]').trigger('click')
+    await flushPromises()
+
+    const image = new File(['image'], 'package-cover.webp', {
+      type: 'image/webp',
+    })
+    await wrapper.get('[data-test="package-cover-dropzone"]').trigger('drop', {
+      dataTransfer: { files: [image] },
+    })
+    await flushPromises()
+
+    expect(uploadCatalogFile).toHaveBeenCalledWith(image)
+    expect(wrapper.text()).toContain('素材 #5902 已选择')
   })
 })
