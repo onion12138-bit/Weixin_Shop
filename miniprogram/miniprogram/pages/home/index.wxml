@@ -1,6 +1,12 @@
 <view class="page-shell">
   <view class="hero-section">
     <image
+      class="hero-background"
+      src="/assets/images/home/hero-satin-background.webp"
+      mode="aspectFill"
+      aria-label=""
+    />
+    <image
       class="hero-image"
       src="/assets/images/home/hero-bracelet-lotus.webp"
       mode="widthFix"
@@ -64,7 +70,7 @@
         hover-class="soft-pressed"
       >
         <view class="mood-image-shell">
-          <image src="{{item.imageUrl}}" mode="aspectFit" aria-label="{{item.name}}心情图标" />
+          <image src="{{item.imageUrl}}" mode="aspectFill" aria-label="{{item.name}}心情图标" />
         </view>
         <text class="mood-name">{{item.name}}</text>
         <text class="mood-description">{{item.description}}</text>

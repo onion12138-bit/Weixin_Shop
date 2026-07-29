@@ -25,7 +25,7 @@ button::after {
 
 .hero-section {
   position: relative;
-  min-height: 672rpx;
+  min-height: 500rpx;
   margin: 16rpx 14rpx 0;
   overflow: hidden;
   border-radius: 54rpx 54rpx 12rpx 12rpx;
@@ -33,18 +33,31 @@ button::after {
   box-shadow: 0 18rpx 46rpx rgba(223, 132, 165, .14);
 }
 
+.hero-background {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: .78;
+}
+
 .hero-image {
   position: absolute;
-  right: -170rpx;
-  bottom: -182rpx;
-  width: 690rpx;
-  opacity: .98;
+  z-index: 1;
+  right: -100rpx;
+  bottom: -115rpx;
+  width: 480rpx;
+  opacity: .86;
 }
 
 .hero-copy {
   position: relative;
   z-index: 2;
-  padding: 74rpx 0 48rpx 48rpx;
+  padding: 50rpx 0 28rpx 46rpx;
 }
 
 .hero-title-row {
@@ -54,44 +67,44 @@ button::after {
 
 .hero-title {
   display: flex;
-  width: 500rpx;
+  width: 440rpx;
   flex-direction: column;
   color: #351043;
   font-family: "Songti SC", "STSong", serif;
-  font-size: 58rpx;
+  font-size: 50rpx;
   font-weight: 600;
   letter-spacing: 2rpx;
-  line-height: 1.36;
+  line-height: 1.3;
 }
 
 .title-sparkle {
-  width: 48rpx;
-  height: 48rpx;
-  margin: 22rpx 0 0 -30rpx;
+  width: 42rpx;
+  height: 42rpx;
+  margin: 18rpx 0 0 -24rpx;
 }
 
 .hero-summary {
   display: block;
-  width: 520rpx;
-  margin-top: 30rpx;
+  width: 460rpx;
+  margin-top: 18rpx;
   color: #7d7077;
-  font-size: 24rpx;
+  font-size: 20rpx;
   letter-spacing: 1rpx;
-  line-height: 1.7;
+  line-height: 1.6;
 }
 
 .hero-actions {
   display: flex;
   width: 264rpx;
   flex-direction: column;
-  gap: 14rpx;
-  margin-top: 36rpx;
+  gap: 10rpx;
+  margin-top: 24rpx;
 }
 
 .quick-action {
   display: flex;
   width: 264rpx;
-  height: 68rpx;
+  height: 60rpx;
   align-items: center;
   padding: 0 20rpx;
   border: 1rpx solid rgba(109, 69, 120, .09);
@@ -127,27 +140,27 @@ button::after {
 }
 
 .content-card {
-  margin: 24rpx 24rpx 0;
-  padding: 28rpx 20rpx 24rpx;
+  margin: 20rpx 24rpx 0;
+  padding: 22rpx 18rpx 18rpx;
   border: 1rpx solid rgba(235, 194, 210, .58);
-  border-radius: 38rpx;
+  border-radius: 34rpx;
   background: rgba(255, 255, 255, .9);
   box-shadow: 0 18rpx 46rpx rgba(200, 117, 150, .09);
 }
 
 .page-section {
-  margin: 38rpx 28rpx 0;
+  margin: 28rpx 28rpx 0;
 }
 
 .section-header {
   display: flex;
-  min-height: 50rpx;
+  min-height: 46rpx;
   align-items: center;
   justify-content: space-between;
 }
 
 .mood-header {
-  padding: 0 4rpx 18rpx;
+  padding: 0 4rpx 12rpx;
 }
 
 .section-heading {
@@ -155,7 +168,7 @@ button::after {
   align-items: center;
   color: #36154a;
   font-family: "Songti SC", "STSong", serif;
-  font-size: 32rpx;
+  font-size: 30rpx;
   font-weight: 600;
   letter-spacing: 1rpx;
 }
@@ -191,14 +204,14 @@ button::after {
   display: flex;
   box-sizing: border-box;
   min-width: 0;
-  height: 238rpx;
+  height: 200rpx;
   flex: 1;
   flex-direction: column;
   align-items: center;
-  padding: 12rpx 5rpx 14rpx;
+  padding: 8rpx 5rpx 10rpx;
   overflow: hidden;
   border: 2rpx solid transparent;
-  border-radius: 28rpx;
+  border-radius: 24rpx;
   background: #fff3f6;
   transition: border-color .2s ease, box-shadow .2s ease;
 }
@@ -225,14 +238,14 @@ button::after {
 }
 
 .mood-image-shell {
-  width: 126rpx;
-  height: 132rpx;
+  width: 110rpx;
+  height: 105rpx;
   overflow: hidden;
 }
 
 .mood-image-shell image {
-  width: 126rpx;
-  height: 164rpx;
+  width: 110rpx;
+  height: 138rpx;
   margin-top: -12rpx;
 }
 
@@ -250,19 +263,19 @@ button::after {
   margin-top: 3rpx;
   color: #351447;
   font-family: "Songti SC", "STSong", serif;
-  font-size: 27rpx;
+  font-size: 25rpx;
   font-weight: 600;
 }
 
 .mood-description {
-  margin-top: 7rpx;
+  margin-top: 5rpx;
   color: #7f747a;
-  font-size: 18rpx;
+  font-size: 17rpx;
 }
 
 .product-section .section-header,
 .scheme-section .section-header {
-  padding: 0 2rpx 18rpx;
+  padding: 0 2rpx 12rpx;
 }
 
 .product-scroll {
@@ -290,11 +303,11 @@ button::after {
 .product-image {
   display: block;
   width: 160rpx;
-  height: 182rpx;
+  height: 160rpx;
 }
 
 .product-copy {
-  padding: 15rpx 12rpx 14rpx;
+  padding: 12rpx 12rpx 11rpx;
 }
 
 .product-name {
@@ -325,9 +338,9 @@ button::after {
 .scheme-card {
   position: relative;
   display: flex;
-  min-height: 190rpx;
+  min-height: 160rpx;
   align-items: center;
-  padding: 18rpx 18rpx;
+  padding: 14rpx 16rpx;
   overflow: hidden;
   border: 1rpx solid rgba(237, 211, 221, .68);
   border-radius: 34rpx;
@@ -336,17 +349,17 @@ button::after {
 }
 
 .scheme-image {
-  width: 152rpx;
-  height: 152rpx;
+  width: 132rpx;
+  height: 132rpx;
   flex: 0 0 auto;
-  border-radius: 26rpx;
+  border-radius: 23rpx;
 }
 
 .scheme-copy {
   align-self: flex-start;
   min-width: 0;
   flex: 1;
-  padding: 10rpx 82rpx 62rpx 22rpx;
+  padding: 6rpx 76rpx 50rpx 18rpx;
 }
 
 .scheme-title-row {
@@ -358,7 +371,7 @@ button::after {
   overflow: hidden;
   color: #351447;
   font-family: "Songti SC", "STSong", serif;
-  font-size: 27rpx;
+  font-size: 25rpx;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -385,41 +398,41 @@ button::after {
 }
 
 .scheme-crystals {
-  margin-top: 17rpx;
+  margin-top: 10rpx;
 }
 
 .scheme-date {
-  margin-top: 9rpx;
+  margin-top: 6rpx;
 }
 
 .scheme-heart {
   position: absolute;
-  top: 24rpx;
-  right: 24rpx;
+  top: 18rpx;
+  right: 20rpx;
   width: 34rpx;
   height: 34rpx;
 }
 
 .continue-button {
   position: absolute;
-  right: 20rpx;
-  bottom: 20rpx;
-  width: 144rpx;
-  height: 56rpx;
+  right: 16rpx;
+  bottom: 14rpx;
+  width: 136rpx;
+  height: 52rpx;
   border-radius: 30rpx;
   color: #fff;
   font-size: 21rpx;
-  line-height: 56rpx;
+  line-height: 52rpx;
   background: #f176a8;
 }
 
 .share-card {
   position: relative;
   display: flex;
-  min-height: 142rpx;
+  min-height: 120rpx;
   align-items: center;
-  margin: 24rpx 28rpx 0;
-  padding: 12rpx 18rpx 12rpx 150rpx;
+  margin: 20rpx 28rpx 0;
+  padding: 8rpx 14rpx 8rpx 126rpx;
   overflow: hidden;
   border-radius: 34rpx;
   background: #ffedf3;
@@ -430,8 +443,8 @@ button::after {
   position: absolute;
   left: 4rpx;
   bottom: -8rpx;
-  width: 154rpx;
-  height: 154rpx;
+  width: 132rpx;
+  height: 132rpx;
 }
 
 .share-copy {
@@ -456,7 +469,7 @@ button::after {
 }
 
 .share-summary {
-  margin-top: 12rpx;
+  margin-top: 8rpx;
   color: #9b7486;
   font-size: 18rpx;
 }
@@ -464,7 +477,7 @@ button::after {
 .share-button {
   display: flex;
   width: 128rpx;
-  height: 56rpx;
+  height: 52rpx;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
@@ -487,9 +500,10 @@ button::after {
   bottom: 0;
   left: 0;
   display: flex;
-  height: calc(112rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  height: calc(72rpx + env(safe-area-inset-bottom));
   align-items: flex-start;
-  padding: 12rpx 36rpx env(safe-area-inset-bottom);
+  padding: 6rpx 36rpx env(safe-area-inset-bottom);
   border-top: 1rpx solid rgba(226, 208, 214, .82);
   background: rgba(255, 255, 255, .96);
   box-shadow: 0 -10rpx 34rpx rgba(107, 80, 91, .08);
@@ -497,7 +511,7 @@ button::after {
 
 .nav-item {
   display: flex;
-  height: 92rpx;
+  height: 66rpx;
   flex: 1;
   flex-direction: column;
   align-items: center;
@@ -507,9 +521,9 @@ button::after {
 }
 
 .nav-item image {
-  width: 40rpx;
-  height: 40rpx;
-  margin-bottom: 6rpx;
+  width: 34rpx;
+  height: 34rpx;
+  margin-bottom: 3rpx;
 }
 
 .nav-item.active {
