@@ -1,296 +1,528 @@
 .page-shell {
+  box-sizing: border-box;
   min-height: 100vh;
-  padding-bottom: 64rpx;
-  background: #faf6f3;
-}
-
-.hero {
-  position: relative;
+  padding-bottom: calc(132rpx + env(safe-area-inset-bottom));
   overflow: hidden;
-  min-height: 780rpx;
-  padding: 88rpx 48rpx 56rpx;
-  color: #fff;
-  background:
-    linear-gradient(145deg, rgba(54, 29, 39, .98), rgba(118, 61, 81, .94)),
-    #623849;
+  color: #351447;
+  background: #fff8fa;
+  font-family: "PingFang SC", "Noto Sans CJK SC", sans-serif;
 }
 
-.hero::after {
+button {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  color: inherit;
+  font: inherit;
+  line-height: normal;
+  background: transparent;
+}
+
+button::after {
+  border: 0;
+}
+
+.hero-section {
+  position: relative;
+  min-height: 672rpx;
+  margin: 16rpx 14rpx 0;
+  overflow: hidden;
+  border-radius: 54rpx 54rpx 12rpx 12rpx;
+  background: #fff0f4;
+  box-shadow: 0 18rpx 46rpx rgba(223, 132, 165, .14);
+}
+
+.hero-image {
   position: absolute;
-  right: -180rpx;
-  bottom: -230rpx;
-  width: 680rpx;
-  height: 680rpx;
-  border: 1rpx solid rgba(255, 255, 255, .14);
-  border-radius: 50%;
-  content: "";
+  right: -170rpx;
+  bottom: -182rpx;
+  width: 690rpx;
+  opacity: .98;
 }
 
 .hero-copy {
   position: relative;
   z-index: 2;
+  padding: 74rpx 0 48rpx 48rpx;
 }
 
-.eyebrow,
-.section-kicker {
-  display: block;
-  color: #e7c6d1;
-  font-size: 20rpx;
-  font-weight: 700;
-  letter-spacing: 6rpx;
+.hero-title-row {
+  display: flex;
+  align-items: flex-start;
 }
 
-.title {
-  display: block;
-  width: 620rpx;
-  margin-top: 30rpx;
-  font-family: "Songti SC", serif;
-  font-size: 70rpx;
+.hero-title {
+  display: flex;
+  width: 500rpx;
+  flex-direction: column;
+  color: #351043;
+  font-family: "Songti SC", "STSong", serif;
+  font-size: 58rpx;
   font-weight: 600;
-  line-height: 1.28;
+  letter-spacing: 2rpx;
+  line-height: 1.36;
 }
 
-.summary {
+.title-sparkle {
+  width: 48rpx;
+  height: 48rpx;
+  margin: 22rpx 0 0 -30rpx;
+}
+
+.hero-summary {
   display: block;
-  width: 570rpx;
+  width: 520rpx;
   margin-top: 30rpx;
-  color: #eadde2;
-  font-size: 27rpx;
-  line-height: 1.8;
+  color: #7d7077;
+  font-size: 24rpx;
+  letter-spacing: 1rpx;
+  line-height: 1.7;
 }
 
 .hero-actions {
   display: flex;
-  gap: 18rpx;
+  width: 264rpx;
+  flex-direction: column;
+  gap: 14rpx;
+  margin-top: 36rpx;
+}
+
+.quick-action {
+  display: flex;
+  width: 264rpx;
+  height: 68rpx;
   align-items: center;
-  margin-top: 38rpx;
-}
-
-.hero-button,
-.hero-link {
-  display: block;
-  box-sizing: border-box;
-  width: 230rpx;
-  height: 84rpx;
-  margin: 0;
-  border-radius: 42rpx;
-  color: #613647;
-  font-size: 27rpx;
-  font-weight: 700;
-  text-align: center;
-  line-height: 84rpx;
-  background: #f4e5e9;
-}
-
-.hero-link {
-  width: 180rpx;
-  border: 1rpx solid rgba(244, 229, 233, .58);
-  color: #f7e8ed;
+  padding: 0 20rpx;
+  border: 1rpx solid rgba(109, 69, 120, .09);
+  border-radius: 38rpx;
+  color: #452357;
   font-size: 24rpx;
-  background: rgba(255, 255, 255, .08);
+  font-weight: 500;
+  background: rgba(255, 255, 255, .9);
+  box-shadow: 0 10rpx 26rpx rgba(137, 84, 111, .09);
 }
 
-.hero-link.secondary {
-  width: 160rpx;
+.quick-action text {
+  flex: 1;
+  text-align: left;
 }
 
-.bracelet-art {
-  position: absolute;
-  z-index: 1;
-  right: -112rpx;
-  bottom: -86rpx;
-  width: 480rpx;
-  height: 480rpx;
+.quick-action .action-icon {
+  width: 32rpx;
+  height: 32rpx;
+  margin-right: 16rpx;
 }
 
-.orbit {
-  position: absolute;
-  inset: 0;
-  border: 2rpx solid rgba(255, 255, 255, .22);
-  border-radius: 50%;
+.quick-action .action-arrow {
+  width: 28rpx;
+  height: 28rpx;
 }
 
-.bead {
-  position: absolute;
-  width: 70rpx;
-  height: 70rpx;
-  border: 8rpx solid rgba(255, 255, 255, .26);
-  border-radius: 50%;
-  background: radial-gradient(circle at 32% 25%, #fff, #c98ca1 35%, #704052);
-  box-shadow: 0 10rpx 20rpx rgba(27, 13, 19, .25);
+.primary-action {
+  border-color: #f16fa5;
+  color: #fff;
+  background: #f16fa5;
+  box-shadow: 0 14rpx 30rpx rgba(233, 81, 143, .26);
 }
 
-.bead-1 { left: 205rpx; top: -34rpx; }
-.bead-2 { right: 42rpx; top: 22rpx; }
-.bead-3 { right: -22rpx; top: 142rpx; }
-.bead-4 { right: -10rpx; bottom: 110rpx; }
-.bead-5 { right: 78rpx; bottom: -10rpx; }
-.bead-6 { left: 122rpx; bottom: -28rpx; }
-.bead-7 { left: 8rpx; bottom: 50rpx; }
-.bead-8 { left: -34rpx; top: 190rpx; }
-.bead-9 { left: 8rpx; top: 64rpx; }
-.bead-10 { left: 96rpx; top: -12rpx; }
+.content-card {
+  margin: 24rpx 24rpx 0;
+  padding: 28rpx 20rpx 24rpx;
+  border: 1rpx solid rgba(235, 194, 210, .58);
+  border-radius: 38rpx;
+  background: rgba(255, 255, 255, .9);
+  box-shadow: 0 18rpx 46rpx rgba(200, 117, 150, .09);
+}
 
-.center-seal {
-  position: absolute;
-  top: 190rpx;
-  left: 190rpx;
+.page-section {
+  margin: 38rpx 28rpx 0;
+}
+
+.section-header {
   display: flex;
-  width: 100rpx;
-  height: 100rpx;
+  min-height: 50rpx;
   align-items: center;
-  justify-content: center;
-  border: 1rpx solid rgba(255, 255, 255, .3);
-  border-radius: 50%;
-  color: #e7c6d1;
-  font-family: "Songti SC", serif;
-  font-size: 25rpx;
+  justify-content: space-between;
 }
 
-.feature-row {
-  position: relative;
-  z-index: 3;
-  display: flex;
-  width: 654rpx;
-  margin: -38rpx auto 0;
-  padding: 28rpx 0;
-  border-radius: 24rpx;
-  background: #fff;
-  box-shadow: 0 20rpx 50rpx rgba(77, 47, 58, .1);
+.mood-header {
+  padding: 0 4rpx 18rpx;
 }
 
-.feature-item {
+.section-heading {
   display: flex;
+  align-items: center;
+  color: #36154a;
+  font-family: "Songti SC", "STSong", serif;
+  font-size: 32rpx;
+  font-weight: 600;
+  letter-spacing: 1rpx;
+}
+
+.section-heading image {
+  width: 34rpx;
+  height: 34rpx;
+  margin-right: 10rpx;
+}
+
+.refresh-button,
+.section-link {
+  display: flex;
+  height: 50rpx;
+  align-items: center;
+  color: #82777c;
+  font-size: 23rpx;
+}
+
+.refresh-button image,
+.section-link image {
+  width: 29rpx;
+  height: 29rpx;
+  margin-left: 9rpx;
+}
+
+.mood-grid {
+  display: flex;
+  gap: 10rpx;
+}
+
+.mood-card {
+  display: flex;
+  box-sizing: border-box;
+  min-width: 0;
+  height: 238rpx;
   flex: 1;
   flex-direction: column;
   align-items: center;
-  border-right: 1rpx solid #eee5e1;
-}
-
-.feature-item:last-child {
-  border-right: 0;
-}
-
-.feature-value {
-  color: #6c3e50;
-  font-family: "Songti SC", serif;
-  font-size: 32rpx;
-  font-weight: 700;
-}
-
-.feature-label {
-  margin-top: 7rpx;
-  color: #887d81;
-  font-size: 21rpx;
-}
-
-.journey-card {
-  margin: 54rpx 36rpx 0;
-  padding: 42rpx 36rpx;
-  border: 1rpx solid #ece3df;
-  border-radius: 28rpx;
-  background: #fffdfb;
-}
-
-.ai-consultation-card {
-  display: flex;
+  padding: 12rpx 5rpx 14rpx;
   overflow: hidden;
-  margin: 54rpx 36rpx 0;
+  border: 2rpx solid transparent;
   border-radius: 28rpx;
-  color: #fff;
-  background: linear-gradient(135deg, #344f5d, #75919a);
-  box-shadow: 0 18rpx 45rpx rgba(57, 82, 92, .18);
+  background: #fff3f6;
+  transition: border-color .2s ease, box-shadow .2s ease;
 }
 
-.ai-consultation-card image {
-  width: 250rpx;
-  min-height: 280rpx;
-  flex: 0 0 auto;
+.mood-rose {
+  background: #fff0f4;
 }
 
-.ai-card-copy {
-  padding: 34rpx 28rpx;
+.mood-lilac {
+  background: #f6f1fb;
 }
 
-.ai-card-copy .section-kicker {
-  color: #cde1e5;
-  font-size: 16rpx;
-  letter-spacing: 3rpx;
+.mood-sun {
+  background: #fff6e9;
 }
 
-.ai-card-title,
-.ai-card-summary,
-.ai-card-link {
+.mood-sky {
+  background: #f1f5fc;
+}
+
+.mood-card.is-selected {
+  border-color: rgba(241, 111, 165, .58);
+  box-shadow: 0 10rpx 24rpx rgba(229, 104, 155, .13);
+}
+
+.mood-image-shell {
+  width: 126rpx;
+  height: 132rpx;
+  overflow: hidden;
+}
+
+.mood-image-shell image {
+  width: 126rpx;
+  height: 164rpx;
+  margin-top: -12rpx;
+}
+
+.mood-name,
+.mood-description {
   display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.ai-card-title {
-  margin-top: 12rpx;
-  font-family: "Songti SC", serif;
-  font-size: 36rpx;
-  font-weight: 700;
+.mood-name {
+  margin-top: 3rpx;
+  color: #351447;
+  font-family: "Songti SC", "STSong", serif;
+  font-size: 27rpx;
+  font-weight: 600;
 }
 
-.ai-card-summary {
-  margin-top: 14rpx;
-  color: #dce9eb;
-  font-size: 21rpx;
-  line-height: 1.65;
-}
-
-.ai-card-link {
-  margin-top: 18rpx;
-  color: #fff;
-  font-size: 22rpx;
-  font-weight: 700;
-}
-
-.journey-card .section-kicker {
-  color: #9a6879;
+.mood-description {
+  margin-top: 7rpx;
+  color: #7f747a;
   font-size: 18rpx;
 }
 
-.section-title {
+.product-section .section-header,
+.scheme-section .section-header {
+  padding: 0 2rpx 18rpx;
+}
+
+.product-scroll {
+  width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.product-row {
+  display: flex;
+  gap: 12rpx;
+  padding-bottom: 4rpx;
+}
+
+.product-card {
+  width: 160rpx;
+  min-width: 160rpx;
+  overflow: hidden;
+  border: 1rpx solid rgba(236, 211, 220, .58);
+  border-radius: 28rpx;
+  background: #fff;
+  box-shadow: 0 12rpx 28rpx rgba(117, 75, 93, .09);
+}
+
+.product-image {
   display: block;
-  margin-top: 12rpx;
-  color: #2f272b;
-  font-family: "Songti SC", serif;
-  font-size: 40rpx;
-  font-weight: 700;
+  width: 160rpx;
+  height: 182rpx;
 }
 
-.steps {
-  display: flex;
-  flex-direction: column;
-  gap: 28rpx;
-  margin-top: 38rpx;
+.product-copy {
+  padding: 15rpx 12rpx 14rpx;
 }
 
-.step {
+.product-name {
+  display: block;
+  overflow: hidden;
+  color: #351447;
+  font-family: "Songti SC", "STSong", serif;
+  font-size: 25rpx;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.like-count {
   display: flex;
-  gap: 25rpx;
+  align-items: center;
+  margin-top: 9rpx;
+  color: #5c3d69;
+  font-size: 19rpx;
+}
+
+.like-count image {
+  width: 23rpx;
+  height: 23rpx;
+  margin-right: 6rpx;
+}
+
+.scheme-card {
+  position: relative;
+  display: flex;
+  min-height: 190rpx;
+  align-items: center;
+  padding: 18rpx 18rpx;
+  overflow: hidden;
+  border: 1rpx solid rgba(237, 211, 221, .68);
+  border-radius: 34rpx;
+  background: rgba(255, 255, 255, .94);
+  box-shadow: 0 15rpx 38rpx rgba(126, 78, 98, .09);
+}
+
+.scheme-image {
+  width: 152rpx;
+  height: 152rpx;
+  flex: 0 0 auto;
+  border-radius: 26rpx;
+}
+
+.scheme-copy {
+  align-self: flex-start;
+  min-width: 0;
+  flex: 1;
+  padding: 10rpx 82rpx 62rpx 22rpx;
+}
+
+.scheme-title-row {
+  display: flex;
   align-items: center;
 }
 
-.step > text {
-  color: #b78a99;
-  font-family: serif;
-  font-size: 28rpx;
-}
-
-.step view {
-  display: flex;
-  flex-direction: column;
-}
-
-.step-title {
-  color: #41373b;
+.scheme-title {
+  overflow: hidden;
+  color: #351447;
+  font-family: "Songti SC", "STSong", serif;
   font-size: 27rpx;
-  font-weight: 700;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.step view text {
-  margin-top: 6rpx;
-  color: #91858a;
-  font-size: 22rpx;
+.scheme-badge {
+  flex: 0 0 auto;
+  margin-left: 10rpx;
+  padding: 5rpx 10rpx;
+  border-radius: 16rpx;
+  color: #ed6ca0;
+  font-size: 16rpx;
+  background: #ffedf3;
+}
+
+.scheme-crystals,
+.scheme-date {
+  display: block;
+  overflow: hidden;
+  color: #85787d;
+  font-size: 20rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scheme-crystals {
+  margin-top: 17rpx;
+}
+
+.scheme-date {
+  margin-top: 9rpx;
+}
+
+.scheme-heart {
+  position: absolute;
+  top: 24rpx;
+  right: 24rpx;
+  width: 34rpx;
+  height: 34rpx;
+}
+
+.continue-button {
+  position: absolute;
+  right: 20rpx;
+  bottom: 20rpx;
+  width: 144rpx;
+  height: 56rpx;
+  border-radius: 30rpx;
+  color: #fff;
+  font-size: 21rpx;
+  line-height: 56rpx;
+  background: #f176a8;
+}
+
+.share-card {
+  position: relative;
+  display: flex;
+  min-height: 142rpx;
+  align-items: center;
+  margin: 24rpx 28rpx 0;
+  padding: 12rpx 18rpx 12rpx 150rpx;
+  overflow: hidden;
+  border-radius: 34rpx;
+  background: #ffedf3;
+  box-shadow: 0 14rpx 34rpx rgba(221, 109, 152, .12);
+}
+
+.gift-image {
+  position: absolute;
+  left: 4rpx;
+  bottom: -8rpx;
+  width: 154rpx;
+  height: 154rpx;
+}
+
+.share-copy {
+  min-width: 0;
+  flex: 1;
+  padding-right: 16rpx;
+}
+
+.share-title,
+.share-summary {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.share-title {
+  color: #7b2457;
+  font-family: "Songti SC", "STSong", serif;
+  font-size: 26rpx;
+  font-weight: 600;
+}
+
+.share-summary {
+  margin-top: 12rpx;
+  color: #9b7486;
+  font-size: 18rpx;
+}
+
+.share-button {
+  display: flex;
+  width: 128rpx;
+  height: 56rpx;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 30rpx;
+  color: #fff;
+  font-size: 21rpx;
+  background: #ef74a7;
+}
+
+.share-button image {
+  width: 24rpx;
+  height: 24rpx;
+  margin-left: 8rpx;
+}
+
+.bottom-nav {
+  position: fixed;
+  z-index: 20;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  height: calc(112rpx + env(safe-area-inset-bottom));
+  align-items: flex-start;
+  padding: 12rpx 36rpx env(safe-area-inset-bottom);
+  border-top: 1rpx solid rgba(226, 208, 214, .82);
+  background: rgba(255, 255, 255, .96);
+  box-shadow: 0 -10rpx 34rpx rgba(107, 80, 91, .08);
+}
+
+.nav-item {
+  display: flex;
+  height: 92rpx;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #8a7d82;
+  font-size: 20rpx;
+}
+
+.nav-item image {
+  width: 40rpx;
+  height: 40rpx;
+  margin-bottom: 6rpx;
+}
+
+.nav-item.active {
+  color: #ef649a;
+  font-weight: 600;
+}
+
+.action-pressed,
+.card-pressed {
+  opacity: .84;
+  transform: scale(.985);
+}
+
+.soft-pressed {
+  opacity: .68;
 }

@@ -25,10 +25,9 @@
 - `miniprogram/miniprogram/pages/home/index.wxml`：首页可交互语义结构。
 - `miniprogram/miniprogram/pages/home/index.wxss`：首页视觉布局、状态、响应式和安全区。
 - `miniprogram/miniprogram/pages/home/index.json`：标题、背景色和分享配置。
-- `miniprogram/miniprogram/assets/images/home/*.png`：参考图提供的 9 张首页图片素材。
+- `miniprogram/miniprogram/assets/images/home/*.webp`：参考图提供的 9 张首页图片素材和分享礼盒插画的体积优化版本。
 - `miniprogram/miniprogram/assets/icons/home/*.svg`：从 Remix Icon 开源库选取的标准界面图标。
 - `miniprogram/src/home-page-behavior.spec.ts`：页面状态、路由、失败提示和分享行为测试。
-- `miniprogram/src/home-page-contract.spec.ts`：WXML/WXSS/JSON 与本地资源的静态契约测试。
 - `design-qa.md`：参考图与实现截图的视觉差异和最终验收结果。
 
 ---
@@ -103,7 +102,7 @@ describe('home Page behavior', () => {
 
 - [ ] **Step 2: 运行行为测试并确认失败**
 
-Run: `cd miniprogram && pnpm test -- home-page-behavior.spec.ts`
+Run: `cd miniprogram && ./node_modules/.bin/jest --runInBand src/home-page-behavior.spec.ts`
 
 Expected: FAIL，因为首页尚未提供 `moods`、`selectMood`、`rotateMoods` 和新分享配置。
 
@@ -113,7 +112,7 @@ Expected: FAIL，因为首页尚未提供 `moods`、`selectMood`、`rotateMoods`
 
 - [ ] **Step 4: 运行行为测试和类型检查**
 
-Run: `cd miniprogram && pnpm test -- home-page-behavior.spec.ts && pnpm typecheck`
+Run: `cd miniprogram && ./node_modules/.bin/jest --runInBand src/home-page-behavior.spec.ts && ./node_modules/.bin/tsc -p tsconfig.runtime.json`
 
 Expected: 新行为测试 PASS，TypeScript 无错误。
 
@@ -129,10 +128,10 @@ git commit -m "feat: add interactive homepage behavior"
 ### Task 2: 首页视觉结构与本地素材
 
 **Files:**
-- Create: `miniprogram/src/home-page-contract.spec.ts`
-- Create: `miniprogram/miniprogram/assets/images/home/hero-bracelet-lotus.png`
-- Create: `miniprogram/miniprogram/assets/images/home/mood-{gentle,luck,energy,relax}.png`
-- Create: `miniprogram/miniprogram/assets/images/home/product-{gentle-guardian,lucky-blessing,confidence-light,cloud-breath}.png`
+- Create: `miniprogram/miniprogram/assets/images/home/hero-bracelet-lotus.webp`
+- Create: `miniprogram/miniprogram/assets/images/home/mood-{gentle,luck,energy,relax}.webp`
+- Create: `miniprogram/miniprogram/assets/images/home/product-{gentle-guardian,lucky-blessing,confidence-light,cloud-breath}.webp`
+- Create: `miniprogram/miniprogram/assets/images/home/gift-box.webp`
 - Create: `miniprogram/miniprogram/assets/icons/home/*.svg`
 - Modify: `miniprogram/miniprogram/pages/home/index.wxml`
 - Modify: `miniprogram/miniprogram/pages/home/index.wxss`
@@ -142,76 +141,28 @@ git commit -m "feat: add interactive homepage behavior"
 - Consumes: Task 1 的 `moods`、`products`、`selectedMoodId` 和页面事件方法。
 - Produces: 带 `hero-section`、`mood-section`、`product-section`、`scheme-section`、`share-card`、`bottom-nav` 的完整首页视图。
 
-- [ ] **Step 1: 写出失败的静态页面契约测试**
+- [ ] **Step 1: 接入图片和 Remix Icon 图标**
 
-```ts
-import { existsSync, readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+将 `Pic/bracelet_homepage_assets_named` 的 9 张独立素材缩放并转换为 WebP 后放入 `assets/images/home`，使用 kebab-case 文件名，把首页图片资源控制在 500KB 内。参考设计稿生成分享卡缺少的粉色礼盒插画并移除背景。将 Remix Icon 的 `magic-line`、`heart-3-line`、`shopping-bag-line`、`refresh-line`、`arrow-right-s-line`、`home-5-fill`、`sparkling-line`、`palette-line`、`user-3-line`、`share-line` 与 `heart-line` 作为本地 SVG 放入 `assets/icons/home`；保留原始开源图标路径，不手绘 SVG。
 
-const root = resolve(__dirname, '../miniprogram')
-const read = (path: string) => readFileSync(resolve(root, path), 'utf8')
-
-describe('home page contract', () => {
-  it('renders every confirmed section and interaction', () => {
-    const markup = read('pages/home/index.wxml')
-    for (const token of [
-      'hero-section', 'mood-section', 'product-section', 'scheme-section',
-      'share-card', 'bottom-nav', 'bindtap="rotateMoods"', 'open-type="share"',
-    ]) expect(markup).toContain(token)
-  })
-
-  it('uses all supplied homepage assets from the local package', () => {
-    const files = [
-      'hero-bracelet-lotus.png', 'mood-gentle.png', 'mood-luck.png',
-      'mood-energy.png', 'mood-relax.png', 'product-gentle-guardian.png',
-      'product-lucky-blessing.png', 'product-confidence-light.png',
-      'product-cloud-breath.png',
-    ]
-    for (const file of files) {
-      expect(existsSync(resolve(root, 'assets/images/home', file))).toBe(true)
-    }
-  })
-
-  it('keeps the native navigation title and pink page background', () => {
-    const config = JSON.parse(read('pages/home/index.json'))
-    expect(config).toMatchObject({
-      navigationBarTitleText: 'AI 灵感咨询',
-      navigationBarBackgroundColor: '#fff7f9',
-      navigationBarTextStyle: 'black',
-      backgroundColor: '#fff7f9',
-    })
-  })
-})
-```
-
-- [ ] **Step 2: 运行契约测试并确认失败**
-
-Run: `cd miniprogram && pnpm test -- home-page-contract.spec.ts`
-
-Expected: FAIL，因为新分区、配置和本地首页素材尚不存在。
-
-- [ ] **Step 3: 接入图片和 Remix Icon 图标**
-
-将 `Pic/bracelet_homepage_assets_named` 的 9 张独立素材机械复制到 `assets/images/home` 并使用 kebab-case 文件名。将 Remix Icon 的 `magic-line`、`heart-3-line`、`shopping-bag-line`、`refresh-line`、`arrow-right-s-line`、`home-5-fill`、`sparkling-line`、`palette-line`、`user-3-line`、`share-line` 与 `heart-line` 作为本地 SVG 放入 `assets/icons/home`；保留原始开源图标路径，不手绘 SVG。
-
-- [ ] **Step 4: 实现 WXML 与页面配置**
+- [ ] **Step 2: 实现 WXML 与页面配置**
 
 按参考图顺序构建主视觉、三个操作入口、心情卡、商品卡、我的方案、分享卡和固定底部导航。按钮使用 Task 1 的事件方法，商品卡与查看更多复用 `openCatalog`，分享按钮设置 `open-type="share"`，页面分享内容由 Task 1 的 `onShareAppMessage` 提供。将页面标题改为“AI 灵感咨询”，导航栏与页面背景色设为 `#fff7f9`。
 
-- [ ] **Step 5: 实现 WXSS 视觉系统**
+- [ ] **Step 3: 实现 WXSS 视觉系统**
 
 以 750rpx 设计宽度实现：主视觉 620–680rpx 高度、32rpx 页面横向留白、32–44rpx 卡片圆角、深紫 `#321044` 文字、强调粉 `#f36fa8`、白色半透明卡片和轻粉阴影。图片全部使用 `<image>`，图标全部使用本地图标文件；正文底部预留固定导航与 `env(safe-area-inset-bottom)`。
 
-- [ ] **Step 6: 运行契约测试、完整小程序测试和类型检查**
+- [ ] **Step 4: 运行完整小程序测试和类型检查**
 
-Run: `cd miniprogram && pnpm test -- home-page-contract.spec.ts && pnpm test && pnpm typecheck`
+Run: `cd miniprogram && ./node_modules/.bin/jest --runInBand && ./node_modules/.bin/tsc -p tsconfig.runtime.json`
 
 Expected: 全部测试 PASS，TypeScript 无错误。
 
-- [ ] **Step 7: 提交页面视觉实现**
+- [ ] **Step 5: 提交页面视觉实现**
 
 ```bash
-git add miniprogram/src/home-page-contract.spec.ts miniprogram/miniprogram/pages/home miniprogram/miniprogram/assets/images/home miniprogram/miniprogram/assets/icons/home
+git add miniprogram/miniprogram/pages/home miniprogram/miniprogram/assets/images/home miniprogram/miniprogram/assets/icons/home
 git commit -m "feat: recreate crystal bracelet homepage"
 ```
 
@@ -250,7 +201,7 @@ git commit -m "feat: recreate crystal bracelet homepage"
 
 - [ ] **Step 6: 最终验证并提交**
 
-Run: `cd miniprogram && pnpm test && pnpm typecheck`
+Run: `cd miniprogram && ./node_modules/.bin/jest --runInBand && ./node_modules/.bin/tsc -p tsconfig.runtime.json`
 
 Expected: 全部测试 PASS，TypeScript 无错误，`design-qa.md` 为 `final result: passed`。
 

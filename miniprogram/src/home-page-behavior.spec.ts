@@ -89,7 +89,7 @@ describe('home Page behavior', () => {
     expect(page.onShareAppMessage()).toEqual({
       title: '一颗珠子，一种心情｜来设计你的能量手串',
       path: '/pages/home/index',
-      imageUrl: '/assets/images/home/hero-bracelet-lotus.png',
+      imageUrl: '/assets/images/home/hero-bracelet-lotus.webp',
     })
   })
 })

@@ -18,28 +18,28 @@ const moods: MoodCard[] = [
     id: 'gentle',
     name: '温柔',
     description: '温暖自己',
-    imageUrl: '/assets/images/home/mood-gentle.png',
+    imageUrl: '/assets/images/home/mood-gentle.webp',
     tone: 'rose',
   },
   {
     id: 'luck',
     name: '好运',
     description: '好运自然来',
-    imageUrl: '/assets/images/home/mood-luck.png',
+    imageUrl: '/assets/images/home/mood-luck.webp',
     tone: 'lilac',
   },
   {
     id: 'energy',
     name: '元气',
     description: '光芒藏在心里',
-    imageUrl: '/assets/images/home/mood-energy.png',
+    imageUrl: '/assets/images/home/mood-energy.webp',
     tone: 'sun',
   },
   {
     id: 'relax',
     name: '松弛',
     description: '慢下来，呼吸轻盈',
-    imageUrl: '/assets/images/home/mood-relax.png',
+    imageUrl: '/assets/images/home/mood-relax.webp',
     tone: 'sky',
   },
 ]
@@ -49,27 +49,31 @@ const products: ProductCard[] = [
     id: 'gentle-guardian',
     name: '温柔守护',
     likes: '1.2w',
-    imageUrl: '/assets/images/home/product-gentle-guardian.png',
+    imageUrl: '/assets/images/home/product-gentle-guardian.webp',
   },
   {
     id: 'lucky-blessing',
     name: '幸运眷顾',
     likes: '9980',
-    imageUrl: '/assets/images/home/product-lucky-blessing.png',
+    imageUrl: '/assets/images/home/product-lucky-blessing.webp',
   },
   {
     id: 'confidence-light',
     name: '自信之光',
     likes: '8563',
-    imageUrl: '/assets/images/home/product-confidence-light.png',
+    imageUrl: '/assets/images/home/product-confidence-light.webp',
   },
   {
     id: 'cloud-breath',
     name: '云端之息',
     likes: '7321',
-    imageUrl: '/assets/images/home/product-cloud-breath.png',
+    imageUrl: '/assets/images/home/product-cloud-breath.webp',
   },
 ]
+
+const recommendationRoute = {
+  url: '/pages/recommendation/index',
+}
 
 Page({
   data: {
@@ -80,7 +84,7 @@ Page({
       name: '温柔是我的超能力',
       crystals: '柔粉晶 · 紫水晶 · 白水晶',
       createdAt: '2024-06-01',
-      imageUrl: '/assets/images/home/product-gentle-guardian.png',
+      imageUrl: '/assets/images/home/product-gentle-guardian.webp',
     },
   },
 
@@ -101,7 +105,7 @@ Page({
   },
 
   openRecommendation() {
-    this.navigate('/pages/recommendation/index')
+    this.navigate(recommendationRoute.url)
   },
 
   openCatalog() {
@@ -142,7 +146,7 @@ Page({
     return {
       title: '一颗珠子，一种心情｜来设计你的能量手串',
       path: '/pages/home/index',
-      imageUrl: '/assets/images/home/hero-bracelet-lotus.png',
+      imageUrl: '/assets/images/home/hero-bracelet-lotus.webp',
     }
   },
 })

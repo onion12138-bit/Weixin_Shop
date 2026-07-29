@@ -1,60 +1,166 @@
 <view class="page-shell">
-  <view class="hero">
+  <view class="hero-section">
+    <image
+      class="hero-image"
+      src="/assets/images/home/hero-bracelet-lotus.webp"
+      mode="widthFix"
+      aria-label="粉色与紫色水晶能量手串"
+    />
+
     <view class="hero-copy">
-      <text class="eyebrow">HANDMADE FOR YOU</text>
-      <text class="title">一串珠子，\n一种属于你的节奏。</text>
-      <text class="summary">
-        从天然水晶到温润木珠，自由挑选、组合和保存你的手串设计。
-      </text>
+      <view class="hero-title-row">
+        <view class="hero-title">
+          <text>今天想给</text>
+          <text>自己加点什么？</text>
+        </view>
+        <image class="title-sparkle" src="/assets/icons/home/sparkling-line.svg" mode="aspectFit" />
+      </view>
+      <text class="hero-summary">一颗珠子，一种心情，一份属于你的能量 ♡</text>
+
       <view class="hero-actions">
-        <button class="hero-button" bindtap="openCatalog">开始选珠</button>
-        <navigator class="hero-link" url="/pages/diy/editor">直接 DIY</navigator>
-        <navigator class="hero-link secondary" url="/pages/diy/schemes">我的方案</navigator>
+        <button class="quick-action primary-action" bindtap="openDiy" hover-class="action-pressed">
+          <image class="action-icon" src="/assets/icons/home/magic-line.svg" mode="aspectFit" />
+          <text>开始 DIY</text>
+          <image class="action-arrow" src="/assets/icons/home/arrow-right-s-white.svg" mode="aspectFit" />
+        </button>
+        <button
+          class="quick-action"
+          aria-label="AI 灵感咨询"
+          bindtap="openRecommendation"
+          hover-class="action-pressed"
+        >
+          <image class="action-icon" src="/assets/icons/home/heart-3-line.svg" mode="aspectFit" />
+          <text>AI 情绪推荐</text>
+          <image class="action-arrow" src="/assets/icons/home/arrow-right-s-line.svg" mode="aspectFit" />
+        </button>
+        <button class="quick-action" bindtap="openCatalog" hover-class="action-pressed">
+          <image class="action-icon" src="/assets/icons/home/shopping-bag-line.svg" mode="aspectFit" />
+          <text>成品精选</text>
+          <image class="action-arrow" src="/assets/icons/home/arrow-right-s-line.svg" mode="aspectFit" />
+        </button>
       </view>
-    </view>
-    <view class="bracelet-art" aria-hidden="true">
-      <view class="orbit">
-        <view wx:for="{{orbitBeads}}" wx:key="*this" class="bead bead-{{item}}" />
-      </view>
-      <view class="center-seal">拾珠</view>
     </view>
   </view>
 
-  <view class="feature-row">
-    <view wx:for="{{features}}" wx:key="label" class="feature-item">
-      <text class="feature-value">{{item.value}}</text>
-      <text class="feature-label">{{item.label}}</text>
+  <view class="mood-section content-card">
+    <view class="section-header mood-header">
+      <view class="section-heading">
+        <image src="/assets/icons/home/sparkling-line.svg" mode="aspectFit" />
+        <text>心情推荐</text>
+      </view>
+      <button class="refresh-button" bindtap="rotateMoods" hover-class="soft-pressed">
+        <text>换一换</text>
+        <image src="/assets/icons/home/refresh-line.svg" mode="aspectFit" />
+      </button>
+    </view>
+
+    <view class="mood-grid">
+      <view
+        wx:for="{{moods}}"
+        wx:key="id"
+        class="mood-card mood-{{item.tone}} {{selectedMoodId === item.id ? 'is-selected' : ''}}"
+        data-mood-id="{{item.id}}"
+        bindtap="selectMood"
+        hover-class="soft-pressed"
+      >
+        <view class="mood-image-shell">
+          <image src="{{item.imageUrl}}" mode="aspectFit" aria-label="{{item.name}}心情图标" />
+        </view>
+        <text class="mood-name">{{item.name}}</text>
+        <text class="mood-description">{{item.description}}</text>
+      </view>
     </view>
   </view>
 
-  <view class="ai-consultation-card" bindtap="openRecommendation">
-    <image src="/assets/images/ai-water-guide.png" mode="aspectFill" />
-    <view class="ai-card-copy">
-      <text class="section-kicker">AI BRACELET GUIDE</text>
-      <text class="ai-card-title">AI 灵感咨询</text>
-      <text class="ai-card-summary">从生日、偏好与佩戴场景出发，获得一套可继续 DIY 的手串灵感。</text>
-      <text class="ai-card-link">开始咨询 →</text>
+  <view class="product-section page-section">
+    <view class="section-header">
+      <view class="section-heading">
+        <image src="/assets/icons/home/sparkling-line.svg" mode="aspectFit" />
+        <text>成品精选</text>
+      </view>
+      <button class="section-link" bindtap="openCatalog" hover-class="soft-pressed">
+        <text>查看更多</text>
+        <image src="/assets/icons/home/arrow-right-s-line.svg" mode="aspectFit" />
+      </button>
+    </view>
+
+    <scroll-view class="product-scroll" scroll-x enable-flex show-scrollbar="false">
+      <view class="product-row">
+        <view
+          wx:for="{{products}}"
+          wx:key="id"
+          class="product-card"
+          bindtap="openCatalog"
+          hover-class="card-pressed"
+        >
+          <image class="product-image" src="{{item.imageUrl}}" mode="aspectFill" aria-label="{{item.name}}手串" />
+          <view class="product-copy">
+            <text class="product-name">{{item.name}}</text>
+            <view class="like-count">
+              <image src="/assets/icons/home/heart-line.svg" mode="aspectFit" />
+              <text>{{item.likes}}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+
+  <view class="scheme-section page-section">
+    <view class="section-header">
+      <view class="section-heading">
+        <image src="/assets/icons/home/sparkling-line.svg" mode="aspectFit" />
+        <text>我的方案</text>
+      </view>
+      <button class="section-link" bindtap="openSchemes" hover-class="soft-pressed">
+        <text>查看全部</text>
+        <image src="/assets/icons/home/arrow-right-s-line.svg" mode="aspectFit" />
+      </button>
+    </view>
+
+    <view class="scheme-card" bindtap="openSchemes" hover-class="card-pressed">
+      <image class="scheme-image" src="{{scheme.imageUrl}}" mode="aspectFill" aria-label="{{scheme.name}}手串方案" />
+      <view class="scheme-copy">
+        <view class="scheme-title-row">
+          <text class="scheme-title">{{scheme.name}}</text>
+          <text class="scheme-badge">DIY 方案</text>
+        </view>
+        <text class="scheme-crystals">{{scheme.crystals}}</text>
+        <text class="scheme-date">创建于 {{scheme.createdAt}}</text>
+      </view>
+      <image class="scheme-heart" src="/assets/icons/home/heart-line.svg" mode="aspectFit" />
+      <button class="continue-button" catchtap="openDiy" hover-class="action-pressed">继续编辑</button>
     </view>
   </view>
 
-  <view class="journey-card">
-    <view>
-      <text class="section-kicker">HOW IT WORKS</text>
-      <text class="section-title">三步做出你的手串</text>
+  <view class="share-card">
+    <image class="gift-image" src="/assets/images/home/gift-box.webp" mode="aspectFit" aria-label="粉色礼盒" />
+    <view class="share-copy">
+      <text class="share-title">分享你的能量手链</text>
+      <text class="share-summary">送给重要的人，传递你的心意与能量</text>
     </view>
-    <view class="steps">
-      <view class="step">
-        <text>01</text>
-        <view><text class="step-title">挑选珠子</text><text>按材质、颜色和尺寸浏览</text></view>
-      </view>
-      <view class="step">
-        <text>02</text>
-        <view><text class="step-title">自由搭配</text><text>调整顺序并查看实时价格</text></view>
-      </view>
-      <view class="step">
-        <text>03</text>
-        <view><text class="step-title">保存方案</text><text>确认后进入订单与制作</text></view>
-      </view>
-    </view>
+    <button class="share-button" open-type="share" hover-class="action-pressed">
+      <text>去分享</text>
+      <image src="/assets/icons/home/share-line.svg" mode="aspectFit" />
+    </button>
+  </view>
+
+  <view class="bottom-nav">
+    <button class="nav-item active" bindtap="backToTop" hover-class="soft-pressed">
+      <image src="/assets/icons/home/home-5-fill.svg" mode="aspectFit" />
+      <text>首页</text>
+    </button>
+    <button class="nav-item" bindtap="openRecommendation" hover-class="soft-pressed">
+      <image src="/assets/icons/home/sparkling-line.svg" mode="aspectFit" />
+      <text>灵感</text>
+    </button>
+    <button class="nav-item" bindtap="openDiy" hover-class="soft-pressed">
+      <image src="/assets/icons/home/palette-line.svg" mode="aspectFit" />
+      <text>DIY</text>
+    </button>
+    <button class="nav-item" bindtap="openSchemes" hover-class="soft-pressed">
+      <image src="/assets/icons/home/user-3-line.svg" mode="aspectFit" />
+      <text>我的</text>
+    </button>
   </view>
 </view>

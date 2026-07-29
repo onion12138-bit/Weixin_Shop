@@ -1,3 +1,7 @@
 {
-  "navigationBarTitleText": "DIY 手串"
+  "navigationBarTitleText": "AI 灵感咨询",
+  "navigationBarBackgroundColor": "#fff7f9",
+  "navigationBarTextStyle": "black",
+  "backgroundColor": "#fff7f9",
+  "backgroundTextStyle": "dark"
 }
