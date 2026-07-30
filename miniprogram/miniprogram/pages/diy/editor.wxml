@@ -17,23 +17,39 @@
       </picker>
     </view>
 
-    <view class="canvas-panel">
-      <canvas
-        id="bracelet-canvas"
-        type="2d"
-        class="bracelet-canvas"
-        bindtouchstart="onCanvasTouchStart"
-        bindtouchmove="onCanvasTouchMove"
-        bindtouchend="onCanvasTouchEnd"
-      />
-      <view class="history-actions">
-        <button disabled="{{!canUndo}}" bindtap="undo">↶</button>
-        <button disabled="{{!canRedo}}" bindtap="redo">↷</button>
+    <view class="canvas-panel {{previewExpanded ? 'is-expanded' : 'is-collapsed'}}">
+      <button class="preview-toggle" bindtap="togglePreview">
+        <text>{{previewExpanded ? '收起预览' : '展开预览'}}</text>
+        <image
+          class="preview-chevron"
+          src="{{previewExpanded ? '/assets/icons/diy/arrow-up-s-line.svg' : '/assets/icons/diy/arrow-down-s-line.svg'}}"
+          mode="aspectFit"
+        />
+      </button>
+      <view class="preview-layout">
+        <canvas
+          id="bracelet-canvas"
+          type="2d"
+          class="bracelet-canvas"
+          bindtouchstart="onCanvasTouchStart"
+          bindtouchmove="onCanvasTouchMove"
+          bindtouchend="onCanvasTouchEnd"
+        />
+        <view class="editor-summary">
+          <text class="count-text">{{countText}}</text>
+          <view class="length-stack">
+            <text>{{targetLengthText}}</text>
+            <text>{{currentLengthText}}</text>
+          </view>
+        </view>
       </view>
-      <view class="editor-summary">
-        <text>{{countText}}</text>
-        <text>{{lengthText}}</text>
-        <text>{{sizeText}}</text>
+      <view wx:if="{{previewExpanded}}" class="history-actions">
+        <button disabled="{{!canUndo}}" bindtap="undo" aria-label="撤销">
+          <image src="/assets/icons/diy/arrow-go-back-line.svg" mode="aspectFit" />
+        </button>
+        <button disabled="{{!canRedo}}" bindtap="redo" aria-label="重做">
+          <image src="/assets/icons/diy/arrow-go-forward-line.svg" mode="aspectFit" />
+        </button>
       </view>
     </view>
 
@@ -43,11 +59,12 @@
     </view>
 
     <view wx:if="{{selectedIndex >= 0}}" class="selected-actions">
-      <text>第 {{selectedNumber}} 颗</text>
-      <button bindtap="decreaseSelectedSku">−</button>
-      <button bindtap="increaseSelectedSku">＋</button>
-      <button bindtap="replaceSelected">替换</button>
-      <button bindtap="removeSelected">删除</button>
+      <button aria-label="减少一颗" bindtap="decreaseSelectedSku">
+        <image src="/assets/icons/diy/subtract-line.svg" mode="aspectFit" />
+      </button>
+      <button aria-label="增加一颗" bindtap="increaseSelectedSku">
+        <image src="/assets/icons/diy/add-line.svg" mode="aspectFit" />
+      </button>
     </view>
 
     <scroll-view scroll-x class="category-tabs">
@@ -65,16 +82,34 @@
 
     <view class="bead-search">
       <input value="{{keyword}}" bindinput="onKeywordInput" placeholder="搜索珠子" />
-      <button bindtap="searchCatalog">搜索</button>
+      <button
+        class="favorite-filter {{favoritesOnly ? 'active' : ''}}"
+        bindtap="toggleFavoriteFilter"
+      >
+        <image src="/assets/icons/home/heart-line.svg" mode="aspectFit" />
+        <text>喜欢</text>
+      </button>
+      <button class="search-button" bindtap="searchCatalog">搜索</button>
     </view>
 
-    <scroll-view scroll-x class="bead-tray">
-      <button
-        wx:for="{{catalog}}"
+    <view wx:if="{{visibleCatalog.length}}" class="bead-grid">
+      <view
+        wx:for="{{visibleCatalog}}"
         wx:key="id"
+        class="bead-card"
         data-id="{{item.id}}"
         bindtap="addCatalogBead"
+        aria-role="button"
+        aria-label="添加 {{item.name}}"
       >
+        <button
+          class="favorite-button {{item.favorite ? 'active' : ''}}"
+          data-id="{{item.id}}"
+          catchtap="toggleFavorite"
+          aria-label="{{item.favorite ? '取消喜欢' : '加入喜欢'}}"
+        >
+          <image src="/assets/icons/home/heart-line.svg" mode="aspectFit" />
+        </button>
         <image
           wx:if="{{item.trayImageUrl}}"
           class="tray-bead tray-bead-image"
@@ -84,14 +119,14 @@
           data-visual-key="{{item.visualVersion}}:{{item.trayImageUrl}}"
           binderror="onTrayImageError"
         />
-        <view
-          wx:else
-          class="tray-bead"
-          style="background: {{item.colorHex}};"
-        />
-        <text>{{item.name}}</text>
-      </button>
-    </scroll-view>
+        <view wx:else class="tray-bead" style="background: {{item.colorHex}};" />
+        <text class="bead-name">{{item.name}} · {{item.diameterMm}}mm</text>
+        <text class="bead-price">¥{{item.salePriceText}}</text>
+      </view>
+    </view>
+    <view wx:else class="catalog-empty">
+      {{favoritesOnly ? '还没有喜欢的珠子' : '没有找到珠子'}}
+    </view>
 
     <view wx:if="{{quoteIssues.length}}" class="quote-issues">
       <text wx:for="{{quoteIssues}}" wx:key="code">{{item.message}}</text>
