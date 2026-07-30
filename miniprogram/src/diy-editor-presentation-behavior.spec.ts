@@ -71,6 +71,17 @@ function loadEditorPage(
 }
 
 describe('DIY editor presentation behavior', () => {
+  it('re-queries and redraws the canvas after the page view mounts', () => {
+    const { page } = loadEditorPage()
+    page.resetCanvasForResize = jest.fn()
+    page.drawBracelet = jest.fn()
+
+    page.onReady()
+
+    expect(page.resetCanvasForResize).toHaveBeenCalledTimes(1)
+    expect(page.drawBracelet).toHaveBeenCalledTimes(1)
+  })
+
   it('starts expanded and toggles preview with one redraw', () => {
     const { page } = loadEditorPage()
     page.drawBracelet = jest.fn()

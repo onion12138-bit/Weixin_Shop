@@ -18,14 +18,24 @@
     </view>
 
     <view class="canvas-panel {{previewExpanded ? 'is-expanded' : 'is-collapsed'}}">
-      <button class="preview-toggle" bindtap="togglePreview">
-        <text>{{previewExpanded ? '收起预览' : '展开预览'}}</text>
-        <image
-          class="preview-chevron"
-          src="{{previewExpanded ? '/assets/icons/diy/arrow-up-s-line.svg' : '/assets/icons/diy/arrow-down-s-line.svg'}}"
-          mode="aspectFit"
-        />
-      </button>
+      <view class="preview-toolbar">
+        <view wx:if="{{previewExpanded}}" class="history-actions">
+          <button disabled="{{!canUndo}}" bindtap="undo" aria-label="撤销">
+            <image src="/assets/icons/diy/arrow-go-back-line.svg" mode="aspectFit" />
+          </button>
+          <button disabled="{{!canRedo}}" bindtap="redo" aria-label="重做">
+            <image src="/assets/icons/diy/arrow-go-forward-line.svg" mode="aspectFit" />
+          </button>
+        </view>
+        <button class="preview-toggle" bindtap="togglePreview">
+          <text>{{previewExpanded ? '收起预览' : '展开预览'}}</text>
+          <image
+            class="preview-chevron"
+            src="{{previewExpanded ? '/assets/icons/diy/arrow-up-s-line.svg' : '/assets/icons/diy/arrow-down-s-line.svg'}}"
+            mode="aspectFit"
+          />
+        </button>
+      </view>
       <view class="preview-layout">
         <canvas
           id="bracelet-canvas"
@@ -42,14 +52,6 @@
             <text>{{currentLengthText}}</text>
           </view>
         </view>
-      </view>
-      <view wx:if="{{previewExpanded}}" class="history-actions">
-        <button disabled="{{!canUndo}}" bindtap="undo" aria-label="撤销">
-          <image src="/assets/icons/diy/arrow-go-back-line.svg" mode="aspectFit" />
-        </button>
-        <button disabled="{{!canRedo}}" bindtap="redo" aria-label="重做">
-          <image src="/assets/icons/diy/arrow-go-forward-line.svg" mode="aspectFit" />
-        </button>
       </view>
     </view>
 

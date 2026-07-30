@@ -58,11 +58,28 @@ button::after {
   box-shadow: 0 18rpx 48rpx rgba(174, 101, 131, .10);
 }
 
-.preview-toggle {
+.preview-toolbar {
+  box-sizing: border-box;
+}
+
+.canvas-panel.is-expanded .preview-toolbar {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  height: 100rpx;
+  padding: 6rpx 12rpx;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.canvas-panel.is-collapsed .preview-toolbar {
   position: absolute;
   z-index: 5;
   top: 20rpx;
   right: 20rpx;
+}
+
+.preview-toggle {
   display: flex;
   min-width: 170rpx;
   height: 88rpx;
@@ -94,7 +111,7 @@ button::after {
 }
 
 .canvas-panel.is-expanded .bracelet-canvas {
-  height: 620rpx;
+  height: 520rpx;
 }
 
 .canvas-panel.is-collapsed .preview-layout {
@@ -144,10 +161,6 @@ button::after {
 }
 
 .history-actions {
-  position: absolute;
-  z-index: 4;
-  top: 20rpx;
-  left: 20rpx;
   display: flex;
   gap: 4rpx;
 }
@@ -214,6 +227,7 @@ button::after {
   display: flex;
   width: 88rpx;
   height: 88rpx;
+  margin: 0;
   align-items: center;
   justify-content: center;
   border-radius: 44rpx;

@@ -281,6 +281,11 @@ Page({
     void this.bootstrap(options)
   },
 
+  onReady() {
+    this.resetCanvasForResize()
+    this.drawBracelet()
+  },
+
   onUnload() {
     this.cancelCanvasRedraw()
     this.editorActive = false
