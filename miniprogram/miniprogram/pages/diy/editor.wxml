@@ -110,7 +110,10 @@
           catchtap="toggleFavorite"
           aria-label="{{item.favorite ? '取消喜欢' : '加入喜欢'}}"
         >
-          <image src="/assets/icons/home/heart-line.svg" mode="aspectFit" />
+          <image
+            src="{{item.favorite ? '/assets/icons/home/heart-fill.svg' : '/assets/icons/home/heart-line.svg'}}"
+            mode="aspectFit"
+          />
         </button>
         <image
           wx:if="{{item.trayImageUrl}}"

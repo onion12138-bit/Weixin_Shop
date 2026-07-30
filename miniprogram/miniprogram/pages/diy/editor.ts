@@ -128,6 +128,7 @@ interface CanvasImageLoadRequest {
   cacheKey: string
   imageUrl: string
   generation: number
+  imageRevision: number
 }
 
 interface CanvasRenderingContext {
@@ -167,6 +168,7 @@ const FIT_TYPES: FitType[] = ['SNUG', 'STANDARD', 'LOOSE']
 const FIT_TYPE_LABELS = ['贴手', '标准', '宽松']
 const MAX_CONCURRENT_CANVAS_IMAGE_LOADS = 4
 const CANVAS_REDRAW_FRAME_MS = 16
+const EXPORT_CANVAS_SIZE = 620
 
 Page({
   data: {
@@ -227,6 +229,7 @@ Page({
   canvasLogicalHeight: 0,
   canvasQueryPending: false,
   canvasQueryRevision: 0,
+  canvasImageRevision: 0,
   canvasImages: {} as Record<
     string,
     CanvasImage | 'queued' | 'loading' | 'error'
@@ -535,6 +538,15 @@ Page({
     this.canvasLogicalWidth = 0
     this.canvasLogicalHeight = 0
     this.canvasQueryPending = false
+    this.resetCanvasImagesForNewCanvas()
+  },
+
+  resetCanvasImagesForNewCanvas() {
+    this.cancelCanvasRedraw()
+    this.canvasImageRevision += 1
+    this.canvasImages = {}
+    this.canvasImageQueue = []
+    this.activeCanvasImageLoads = 0
   },
 
   async chooseCategory(event: WechatMiniprogram.TouchEvent) {
@@ -1026,9 +1038,7 @@ Page({
           return
         }
         if (this.canvasNode && this.canvasNode !== canvas) {
-          this.cancelCanvasRedraw()
-          this.canvasImages = {}
-          this.canvasImageQueue = []
+          this.resetCanvasImagesForNewCanvas()
         }
         this.canvasNode = canvas
         const dpr = wx.getSystemInfoSync().pixelRatio || 1
@@ -1098,6 +1108,7 @@ Page({
         cacheKey,
         imageUrl: canvasImageUrl,
         generation: this.editorGeneration,
+        imageRevision: this.canvasImageRevision,
       })
       this.pumpCanvasImageQueue()
       return null
@@ -1115,6 +1126,7 @@ Page({
       if (
         !this.editorActive
         || request.generation !== this.editorGeneration
+        || request.imageRevision !== this.canvasImageRevision
         || request.canvas !== this.canvasNode
         || this.canvasImages[request.cacheKey] !== 'queued'
         || !request.canvas.createImage
@@ -1138,7 +1150,10 @@ Page({
     request: CanvasImageLoadRequest,
     image: CanvasImage | null,
   ) {
-    if (request.generation !== this.editorGeneration) return
+    if (
+      request.generation !== this.editorGeneration
+      || request.imageRevision !== this.canvasImageRevision
+    ) return
     this.activeCanvasImageLoads = Math.max(
       0,
       this.activeCanvasImageLoads - 1,
@@ -1191,10 +1206,103 @@ Page({
     }
   },
 
+  createExportCanvas(): CanvasNode {
+    const runtime = wx as unknown as {
+      createOffscreenCanvas?: (options: {
+        type: '2d'
+        width: number
+        height: number
+      }) => CanvasNode | null | undefined
+    }
+    if (typeof runtime.createOffscreenCanvas !== 'function') {
+      throw new Error('当前微信版本不支持生成方案预览，请升级后重试')
+    }
+    let canvas: CanvasNode | null | undefined
+    try {
+      canvas = runtime.createOffscreenCanvas({
+        type: '2d',
+        width: EXPORT_CANVAS_SIZE,
+        height: EXPORT_CANVAS_SIZE,
+      })
+    } catch {
+      throw new Error('方案预览画布创建失败，请重试')
+    }
+    if (!canvas || typeof canvas.getContext !== 'function') {
+      throw new Error('方案预览画布创建失败，请重试')
+    }
+    return canvas
+  },
+
+  renderExportCanvas(canvas: CanvasNode) {
+    const visualConfig = this.config?.visualConfig
+    if (!visualConfig) {
+      throw new Error('方案预览尚未准备好，请稍后重试')
+    }
+    const catalogMap = this.catalogMap()
+    const points = layoutBracelet(
+      this.data.sequence,
+      catalogMap,
+      { width: EXPORT_CANVAS_SIZE, height: EXPORT_CANVAS_SIZE },
+    ).map((point) => ({
+      ...point,
+      colorHex: catalogMap[point.skuId]?.colorHex,
+    }))
+    const plan = buildBraceletRenderPlan(
+      points,
+      visualConfig,
+      this.data.selectedIndex,
+      { cordColor: this.currentCord()?.colorHex },
+    )
+    const context = canvas.getContext('2d')
+    renderBraceletCanvas(
+      toBraceletDrawingContext(
+        context,
+        EXPORT_CANVAS_SIZE,
+        EXPORT_CANVAS_SIZE,
+      ),
+      plan,
+      (point) => {
+        const item = this.data.catalog.find(
+          (catalogItem) => catalogItem.id === point.skuId,
+        )
+        return item ? this.resolveCachedCanvasImage(item) : null
+      },
+    )
+  },
+
+  resolveCachedCanvasImage(
+    item: Pick<
+      CatalogItem,
+      'canvasImageUrl' | 'coverImageUrl' | 'visualVersion'
+    >,
+  ): CanvasImage | null {
+    const imageUrls = Array.from(new Set(
+      [item.canvasImageUrl, item.coverImageUrl].filter(Boolean),
+    ))
+    for (const imageUrl of imageUrls) {
+      const cached = this.canvasImages[`${item.visualVersion}:${imageUrl}`]
+      if (
+        cached
+        && cached !== 'queued'
+        && cached !== 'loading'
+        && cached !== 'error'
+      ) return cached
+    }
+    return null
+  },
+
   exportPreview(): Promise<string> {
     return new Promise((resolve, reject) => {
+      let canvas: CanvasNode
+      try {
+        canvas = this.createExportCanvas()
+        this.renderExportCanvas(canvas)
+      } catch (error) {
+        reject(error instanceof Error ? error : new Error('方案预览生成失败'))
+        return
+      }
       wx.canvasToTempFilePath({
-        canvas: this.canvasNode || undefined,
+        canvas,
         fileType: 'png',
         quality: 0.9,
         success: (response) => resolve(response.tempFilePath),

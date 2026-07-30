@@ -223,6 +223,59 @@ describe('DIY editor presentation behavior', () => {
       .toEqual([2001, 2002])
   })
 
+  it('combines category and keyword query results with the favorite-only filter', async () => {
+    let listBeads: jest.Mock
+    const beads = [
+      {
+        id: 2001,
+        skuCode: 'BEAD-2001',
+        name: '白水晶',
+        material: '水晶',
+        color: '透明',
+        diameterMm: 8,
+        salePrice: 6.8,
+        coverUrl: null,
+        diyVisual: null,
+        tags: [],
+      },
+      {
+        id: 2002,
+        skuCode: 'BEAD-2002',
+        name: '紫水晶',
+        material: '水晶',
+        color: '紫色',
+        diameterMm: 8,
+        salePrice: 9.8,
+        coverUrl: null,
+        diyVisual: null,
+        tags: [],
+      },
+    ]
+    const { page } = loadEditorPage([], ({ catalog }) => {
+      listBeads = catalog.listBeads
+      catalog.listBeads.mockResolvedValue({
+        items: beads, total: 2, page: 1, size: 30,
+      })
+    })
+    page.data.categoryId = 7
+    page.data.keyword = '紫'
+    page.data.favoriteBeadIds = [2002]
+    page.data.favoritesOnly = true
+
+    await page.searchCatalog()
+
+    expect(listBeads!).toHaveBeenCalledWith({
+      page: 1,
+      size: 30,
+      categoryId: 7,
+      keyword: '紫',
+    })
+    expect(page.data.catalogResults.map((item: { id: number }) => item.id))
+      .toEqual([2001, 2002])
+    expect(page.data.visibleCatalog.map((item: { id: number }) => item.id))
+      .toEqual([2002])
+  })
+
   it('ignores a selector result started before a canvas reset', () => {
     const { page, wxMock } = loadEditorPage()
     const callbacks: Array<(result: unknown) => void> = []

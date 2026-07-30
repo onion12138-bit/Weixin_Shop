@@ -38,4 +38,22 @@ describe('DIY editor visual contract', () => {
       /\.canvas-panel\.is-expanded \.preview-toolbar\s*\{[^}]*position:\s*absolute;/s,
     )
   })
+
+  it('keeps bead, favorite, and quantity actions bound to separate handlers', () => {
+    expect(editorMarkup).toMatch(
+      /class="bead-card"[\s\S]*bindtap="addCatalogBead"/,
+    )
+    expect(editorMarkup).toMatch(
+      /class="favorite-button[^\"]*"[\s\S]*catchtap="toggleFavorite"/,
+    )
+    expect(editorMarkup).toMatch(
+      /class="selected-actions"[\s\S]*bindtap="decreaseSelectedSku"[\s\S]*bindtap="increaseSelectedSku"/,
+    )
+  })
+
+  it('uses a solid heart asset for active favorites', () => {
+    expect(editorMarkup).toContain(
+      "src=\"{{item.favorite ? '/assets/icons/home/heart-fill.svg' : '/assets/icons/home/heart-line.svg'}}\"",
+    )
+  })
 })
