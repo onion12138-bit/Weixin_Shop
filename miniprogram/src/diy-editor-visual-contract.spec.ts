@@ -55,5 +55,8 @@ describe('DIY editor visual contract', () => {
     expect(editorMarkup).toContain(
       "src=\"{{item.favorite ? '/assets/icons/home/heart-fill.svg' : '/assets/icons/home/heart-line.svg'}}\"",
     )
+    expect(editorMarkup).toContain(
+      "src=\"{{favoritesOnly ? '/assets/icons/home/heart-fill.svg' : '/assets/icons/home/heart-line.svg'}}\"",
+    )
   })
 })

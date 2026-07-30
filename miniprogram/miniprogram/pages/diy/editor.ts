@@ -169,6 +169,7 @@ const FIT_TYPE_LABELS = ['贴手', '标准', '宽松']
 const MAX_CONCURRENT_CANVAS_IMAGE_LOADS = 4
 const CANVAS_REDRAW_FRAME_MS = 16
 const EXPORT_CANVAS_SIZE = 620
+const EXPORT_IMAGE_WAIT_MS = 1500
 
 Page({
   data: {
@@ -546,7 +547,6 @@ Page({
     this.canvasImageRevision += 1
     this.canvasImages = {}
     this.canvasImageQueue = []
-    this.activeCanvasImageLoads = 0
   },
 
   async chooseCategory(event: WechatMiniprogram.TouchEvent) {
@@ -1150,14 +1150,15 @@ Page({
     request: CanvasImageLoadRequest,
     image: CanvasImage | null,
   ) {
-    if (
-      request.generation !== this.editorGeneration
-      || request.imageRevision !== this.canvasImageRevision
-    ) return
+    if (request.generation !== this.editorGeneration) return
     this.activeCanvasImageLoads = Math.max(
       0,
       this.activeCanvasImageLoads - 1,
     )
+    if (request.imageRevision !== this.canvasImageRevision) {
+      this.pumpCanvasImageQueue()
+      return
+    }
     if (
       !this.editorActive
       || request.canvas !== this.canvasNode
@@ -1233,7 +1234,10 @@ Page({
     return canvas
   },
 
-  renderExportCanvas(canvas: CanvasNode) {
+  renderExportCanvas(
+    canvas: CanvasNode,
+    exportImages: Record<number, CanvasImage>,
+  ) {
     const visualConfig = this.config?.visualConfig
     if (!visualConfig) {
       throw new Error('方案预览尚未准备好，请稍后重试')
@@ -1261,46 +1265,84 @@ Page({
         EXPORT_CANVAS_SIZE,
       ),
       plan,
-      (point) => {
-        const item = this.data.catalog.find(
-          (catalogItem) => catalogItem.id === point.skuId,
-        )
-        return item ? this.resolveCachedCanvasImage(item) : null
-      },
+      (point) => exportImages[point.skuId] || null,
     )
   },
 
-  resolveCachedCanvasImage(
-    item: Pick<
-      CatalogItem,
-      'canvasImageUrl' | 'coverImageUrl' | 'visualVersion'
-    >,
-  ): CanvasImage | null {
+  loadExportImage(
+    canvas: CanvasNode,
+    item: Pick<CatalogItem, 'canvasImageUrl' | 'coverImageUrl'>,
+  ): Promise<CanvasImage | null> {
     const imageUrls = Array.from(new Set(
       [item.canvasImageUrl, item.coverImageUrl].filter(Boolean),
     ))
-    for (const imageUrl of imageUrls) {
-      const cached = this.canvasImages[`${item.visualVersion}:${imageUrl}`]
-      if (
-        cached
-        && cached !== 'queued'
-        && cached !== 'loading'
-        && cached !== 'error'
-      ) return cached
+    if (!canvas.createImage || imageUrls.length === 0) {
+      return Promise.resolve(null)
     }
-    return null
+    return new Promise((resolve) => {
+      let finished = false
+      const tryNextUrl = (index: number) => {
+        if (finished) return
+        if (index >= imageUrls.length) {
+          finished = true
+          resolve(null)
+          return
+        }
+        let image: CanvasImage
+        try {
+          image = canvas.createImage!()
+        } catch {
+          tryNextUrl(index + 1)
+          return
+        }
+        let attemptFinished = false
+        image.onload = () => {
+          if (finished || attemptFinished) return
+          attemptFinished = true
+          finished = true
+          resolve(image)
+        }
+        image.onerror = () => {
+          if (finished || attemptFinished) return
+          attemptFinished = true
+          tryNextUrl(index + 1)
+        }
+        image.src = imageUrls[index]
+      }
+      tryNextUrl(0)
+    })
   },
 
-  exportPreview(): Promise<string> {
+  async loadExportImages(
+    canvas: CanvasNode,
+  ): Promise<Record<number, CanvasImage>> {
+    const catalogMap = Object.fromEntries(
+      this.data.catalog.map((item) => [item.id, item]),
+    ) as Record<number, CatalogItem>
+    const items = Array.from(new Set(this.data.sequence))
+      .map((skuId) => catalogMap[skuId])
+      .filter((item): item is CatalogItem => Boolean(item))
+    const exportImages: Record<number, CanvasImage> = {}
+    if (!canvas.createImage || items.length === 0) return exportImages
+
+    let timeoutId: ReturnType<typeof setTimeout> | null = null
+    const loading = Promise.all(items.map(async (item) => {
+      const image = await this.loadExportImage(canvas, item)
+      if (image) exportImages[item.id] = image
+    }))
+    const timeout = new Promise<void>((resolve) => {
+      timeoutId = setTimeout(resolve, EXPORT_IMAGE_WAIT_MS)
+    })
+    await Promise.race([loading, timeout])
+    if (timeoutId !== null) clearTimeout(timeoutId)
+    return exportImages
+  },
+
+  async exportPreview(): Promise<string> {
+    const canvas = this.createExportCanvas()
+    const exportImages = await this.loadExportImages(canvas)
+    this.renderExportCanvas(canvas, exportImages)
     return new Promise((resolve, reject) => {
-      let canvas: CanvasNode
-      try {
-        canvas = this.createExportCanvas()
-        this.renderExportCanvas(canvas)
-      } catch (error) {
-        reject(error instanceof Error ? error : new Error('方案预览生成失败'))
-        return
-      }
       wx.canvasToTempFilePath({
         canvas,
         fileType: 'png',

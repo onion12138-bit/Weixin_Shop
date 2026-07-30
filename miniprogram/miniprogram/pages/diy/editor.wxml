@@ -88,7 +88,10 @@
         class="favorite-filter {{favoritesOnly ? 'active' : ''}}"
         bindtap="toggleFavoriteFilter"
       >
-        <image src="/assets/icons/home/heart-line.svg" mode="aspectFit" />
+        <image
+          src="{{favoritesOnly ? '/assets/icons/home/heart-fill.svg' : '/assets/icons/home/heart-line.svg'}}"
+          mode="aspectFit"
+        />
         <text>喜欢</text>
       </button>
       <button class="search-button" bindtap="searchCatalog">搜索</button>

@@ -52,6 +52,48 @@ function createRenderContext(onArc?: (...args: unknown[]) => void) {
   }
 }
 
+function createExportCanvasMock(onArc?: (...args: unknown[]) => void) {
+  const images: Array<{
+    src: string
+    onload: () => void
+    onerror: () => void
+  }> = []
+  const context = createRenderContext(onArc)
+  const canvas = {
+    width: 620,
+    height: 620,
+    getContext: jest.fn(() => context),
+    createImage: jest.fn(() => {
+      const image = {
+        src: '',
+        onload: () => undefined,
+        onerror: () => undefined,
+      }
+      images.push(image)
+      return image
+    }),
+  }
+  return { canvas, context, images }
+}
+
+function configureExportPage(
+  page: Record<string, any>,
+  sequence: number[],
+  catalog: Array<Record<string, unknown>>,
+) {
+  page.config = {
+    visualConfig: {
+      canvasBackgroundColor: '#fffdfb',
+      braceletShadowOpacity: 0.16,
+      beadShadowOpacity: 0.2,
+      beadOverlapRatio: 0.06,
+      configVersion: 1,
+    },
+  }
+  page.data.sequence = sequence
+  page.data.catalog = catalog
+}
+
 describe('DIY view model', () => {
   it('expands package quantities in stable order', () => {
     expect(restorePackageSequence([
@@ -539,17 +581,26 @@ describe('DIY published visual integration', () => {
         return image
       }),
     }
+    const newImages: Array<{
+      src: string
+      onload: () => void
+      onerror: () => void
+    }> = []
     const newCanvas = {
       width: 0,
       height: 0,
       getContext: jest.fn(() => ({
         scale: jest.fn(),
       })),
-      createImage: jest.fn(() => ({
-        src: '',
-        onload: () => undefined,
-        onerror: () => undefined,
-      })),
+      createImage: jest.fn(() => {
+        const image = {
+          src: '',
+          onload: () => undefined,
+          onerror: () => undefined,
+        }
+        newImages.push(image)
+        return image
+      }),
     }
     page.canvasNode = oldCanvas
     for (let index = 0; index < 4; index += 1) {
@@ -581,19 +632,26 @@ describe('DIY published visual integration', () => {
     }
 
     page.drawBracelet()
-    page.resolveCanvasImage(newCanvas, {
-      canvasImageUrl: 'https://shop.test/new.webp',
+    const repeatedItem = {
+      canvasImageUrl: 'https://shop.test/old-0.webp',
       coverImageUrl: '',
-      visualVersion: 5,
-    })
+      visualVersion: 0,
+    }
+    page.resolveCanvasImage(newCanvas, repeatedItem)
 
-    expect(newCanvas.createImage).toHaveBeenCalledTimes(1)
-    expect(page.activeCanvasImageLoads).toBe(1)
+    expect(newCanvas.createImage).not.toHaveBeenCalled()
+    expect(page.activeCanvasImageLoads).toBe(4)
 
     oldImages[0].onload()
 
     expect(newCanvas.createImage).toHaveBeenCalledTimes(1)
-    expect(page.activeCanvasImageLoads).toBe(1)
+    expect(newImages[0].src).toBe('https://shop.test/old-0.webp')
+    expect(page.activeCanvasImageLoads).toBe(4)
+
+    newImages[0].onload()
+
+    expect(page.activeCanvasImageLoads).toBe(3)
+    expect(page.resolveCanvasImage(newCanvas, repeatedItem)).toBe(newImages[0])
   })
 
   it('scopes selector queries and ignores image callbacks from an old editor', () => {
@@ -877,6 +935,164 @@ describe('DIY published visual integration', () => {
       2,
       expect.objectContaining({ canvas: exportCanvases[1] }),
     )
+  })
+
+  it('waits for one export-local image per unique bead before saving a collapsed preview', async () => {
+    const page = instantiate(loadEditorDefinition())
+    configureExportPage(page, [2001, 2001], [{
+      id: 2001,
+      name: '紫水晶',
+      diameterMm: 8,
+      salePriceCents: 1280,
+      colorHex: '#b895d8',
+      canvasImageUrl: 'https://shop.test/amethyst-canvas.webp',
+      coverImageUrl: 'https://shop.test/amethyst-cover.png',
+      visualVersion: 2,
+    }])
+    page.data.previewExpanded = false
+    page.canvasNode = { previousCanvas: true }
+    page.canvasImages = { '2:https://shop.test/amethyst-canvas.webp': 'loading' }
+    page.activeCanvasImageLoads = 1
+    page.resetCanvasForResize()
+    const { canvas, context, images } = createExportCanvasMock()
+    const canvasToTempFilePath = jest.fn((options: {
+      success(response: { tempFilePath: string }): void
+    }) => options.success({ tempFilePath: '/tmp/export-with-image.png' }))
+    ;(globalThis as any).wx = {
+      createOffscreenCanvas: jest.fn(() => canvas),
+      canvasToTempFilePath,
+    }
+
+    const exported = page.exportPreview()
+    await Promise.resolve()
+
+    expect(canvas.createImage).toHaveBeenCalledTimes(1)
+    expect(images[0].src).toBe('https://shop.test/amethyst-canvas.webp')
+    expect(canvasToTempFilePath).not.toHaveBeenCalled()
+    expect(context.drawImage).not.toHaveBeenCalled()
+
+    images[0].onload()
+
+    await expect(exported).resolves.toBe('/tmp/export-with-image.png')
+    expect(context.drawImage).toHaveBeenCalledTimes(2)
+    expect(context.drawImage).toHaveBeenCalledWith(
+      images[0],
+      expect.any(Number),
+      expect.any(Number),
+      expect.any(Number),
+      expect.any(Number),
+    )
+    expect(page.canvasImages).toEqual({})
+    expect(page.activeCanvasImageLoads).toBe(1)
+  })
+
+  it('falls an export-local canvas URL through to its cover URL', async () => {
+    const page = instantiate(loadEditorDefinition())
+    configureExportPage(page, [2001], [{
+      id: 2001,
+      name: '紫水晶',
+      diameterMm: 8,
+      salePriceCents: 1280,
+      colorHex: '#b895d8',
+      canvasImageUrl: 'https://shop.test/broken.webp',
+      coverImageUrl: 'https://shop.test/cover.png',
+      visualVersion: 2,
+    }])
+    const { canvas, context, images } = createExportCanvasMock()
+    const canvasToTempFilePath = jest.fn((options: {
+      success(response: { tempFilePath: string }): void
+    }) => options.success({ tempFilePath: '/tmp/export-cover.png' }))
+    ;(globalThis as any).wx = {
+      createOffscreenCanvas: jest.fn(() => canvas),
+      canvasToTempFilePath,
+    }
+
+    const exported = page.exportPreview()
+    await Promise.resolve()
+    images[0].onerror()
+
+    expect(canvas.createImage).toHaveBeenCalledTimes(2)
+    expect(images[1].src).toBe('https://shop.test/cover.png')
+    expect(canvasToTempFilePath).not.toHaveBeenCalled()
+
+    images[1].onload()
+
+    await expect(exported).resolves.toBe('/tmp/export-cover.png')
+    expect(context.drawImage).toHaveBeenCalledWith(
+      images[1],
+      expect.any(Number),
+      expect.any(Number),
+      expect.any(Number),
+      expect.any(Number),
+    )
+  })
+
+  it('uses the bead color when every export-local URL fails', async () => {
+    const page = instantiate(loadEditorDefinition())
+    configureExportPage(page, [2001], [{
+      id: 2001,
+      name: '紫水晶',
+      diameterMm: 8,
+      salePriceCents: 1280,
+      colorHex: '#b895d8',
+      canvasImageUrl: 'https://shop.test/broken.webp',
+      coverImageUrl: 'https://shop.test/broken-cover.png',
+      visualVersion: 2,
+    }])
+    const { canvas, context, images } = createExportCanvasMock()
+    const canvasToTempFilePath = jest.fn((options: {
+      success(response: { tempFilePath: string }): void
+    }) => options.success({ tempFilePath: '/tmp/export-color.png' }))
+    ;(globalThis as any).wx = {
+      createOffscreenCanvas: jest.fn(() => canvas),
+      canvasToTempFilePath,
+    }
+
+    const exported = page.exportPreview()
+    await Promise.resolve()
+    images[0].onerror()
+    images[1].onerror()
+
+    await expect(exported).resolves.toBe('/tmp/export-color.png')
+    expect(context.drawImage).not.toHaveBeenCalled()
+    expect(canvasToTempFilePath).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses the color fallback after one bounded wait for stalled export images', async () => {
+    jest.useFakeTimers()
+    try {
+      const page = instantiate(loadEditorDefinition())
+      configureExportPage(page, [2001], [{
+        id: 2001,
+        name: '紫水晶',
+        diameterMm: 8,
+        salePriceCents: 1280,
+        colorHex: '#b895d8',
+        canvasImageUrl: 'https://shop.test/stalled.webp',
+        coverImageUrl: '',
+        visualVersion: 2,
+      }])
+      const { canvas, context } = createExportCanvasMock()
+      const canvasToTempFilePath = jest.fn((options: {
+        success(response: { tempFilePath: string }): void
+      }) => options.success({ tempFilePath: '/tmp/export-color.png' }))
+      ;(globalThis as any).wx = {
+        createOffscreenCanvas: jest.fn(() => canvas),
+        canvasToTempFilePath,
+      }
+
+      const exported = page.exportPreview()
+      await Promise.resolve()
+
+      expect(canvasToTempFilePath).not.toHaveBeenCalled()
+      jest.runOnlyPendingTimers()
+      await expect(exported).resolves.toBe('/tmp/export-color.png')
+      expect(context.drawImage).not.toHaveBeenCalled()
+      expect(canvasToTempFilePath).toHaveBeenCalledTimes(1)
+      expect(jest.getTimerCount()).toBe(0)
+    } finally {
+      jest.useRealTimers()
+    }
   })
 
   it('rejects preview export clearly when offscreen canvas is unavailable', async () => {
