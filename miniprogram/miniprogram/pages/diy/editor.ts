@@ -282,6 +282,7 @@ Page({
   },
 
   onReady() {
+    if (this.data.loading || this.data.errorMessage) return
     this.resetCanvasForResize()
     this.drawBracelet()
   },
@@ -358,6 +359,7 @@ Page({
         authoritative: false,
         persistDraft: false,
         pushHistory: false,
+        redraw: false,
       })
     } catch (error) {
       this.setData({
@@ -366,8 +368,14 @@ Page({
           : 'DIY 设计器加载失败，请稍后重试',
       })
     } finally {
-      this.setData({ loading: false })
-      this.drawBracelet()
+      ;(this.setData as unknown as (
+        patch: Record<string, unknown>,
+        callback: () => void,
+      ) => void)({ loading: false }, () => {
+        if (!this.editorActive || this.data.errorMessage) return
+        this.resetCanvasForResize()
+        this.drawBracelet()
+      })
     }
   },
 
@@ -818,6 +826,7 @@ Page({
       persistDraft: boolean
       pushHistory: boolean
       selectedIndex?: number
+      redraw?: boolean
     },
   ) {
     if (options.pushHistory) this.history.push(sequence)
@@ -842,7 +851,7 @@ Page({
       canRedo: this.history.canRedo(),
     })
     if (options.persistDraft) writeDraftCache(this.currentDraft())
-    this.drawBracelet()
+    if (options.redraw !== false) this.drawBracelet()
   },
 
   buildLocalSummary(
@@ -1003,6 +1012,7 @@ Page({
           return
         }
         this.canvasQueryPending = false
+        if (!result) return
         const canvasResult = result as {
           node?: CanvasNode
           width?: number

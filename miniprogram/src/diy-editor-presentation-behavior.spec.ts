@@ -71,15 +71,81 @@ function loadEditorPage(
 }
 
 describe('DIY editor presentation behavior', () => {
-  it('re-queries and redraws the canvas after the page view mounts', () => {
-    const { page } = loadEditorPage()
-    page.resetCanvasForResize = jest.fn()
-    page.drawBracelet = jest.fn()
+  it('waits for the loaded view before querying canvas and recovers from a missing selector result', async () => {
+    const { page, wxMock } = loadEditorPage([], ({ catalog, diy }) => {
+      catalog.listBeads.mockResolvedValue({
+        items: [], total: 0, page: 1, size: 30,
+      })
+      catalog.listCategories.mockResolvedValue([])
+      diy.getDiyConfiguration.mockResolvedValue({
+        rule: {
+          minWristMm: 120,
+          maxWristMm: 220,
+          snugAllowanceMm: 5,
+          standardAllowanceMm: 10,
+          looseAllowanceMm: 15,
+          toleranceMm: 5,
+          maxBeadCount: 30,
+          configVersion: 1,
+        },
+        craftFeeRules: [],
+        cordOptions: [{
+          id: 6001,
+          code: 'CLEAR',
+          name: '透明弹力绳',
+          colorHex: '#e7e3db',
+          extraFee: 0,
+          sortOrder: 1,
+          optionVersion: 1,
+        }],
+        visualConfig: {
+          canvasBackgroundColor: '#fffdfd',
+          braceletShadowOpacity: 0.14,
+          beadShadowOpacity: 0.16,
+          beadOverlapRatio: 0.08,
+          configVersion: 1,
+        },
+      })
+    })
+    const selectorCallbacks: Array<(result: unknown) => void> = []
+    const viewCallbacks: Array<() => void> = []
+    const query: Record<string, jest.Mock> = {
+      exec: jest.fn(),
+      in: jest.fn(),
+      select: jest.fn(),
+    }
+    const selection = {
+      fields: jest.fn((_: unknown, callback: (result: unknown) => void) => {
+        selectorCallbacks.push(callback)
+        return query
+      }),
+    }
+    query.in.mockReturnValue(query)
+    query.select.mockReturnValue(selection)
+    wxMock.createSelectorQuery.mockReturnValue(query)
+    page.setData = jest.fn((patch: Record<string, unknown>, callback?: () => void) => {
+      Object.assign(page.data, patch)
+      if (callback) viewCallbacks.push(callback)
+    })
+    page.editorActive = true
+    page.editorGeneration = 1
 
     page.onReady()
+    expect(selectorCallbacks).toHaveLength(0)
 
-    expect(page.resetCanvasForResize).toHaveBeenCalledTimes(1)
-    expect(page.drawBracelet).toHaveBeenCalledTimes(1)
+    await page.bootstrap({})
+    expect(page.data.loading).toBe(false)
+    expect(selectorCallbacks).toHaveLength(0)
+    expect(viewCallbacks).toHaveLength(1)
+
+    viewCallbacks.shift()?.()
+    expect(selectorCallbacks).toHaveLength(1)
+    expect(page.canvasQueryPending).toBe(true)
+    expect(() => selectorCallbacks[0](undefined)).not.toThrow()
+    expect(page.canvasQueryPending).toBe(false)
+
+    page.drawBracelet()
+    expect(selectorCallbacks).toHaveLength(2)
   })
 
   it('starts expanded and toggles preview with one redraw', () => {
