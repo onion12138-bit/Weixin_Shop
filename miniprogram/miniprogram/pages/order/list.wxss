@@ -1,7 +1,7 @@
 .orders-page {
   min-height: 100vh;
   padding: 34rpx 26rpx 64rpx;
-  background: #faf6f3;
+  background: #fff8fa;
   box-sizing: border-box;
 }
 

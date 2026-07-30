@@ -1,7 +1,7 @@
 .catalog-page {
   min-height: 100vh;
   padding-bottom: 70rpx;
-  background: #faf6f3;
+  background: #fff8fa;
 }
 
 .catalog-hero {

@@ -12,9 +12,9 @@
   ],
   "window": {
     "navigationBarTitleText": "DIY 手串",
-    "navigationBarBackgroundColor": "#faf6f3",
+    "navigationBarBackgroundColor": "#fff8fa",
     "navigationBarTextStyle": "black",
-    "backgroundColor": "#faf6f3"
+    "backgroundColor": "#fff8fa"
   },
   "sitemapLocation": "sitemap.json"
 }

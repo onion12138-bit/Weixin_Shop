@@ -1,7 +1,7 @@
 .detail-page {
   min-height: 100vh;
   padding-bottom: 170rpx;
-  background: #f7f2ef;
+  background: #fff8fa;
 }
 
 .hero-image {
