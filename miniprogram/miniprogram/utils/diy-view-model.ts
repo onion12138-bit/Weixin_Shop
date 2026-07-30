@@ -18,6 +18,8 @@ export interface EditorSummaryInput {
 export interface EditorSummary {
   countText: string
   lengthText: string
+  targetLengthText: string
+  currentLengthText: string
   sizeText: string
   priceText: string
   priceBadge: string
@@ -87,6 +89,8 @@ export function buildEditorSummary(
     lengthText: input.beadCount > 0
       ? `当前 ${formatMm(input.currentLengthMm)} mm / 目标 ${formatMm(input.targetLengthMm)} mm`
       : '尚未选珠',
+    targetLengthText: `目标 ${formatMm(input.targetLengthMm)} mm`,
+    currentLengthText: `当前 ${formatMm(input.currentLengthMm)} mm`,
     sizeText: input.beadCount > 0
       ? sizeStatusText(input.sizeStatus)
       : '请选择珠子',

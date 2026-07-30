@@ -47,6 +47,12 @@ import {
   type EditorSummary,
 } from '../../utils/diy-view-model'
 import {
+  DIY_FAVORITE_STORAGE_KEY,
+  filterFavoriteCatalog,
+  normalizeFavoriteBeadIds,
+  toggleFavoriteBead,
+} from '../../domain/diy-catalog-presentation'
+import {
   resolveCanvasUrl,
   resolveTrayUrl,
 } from '../../domain/diy-visual-fallback'
@@ -73,6 +79,11 @@ interface CatalogItem {
   coverImageUrl: string
   visualVersion: number
   colorHex: string
+}
+
+interface CatalogDisplayItem extends CatalogItem {
+  favorite: boolean
+  salePriceText: string
 }
 
 interface CordOptionItem {
@@ -181,11 +192,18 @@ Page({
     selectedIndex: -1,
     selectedNumber: 0,
     catalog: [] as CatalogItem[],
+    previewExpanded: true,
+    favoriteBeadIds: [] as number[],
+    favoritesOnly: false,
+    catalogResults: [] as CatalogItem[],
+    visibleCatalog: [] as CatalogDisplayItem[],
     categories: [] as Category[],
     categoryId: 0,
     keyword: '',
     countText: '0 颗',
     lengthText: '尚未选珠',
+    targetLengthText: '目标 160 mm',
+    currentLengthText: '当前 0 mm',
     sizeText: '请选择珠子',
     priceText: '预估 ¥0.00',
     priceBadge: '预估',
@@ -233,6 +251,7 @@ Page({
     this.canvasImages = {}
     this.canvasImageQueue = []
     this.activeCanvasImageLoads = 0
+    this.loadFavoriteBeads()
     if (options.source === 'ai') {
       try {
         this.pendingAiRecommendationRaw = wx.getStorageSync(
@@ -287,7 +306,7 @@ Page({
         beadsPromise,
       ])
       this.config = config
-      const catalog = beads.map(toCatalogItem)
+      const catalogResults = beads.map(toCatalogItem)
       const cordOptions = config.cordOptions.map(toCordOptionItem)
       const wristOptions = buildWristOptions(
         config.rule.minWristMm,
@@ -296,7 +315,7 @@ Page({
 
       this.setData({
         categories,
-        catalog,
+        catalogResults,
         cordOptions,
         cordOptionNames: cordOptions.map((item) => item.name),
         cordOptionId: cordOptions[0]?.id || this.data.cordOptionId,
@@ -305,6 +324,8 @@ Page({
         wristOptionLabels: wristOptions.map(formatWristLabel),
         wristOptionIndex: closestIndex(wristOptions, this.data.wristCircumferenceMm),
       })
+      this.mergeCatalog(catalogResults)
+      this.refreshVisibleCatalog()
 
       const initial = await this.resolveInitialDraft(options)
       this.history = createHistory(initial.sequence)
@@ -428,6 +449,79 @@ Page({
     this.setData({ catalog: Array.from(merged.values()) })
   },
 
+  loadFavoriteBeads() {
+    let favoriteBeadIds: number[] = []
+    try {
+      favoriteBeadIds = normalizeFavoriteBeadIds(
+        wx.getStorageSync(DIY_FAVORITE_STORAGE_KEY),
+      )
+    } catch {
+      favoriteBeadIds = []
+    }
+    this.setData({ favoriteBeadIds })
+    this.refreshVisibleCatalog()
+  },
+
+  togglePreview() {
+    ;(this.setData as unknown as (
+      patch: Record<string, unknown>,
+      callback: () => void,
+    ) => void)(
+      { previewExpanded: !this.data.previewExpanded },
+      () => {
+        this.resetCanvasForResize()
+        this.drawBracelet()
+      },
+    )
+  },
+
+  toggleFavorite(event: WechatMiniprogram.TouchEvent) {
+    const skuId = Number(event.currentTarget.dataset.id || 0)
+    const favoriteBeadIds = toggleFavoriteBead(
+      this.data.favoriteBeadIds,
+      skuId,
+    )
+    this.setData({ favoriteBeadIds })
+    this.refreshVisibleCatalog()
+    try {
+      wx.setStorageSync(
+        DIY_FAVORITE_STORAGE_KEY,
+        JSON.stringify(favoriteBeadIds),
+      )
+    } catch {
+      wx.showToast({ title: '喜欢记录未保存', icon: 'none' })
+    }
+  },
+
+  toggleFavoriteFilter() {
+    this.setData({ favoritesOnly: !this.data.favoritesOnly })
+    this.refreshVisibleCatalog()
+  },
+
+  refreshVisibleCatalog() {
+    const favorites = new Set(this.data.favoriteBeadIds)
+    const filtered = filterFavoriteCatalog(
+      this.data.catalogResults,
+      this.data.favoriteBeadIds,
+      this.data.favoritesOnly,
+    )
+    this.setData({
+      visibleCatalog: filtered.map((item) => ({
+        ...item,
+        favorite: favorites.has(item.id),
+        salePriceText: (item.salePriceCents / 100).toFixed(2),
+      })),
+    })
+  },
+
+  resetCanvasForResize() {
+    this.canvasNode = null
+    this.canvasContext = null
+    this.canvasLogicalWidth = 0
+    this.canvasLogicalHeight = 0
+    this.canvasQueryPending = false
+  },
+
   async chooseCategory(event: WechatMiniprogram.TouchEvent) {
     const categoryId = Number(event.currentTarget.dataset.id || 0)
     this.setData({ categoryId })
@@ -446,7 +540,10 @@ Page({
         categoryId: this.data.categoryId || undefined,
         keyword: this.data.keyword || undefined,
       })
-      this.mergeCatalog(page.items.map(toCatalogItem))
+      const catalogResults = page.items.map(toCatalogItem)
+      this.mergeCatalog(catalogResults)
+      this.setData({ catalogResults })
+      this.refreshVisibleCatalog()
     } catch (error) {
       this.setData({
         errorMessage: error instanceof Error ? error.message : '珠子加载失败',
@@ -718,6 +815,8 @@ Page({
       selectedNumber: selectedIndex >= 0 ? selectedIndex + 1 : 0,
       countText: summary.countText,
       lengthText: summary.lengthText,
+      targetLengthText: summary.targetLengthText,
+      currentLengthText: summary.currentLengthText,
       sizeText: summary.sizeText,
       priceText: summary.priceText,
       priceBadge: summary.priceBadge,
@@ -777,6 +876,8 @@ Page({
       quoteIssues: quote.issues,
       countText: summary.countText,
       lengthText: summary.lengthText,
+      targetLengthText: summary.targetLengthText,
+      currentLengthText: summary.currentLengthText,
       sizeText: summary.sizeText,
       priceText: summary.priceText,
       priceBadge: summary.priceBadge,

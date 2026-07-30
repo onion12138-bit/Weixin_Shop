@@ -51,6 +51,8 @@ describe('DIY view model', () => {
     })).toEqual({
       countText: '21 颗',
       lengthText: '当前 168 mm / 目标 170 mm',
+      targetLengthText: '目标 170 mm',
+      currentLengthText: '当前 168 mm',
       sizeText: '尺寸合适',
       priceText: '预估 ¥314.80',
       priceBadge: '预估',
