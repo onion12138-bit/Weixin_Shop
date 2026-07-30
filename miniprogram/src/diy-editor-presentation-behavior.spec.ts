@@ -20,7 +20,13 @@ jest.mock('../miniprogram/services/diy', () => ({
   yuanToCents: (value: number) => Math.round(value * 100),
 }))
 
-function loadEditorPage(favoriteBeadIds: number[] = []) {
+function loadEditorPage(
+  favoriteBeadIds: number[] = [],
+  setupServices?: (services: {
+    catalog: Record<string, jest.Mock>
+    diy: Record<string, jest.Mock>
+  }) => void,
+) {
   let definition: Record<string, any> | null = null
   const storage = new Map<string, unknown>([
     ['diy_favorite_bead_ids', JSON.stringify(favoriteBeadIds)],
@@ -31,6 +37,8 @@ function loadEditorPage(favoriteBeadIds: number[] = []) {
       storage.set(key, value)
     }),
     showToast: jest.fn(),
+    createSelectorQuery: jest.fn(),
+    getSystemInfoSync: jest.fn(() => ({ pixelRatio: 1 })),
   }
   ;(globalThis as any).wx = wxMock
   ;(globalThis as any).Page = (pageOptions: Record<string, any>) => {
@@ -38,6 +46,15 @@ function loadEditorPage(favoriteBeadIds: number[] = []) {
   }
 
   jest.isolateModules(() => {
+    const catalog = jest.requireMock('../miniprogram/services/catalog') as Record<
+      string,
+      jest.Mock
+    >
+    const diy = jest.requireMock('../miniprogram/services/diy') as Record<
+      string,
+      jest.Mock
+    >
+    setupServices?.({ catalog, diy })
     require('../miniprogram/pages/diy/editor')
   })
   if (!definition) throw new Error('Editor Page definition was not captured')
@@ -81,6 +98,37 @@ describe('DIY editor presentation behavior', () => {
     )
   })
 
+  it('uses an empty favorite list when storage reads fail', () => {
+    const { page, wxMock } = loadEditorPage([2001])
+    wxMock.getStorageSync.mockImplementation(() => {
+      throw new Error('storage unavailable')
+    })
+
+    page.loadFavoriteBeads()
+
+    expect(page.data.favoriteBeadIds).toEqual([])
+  })
+
+  it('keeps the favorite in view and notifies when storage writes fail', () => {
+    const { page, wxMock } = loadEditorPage()
+    page.data.catalogResults = [{ id: 2002, salePriceCents: 980 }]
+    wxMock.setStorageSync.mockImplementation(() => {
+      throw new Error('storage unavailable')
+    })
+
+    page.toggleFavorite({ currentTarget: { dataset: { id: 2002 } } })
+
+    expect(page.data.favoriteBeadIds).toEqual([2002])
+    expect(page.data.visibleCatalog[0]).toMatchObject({
+      id: 2002,
+      favorite: true,
+    })
+    expect(wxMock.showToast).toHaveBeenCalledWith({
+      title: '喜欢记录未保存',
+      icon: 'none',
+    })
+  })
+
   it('filters current catalog results and restores them when disabled', () => {
     const { page } = loadEditorPage([2002])
     page.data.favoriteBeadIds = [2002]
@@ -96,6 +144,123 @@ describe('DIY editor presentation behavior', () => {
     page.toggleFavoriteFilter()
     expect(page.data.visibleCatalog.map((item: { id: number }) => item.id))
       .toEqual([2001, 2002])
+  })
+
+  it('ignores a selector result started before a canvas reset', () => {
+    const { page, wxMock } = loadEditorPage()
+    const callbacks: Array<(result: unknown) => void> = []
+    const query: Record<string, jest.Mock> = {
+      exec: jest.fn(),
+      in: jest.fn(),
+      select: jest.fn(),
+    }
+    const node = {
+      fields: jest.fn((_: unknown, callback: (result: unknown) => void) => {
+        callbacks.push(callback)
+        return query
+      }),
+    }
+    query.in.mockReturnValue(query)
+    query.select.mockReturnValue(node)
+    wxMock.createSelectorQuery.mockReturnValue(query)
+    const staleCanvas = { getContext: jest.fn(() => ({ scale: jest.fn() })) }
+    const currentCanvas = { getContext: jest.fn(() => ({ scale: jest.fn() })) }
+    page.editorActive = true
+    page.editorGeneration = 1
+
+    page.drawBracelet()
+    page.resetCanvasForResize()
+    page.drawBracelet()
+    callbacks[0]({ node: staleCanvas, width: 300, height: 240 })
+
+    expect(page.canvasNode).toBeNull()
+    expect(page.canvasQueryPending).toBe(true)
+
+    callbacks[1]({ node: currentCanvas, width: 320, height: 240 })
+    expect(page.canvasNode).toBe(currentCanvas)
+  })
+
+  it('keeps the canonical catalog while search replaces the displayed results', async () => {
+    const firstBead = {
+      id: 2001,
+      skuCode: 'BEAD-2001',
+      name: '白水晶',
+      material: '水晶',
+      color: '透明',
+      diameterMm: 8,
+      salePrice: 6.8,
+      coverUrl: 'https://shop.test/2001.png',
+      diyVisual: null,
+      tags: [],
+    }
+    const searchedBead = {
+      ...firstBead,
+      id: 2002,
+      skuCode: 'BEAD-2002',
+      name: '紫水晶',
+      salePrice: 9.8,
+    }
+    const { page } = loadEditorPage([], ({ catalog, diy }) => {
+      catalog.listBeads.mockResolvedValueOnce({
+        items: [firstBead], total: 1, page: 1, size: 30,
+      }).mockResolvedValueOnce({
+        items: [searchedBead], total: 1, page: 1, size: 30,
+      })
+      catalog.listCategories.mockResolvedValue([])
+      diy.getDiyConfiguration.mockResolvedValue({
+        rule: {
+          minWristMm: 120,
+          maxWristMm: 220,
+          snugAllowanceMm: 5,
+          standardAllowanceMm: 10,
+          looseAllowanceMm: 15,
+          toleranceMm: 5,
+          maxBeadCount: 30,
+          configVersion: 1,
+        },
+        craftFeeRules: [],
+        cordOptions: [],
+        visualConfig: {},
+      })
+    })
+
+    await page.bootstrap({})
+    await page.searchCatalog()
+
+    expect(page.data.catalog.map((item: { id: number }) => item.id))
+      .toEqual([2001, 2002])
+    expect(page.data.catalogResults.map((item: { id: number }) => item.id))
+      .toEqual([2002])
+    expect(page.data.visibleCatalog.map((item: { id: number }) => item.id))
+      .toEqual([2002])
+  })
+
+  it('synchronizes the tray fallback into the display catalog', () => {
+    const { page } = loadEditorPage()
+    const item = {
+      id: 2001,
+      trayImageUrl: 'https://shop.test/tray.webp',
+      coverImageUrl: 'https://shop.test/cover.png',
+      visualVersion: 3,
+      salePriceCents: 680,
+    }
+    page.data.catalog = [item]
+    page.data.catalogResults = [{ ...item }]
+    page.refreshVisibleCatalog()
+
+    page.onTrayImageError({
+      currentTarget: {
+        dataset: {
+          id: 2001,
+          visualKey: '3:https://shop.test/tray.webp',
+        },
+      },
+    })
+
+    expect(page.data.catalog[0].trayImageUrl)
+      .toBe('https://shop.test/cover.png')
+    expect(page.data.visibleCatalog[0].trayImageUrl)
+      .toBe('https://shop.test/cover.png')
   })
 
   it('builds target and current length as separate lines', () => {

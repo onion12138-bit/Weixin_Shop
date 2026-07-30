@@ -226,6 +226,7 @@ Page({
   canvasLogicalWidth: 0,
   canvasLogicalHeight: 0,
   canvasQueryPending: false,
+  canvasQueryRevision: 0,
   canvasImages: {} as Record<
     string,
     CanvasImage | 'queued' | 'loading' | 'error'
@@ -515,6 +516,7 @@ Page({
   },
 
   resetCanvasForResize() {
+    this.canvasQueryRevision += 1
     this.canvasNode = null
     this.canvasContext = null
     this.canvasLogicalWidth = 0
@@ -561,6 +563,7 @@ Page({
       event.currentTarget.dataset.visualKey || '',
     )
     let matched = false
+    let fallbackTrayImageUrl = ''
     const catalog = this.data.catalog.map((item) => {
       if (item.id !== skuId) return item
       if (initiatingKey !== trayVisualKey(item)) return item
@@ -568,9 +571,17 @@ Page({
       const coverFallback = item.trayImageUrl !== item.coverImageUrl
         ? item.coverImageUrl
         : ''
+      fallbackTrayImageUrl = coverFallback
       return { ...item, trayImageUrl: coverFallback }
     })
-    if (matched) this.setData({ catalog })
+    if (!matched) return
+    const catalogResults = this.data.catalogResults.map((item) => {
+      if (item.id !== skuId) return item
+      if (trayVisualKey(item) !== initiatingKey) return item
+      return { ...item, trayImageUrl: fallbackTrayImageUrl }
+    })
+    this.setData({ catalog, catalogResults })
+    this.refreshVisibleCatalog()
   },
 
   addCatalogBead(event: WechatMiniprogram.TouchEvent) {
@@ -971,6 +982,7 @@ Page({
     if (this.canvasQueryPending) return
     this.canvasQueryPending = true
     const initiatingGeneration = this.editorGeneration
+    const initiatingQueryRevision = this.canvasQueryRevision
     const query = wx.createSelectorQuery() as WechatMiniprogram.SelectorQuery & {
       in?(component: object): WechatMiniprogram.SelectorQuery
     }
@@ -981,6 +993,7 @@ Page({
         if (
           !this.editorActive
           || initiatingGeneration !== this.editorGeneration
+          || initiatingQueryRevision !== this.canvasQueryRevision
         ) {
           return
         }
