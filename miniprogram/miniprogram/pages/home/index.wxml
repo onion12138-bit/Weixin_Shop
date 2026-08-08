@@ -48,11 +48,11 @@
     </view>
   </view>
 
-  <view class="mood-section content-card">
+  <view class="mood-section page-section">
     <view class="section-header mood-header">
       <view class="section-heading">
         <image src="/assets/icons/home/sparkling-line.svg" mode="aspectFit" />
-        <text>心情推荐</text>
+        <text>心愿灵感</text>
       </view>
       <button class="refresh-button" bindtap="rotateMoods" hover-class="soft-pressed">
         <text>换一换</text>
@@ -60,22 +60,31 @@
       </button>
     </view>
 
-    <view class="mood-grid">
-      <view
-        wx:for="{{moods}}"
-        wx:key="id"
-        class="mood-card mood-{{item.tone}} {{selectedMoodId === item.id ? 'is-selected' : ''}}"
-        data-mood-id="{{item.id}}"
-        bindtap="selectMood"
-        hover-class="soft-pressed"
-      >
-        <view class="mood-image-shell">
-          <image src="{{item.imageUrl}}" mode="aspectFill" aria-label="{{item.name}}心情图标" />
-        </view>
-        <text class="mood-name">{{item.name}}</text>
-        <text class="mood-description">{{item.description}}</text>
+    <view class="wish-diy-guide">
+      <image class="wish-diy-icon" src="/assets/icons/home/magic-line.svg" mode="aspectFit" />
+      <view class="wish-diy-copy">
+        <text class="wish-diy-title">选心愿，生成专属 DIY</text>
+        <text class="wish-diy-summary">点击下方灵感，AI 为你搭配珠子</text>
       </view>
+      <text class="wish-diy-badge">AI × DIY</text>
     </view>
+
+    <scroll-view class="mood-scroll" scroll-x enable-flex show-scrollbar="false">
+      <view class="mood-grid">
+        <view
+          wx:for="{{wishes}}"
+          wx:key="id"
+          class="mood-card"
+          data-wish="{{item.name}}"
+          bindtap="openWishInspiration"
+          hover-class="soft-pressed"
+        >
+          <view class="mood-image-shell">
+            <image src="{{item.imageUrl}}" mode="aspectFill" aria-label="{{item.name}}心愿灵感" />
+          </view>
+        </view>
+      </view>
+    </scroll-view>
   </view>
 
   <view class="product-section page-section">
@@ -90,22 +99,29 @@
       </button>
     </view>
 
-    <scroll-view class="product-scroll" scroll-x enable-flex show-scrollbar="false">
+    <view wx:if="{{productsLoading}}" class="product-state">
+      正在加载精选成品…
+    </view>
+    <view wx:elif="{{productsError}}" class="product-state product-state-error">
+      {{productsError}}
+    </view>
+    <view wx:elif="{{products.length === 0}}" class="product-state">
+      后台暂未推荐成品
+    </view>
+    <scroll-view wx:else class="product-scroll" scroll-x enable-flex show-scrollbar="false">
       <view class="product-row">
         <view
           wx:for="{{products}}"
           wx:key="id"
           class="product-card"
-          bindtap="openCatalog"
+          data-id="{{item.id}}"
+          bindtap="openProductDetail"
           hover-class="card-pressed"
         >
-          <image class="product-image" src="{{item.imageUrl}}" mode="aspectFill" aria-label="{{item.name}}手串" />
+          <image class="product-image" src="{{item.imageUrl}}" mode="aspectFill" aria-label="{{item.title}}手串" />
           <view class="product-copy">
-            <text class="product-name">{{item.name}}</text>
-            <view class="like-count">
-              <image src="/assets/icons/home/heart-line.svg" mode="aspectFit" />
-              <text>{{item.likes}}</text>
-            </view>
+            <text class="product-name">{{item.title}}</text>
+            <text class="product-price">{{item.priceText}}</text>
           </view>
         </view>
       </view>
@@ -124,8 +140,19 @@
       </button>
     </view>
 
-    <view class="scheme-card" bindtap="openSchemes" hover-class="card-pressed">
-      <image class="scheme-image" src="{{scheme.imageUrl}}" mode="aspectFill" aria-label="{{scheme.name}}手串方案" />
+    <view wx:if="{{schemeLoading}}" class="scheme-state">正在加载最新方案…</view>
+    <view wx:elif="{{scheme}}" class="scheme-card" data-id="{{scheme.id}}" bindtap="openLatestScheme" hover-class="card-pressed">
+      <view class="scheme-bracelet-preview" aria-label="{{scheme.name}}手串方案">
+        <image
+          wx:for="{{scheme.previewBeads}}"
+          wx:key="key"
+          class="scheme-preview-bead"
+          src="{{item.imageUrl}}"
+          style="{{item.style}}"
+          mode="aspectFit"
+          aria-label="{{item.name}}"
+        />
+      </view>
       <view class="scheme-copy">
         <view class="scheme-title-row">
           <text class="scheme-title">{{scheme.name}}</text>
@@ -134,8 +161,11 @@
         <text class="scheme-crystals">{{scheme.crystals}}</text>
         <text class="scheme-date">创建于 {{scheme.createdAt}}</text>
       </view>
-      <image class="scheme-heart" src="/assets/icons/home/heart-line.svg" mode="aspectFit" />
-      <button class="continue-button" catchtap="openDiy" hover-class="action-pressed">继续编辑</button>
+      <button class="continue-button" data-id="{{scheme.id}}" catchtap="openLatestScheme" hover-class="action-pressed">继续编辑</button>
+    </view>
+    <view wx:else class="scheme-state {{schemeError ? 'scheme-state-error' : ''}}">
+      <text>{{schemeError || '还没有保存的方案'}}</text>
+      <button bindtap="openDiy">开始 DIY</button>
     </view>
   </view>
 
@@ -164,7 +194,7 @@
       <image src="/assets/icons/home/palette-line.svg" mode="aspectFit" />
       <text>DIY</text>
     </button>
-    <button class="nav-item" bindtap="openSchemes" hover-class="soft-pressed">
+    <button class="nav-item" bindtap="openProfile" hover-class="soft-pressed">
       <image src="/assets/icons/home/user-3-line.svg" mode="aspectFit" />
       <text>我的</text>
     </button>

@@ -38,16 +38,18 @@ public interface FulfillmentTaskMapper extends BaseMapper<FulfillmentTask> {
             @Param("orderId") Long orderId
     );
 
-    /**
-     * 待制作任务进入制作中。
-     */
+    /** 制作完成后任务进入待发货。 */
     @Update("""
             update fulfillment_task
-            set status = 'IN_PRODUCTION'
+            set status = 'PENDING_SHIPMENT',
+                production_completed_at = #{completedAt}
             where order_id = #{orderId}
-              and status = 'PENDING'
+              and status = 'IN_PRODUCTION'
             """)
-    int startProduction(@Param("orderId") Long orderId);
+    int completeProduction(
+            @Param("orderId") Long orderId,
+            @Param("completedAt") LocalDateTime completedAt
+    );
 
     /**
      * 制作中任务发货并保存模拟物流信息。
@@ -59,7 +61,7 @@ public interface FulfillmentTaskMapper extends BaseMapper<FulfillmentTask> {
                 tracking_no = #{trackingNo},
                 shipped_at = #{shippedAt}
             where order_id = #{orderId}
-              and status = 'IN_PRODUCTION'
+              and status = 'PENDING_SHIPMENT'
             """)
     int ship(
             @Param("orderId") Long orderId,

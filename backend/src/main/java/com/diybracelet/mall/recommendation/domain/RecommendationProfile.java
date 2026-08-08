@@ -1,33 +1,19 @@
 package com.diybracelet.mall.recommendation.domain;
 
-import com.diybracelet.mall.diy.domain.FitType;
-import java.math.BigDecimal;
-
-/** Sanitized provider profile. It intentionally has no raw birth-date field. */
+/** Derived customer information sent only to the configured model for this request. */
 public record RecommendationProfile(
+    String birthDate,
     String constellation,
     String zodiac,
-    String elementPreference,
-    String wish,
-    String scene,
-    String colorPreference,
-    BigDecimal budget,
-    BigDecimal wristCircumferenceMm,
-    FitType fitType,
-    String freeText
+    String constellationElement,
+    String wishInspiration,
+    String wish
 ) {
     @Override
     public String toString() {
         return "RecommendationProfile[constellation=" + constellation
             + ", zodiac=" + zodiac
-            + ", elementPreference=" + elementPreference
-            + ", wish=" + wish
-            + ", scene=" + scene
-            + ", colorPreference=" + colorPreference
-            + ", budget=" + budget
-            + ", wristCircumferenceMm=" + wristCircumferenceMm
-            + ", fitType=" + fitType
-            + ", sensitiveFieldsRedacted=true"
-            + "]";
+            + ", constellationElement=" + constellationElement
+            + ", sensitiveFieldsRedacted=true]";
     }
 }

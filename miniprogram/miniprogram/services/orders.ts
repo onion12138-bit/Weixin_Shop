@@ -2,17 +2,20 @@ import { request } from './request'
 
 export type OrderStatus =
   | 'PENDING_PAYMENT'
-  | 'PAID'
   | 'IN_PRODUCTION'
+  | 'PENDING_SHIPMENT'
   | 'SHIPPED'
   | 'COMPLETED'
   | 'CANCELLED'
+  | 'AFTER_SALE'
+  | 'REFUNDED'
 
 export interface CreateOrderPayload {
   schemeId: number
   contactName: string
   contactPhone: string
   addressDetail: string
+  couponId?: number
 }
 
 export interface OrderItem {
@@ -32,11 +35,18 @@ export interface OrderResponse {
   beadAmount: number
   craftFee: number
   cordFee: number
+  couponId: number | null
+  discountAmount: number
   totalAmount: number
   contactName: string
   contactPhone: string
   addressDetail: string
   items: OrderItem[]
+  logisticsCompany: string | null
+  trackingNo: string | null
+  paidAt: string | null
+  shippedAt: string | null
+  completedAt: string | null
   createdAt: string
   updatedAt: string
 }
@@ -71,6 +81,13 @@ export function mockPayOrder(id: number): Promise<OrderResponse> {
 /** 取消待支付订单并释放预占库存。 */
 export function cancelOrder(id: number): Promise<OrderResponse> {
   return request<OrderResponse>(`/app/orders/${id}/cancel`, {
+    method: 'POST',
+  })
+}
+
+/** 顾客确认收货，后台订单同步进入已完成。 */
+export function confirmOrderReceipt(id: number): Promise<OrderResponse> {
+  return request<OrderResponse>(`/app/orders/${id}/confirm-receipt`, {
     method: 'POST',
   })
 }

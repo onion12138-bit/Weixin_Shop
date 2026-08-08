@@ -1,14 +1,28 @@
 # Codex 项目交接说明
 
-最后更新：2026-07-17 02:08（Asia/Shanghai）
+最后更新：2026-07-20 01:54（Asia/Shanghai）
 
-## 0. 2026-07-17 后台目录与 AI 配置修复摘要
+## 0. 2026-07-20 Excel 批量导入与拖拽上传摘要
 
-当前 `main` 工作树已完成后台散珠真实封面与放大预览、搜索清空、分类/属性筛选、可编辑自动 SKU 和精确 5MB 上传限制。AI 配置保存失败已定位为本地后端缺少有效的 32 字节加密主密钥；一键启动现在会在 `.local-secrets/` 生成并稳定复用该密钥，并安全重启缺少此能力的同项目旧后端。
+散珠商品页新增“Excel 批量导入”：管理员可下载由后端根据当前分类生成的 `.xlsx` 模板，也可点击或拖拽上传填写后的文件。模板不包含图片列；导入按行复用既有商品创建服务，每个成功行独立创建商品、库存余额和非零 `INIT` 流水，失败行返回 Excel 行号、SKU 和具体原因，不影响其他成功行。限制为 `.xlsx`、10 MB、1000 行。散珠与成品搭配封面现在都支持点击或拖拽 PNG/JPEG/WebP，继续执行 5 MB 限制。
 
-真实证据：`./scripts/verify.sh` 后端 181 项、管理后台 43 项并完成生产构建、小程序 85 项全部通过；一键启动脚本测试覆盖并发主密钥与旧后端安全重启；catalog 真实 HTTP smoke 通过；浏览器已验收图片预览、筛选、搜索清空、SKU 和布局；AI 配置加密保存与清除真实 HTTP 探针通过，未调用 DeepSeek 且未保留探针 Key。
+实现使用 Apache POI 5.4.1；为消除其压缩依赖与 Spring Boot 3.2 管理版本之间的 `ArrayFill` 冲突，显式固定 `commons-lang3` 3.20.0。全仓验证通过：后端 200 项、管理后台 61 项与生产构建、小程序 93 项与类型检查。真实 MySQL 导入验证为 2 行成功、1 行缺珠径精确报错；真实管理员接口下载模板返回 HTTP 200、xlsx 包含“商品数据”和“填写说明”两个工作表。当前后端已在 8081 持续运行，后台仍为 5173；改动尚未提交。
 
-唯一必须保留的 AI 验收待办：用户需在后台安全输入有效 DeepSeek Key，保存并点击“测试连接”，然后完成一次单套推荐。当前没有真实调用 DeepSeek，不得将加密保存探针、模拟网关测试或暂停 smoke 写成 live 成功；无可用配置时继续显示暂停使用，不启用本地降级。
+## 0.1 2026-07-19 商品库存、类型与 API Key 掩码摘要
+
+后台 AI 配置页加载到“已配置”状态后，API Key 输入框默认显示固定掩码，不再呈现空框；普通配置读取仍不包含明文，也不会为了绘制掩码自动调用密钥接口。管理员点击眼睛时才通过受保护的 no-store 接口读取明文，直接保存掩码会提交空 Key 以保留现有密钥。
+
+商品新增原本已有 `initialStock` 和同事务库存初始化，本轮补齐后台列表库存读取：分页 DTO 返回可用、预占、已售、预警值和 `NORMAL/RESTOCK`，`availableQty <= stockAlertThreshold` 时页面显示“补货”。V8 为分类增加 `BEAD/CORD/ACCESSORY` 类型并新增“绳类”“其他饰品”分类；绳类和其他饰品不显示或保存珠径。公共珠子目录、详情、DIY 可售查询、套餐校验和 AI 候选均只接受 `BEAD`。
+
+全仓验证已通过：后端 198 项（含真实 Docker/MySQL 8 和 V1～V8 迁移）、管理后台 7 个文件 56 项及生产构建、小程序 14 个套件 93 项及 TypeScript 检查。开发数据库已升级到 V8，后端健康检查为 `UP`；管理后台浏览器验收确认 API Key 默认以 16 位掩码和 `password` 类型呈现、库存与预警列正常显示，并且绳类新增表单保留初始库存但不显示珠径。当前改动尚未提交。
+
+## 0.2 2026-07-19 AI 多套推荐改造摘要
+
+本轮已把旧的单套推荐重构为生日驱动的多套推荐：小程序只保留必填生日和选填期望；Spring Boot 统一计算星座、生肖和星座元素；后台可以配置业务提示词及 1～5 套推荐数量（默认 3 套）。模型只接收后台提示词、生日画像、期望和当前在售有库存珠子的 `skuId/name/material`，不接收手围、松紧、价格、数量、排列或绳材。每套返回 3～5 种不同珠子，顾客选定后只把去重 SKU 类型一次性带入 DIY，由既有 DIY 默认值和计价规则继续处理。
+
+公开 `GET /api/public/recommendations/profile?birthDate=YYYY-MM-DD` 与状态接口不依赖访客会话，正式 `POST /api/app/recommendations` 仍要求顾客 JWT。模型输出需要通过严格 JSON、套数、每套数量、同套 SKU 去重、当前库存和文案安全校验；仅输出不合规时允许同一个 DeepSeek 模型纠正一次，不启用本地或其他模型降级。不同故障使用不同错误码，小程序保留生日和期望并直接显示可操作的具体错误。后台已保存 API Key 的显隐接口继续保持管理员专用、显式点击和 `Cache-Control: no-store`，普通配置响应不包含密钥。
+
+真实证据：最新全仓回归为管理后台 56 项和生产构建、小程序 93 项和 TypeScript 检查、后端 198 项（含 Docker/MySQL 与 V8 迁移）全部通过。真实 DeepSeek 多套推荐请求已经执行：配置、顾客会话、生日画像、库存读取和 Provider 调用均走通。早期请求分别触发同套重复 SKU、纠正后 0 套等精确错误；对照官方文档补充非思考模式和按配置套数动态生成的完整 JSON 示例后，模型已不再只返回 1 套，但某套少于 3 种且纠正后仍不合规，接口最终准确返回 `AI_RESULT_ITEM_COUNT_INVALID`，没有再被包装成“暂不可用”。因此“错误分流闭环”已验收，但“成功生成 3 套可用方案”的 live 验收仍未完成，不能记为成功。
 
 ## 1. 新任务接手方式
 
@@ -31,9 +45,9 @@
 - 本地根目录：`/Users/onion/Desktop/AI_Testing/Weixin_Shop`
 - GitHub：`https://github.com/onion12138-bit/Weixin_Shop`
 - 当前主分支：`main`
-- 当前主分支基线提交：`13fea1c`
-- 当前提交说明：`fix: close milestone review gaps`
-- 本轮开始时本地 `main` 与 `origin/main` 对齐；目录与 AI 修复的最终提交以 `git log` 为准。
+- 当前本地 `main` 提交：`8a4d9c7 fix: improve catalog admin and AI configuration startup`
+- `origin/main`：`13fea1c fix: close milestone review gaps`
+- 本地 `main` 当前领先远端 1 个提交；本轮 AI 状态与密钥查看修复尚未提交或推送。
 - `2370ed8 feat: complete order and mock payment vertical slice` 是更早的订单里程碑，不是当前基线。
 - 本仓库仅配置 `http.version=HTTP/1.1`，用于规避当前网络环境下 Git HTTPS/2 的 TLS 中断；这不是代理配置。
 - 当前直接在主工作树 `main` 上工作，没有额外功能 worktree。
@@ -89,18 +103,18 @@
 - 库存预占、支付转已售和取消释放；
 - 顾客下单、查询、模拟支付和取消；
 - 后台制作、BOM、发货和完成履约。
-- DeepSeek 后台单例配置、AES-GCM Key 保存、后端校验单套推荐和小程序一次性 DIY handoff。
+- DeepSeek 后台单例配置、AES-GCM Key 保存、生日画像、多套库存材质推荐严格校验和小程序一次性 DIY handoff。
 
-最近一次完整自动化验证（2026-07-17）：
+最近一次完整自动化验证（2026-07-19 02:31）：
 
-- 后端：181 项测试通过；
-- 管理后台：7 个文件、43 项测试、类型检查和生产构建通过；
-- 小程序：14 个套件、85 项测试和 TypeScript 检查通过；
-- 商品、DIY、订单真实 HTTP 冒烟通过；推荐暂停路径 HTTP 冒烟通过。
+- 后端：198 项测试通过，包含 Docker/MySQL 集成测试和 V8 迁移；
+- 管理后台：7 个文件、56 项测试、类型检查和生产构建通过；
+- 小程序：14 个套件、93 项测试和 TypeScript 检查通过；
+- 真实 HTTP：DeepSeek 请求和一次纠正均已实际执行，最终准确返回 `AI_RESULT_ITEM_COUNT_INVALID`；后台 5173、后端 8081 可访问。
 
 尚未完成的关键外部验收与上线能力：
 
-- DeepSeek 实现已完成，但用户有效 Key live test 尚未执行；
+- DeepSeek 配置保存和连接测试已成功，多套推荐 live 已执行但模型两次输出均未通过结构校验，成功方案仍待验收；
 - 第三方能力替换仍为 50%，真实微信登录、微信支付和对象存储留待上线前接入。
 
 ## 5. 本机环境与端口注意事项
@@ -117,27 +131,27 @@
 
 不得误杀 Jenkins，也不得再用 8080 启动或验证本项目。后端、管理后台默认 API、小程序 runtime 和 smoke 现在统一使用 `http://localhost:8081`；`BACKEND_BASE_URL` 只传 origin，不附加 `/api`。
 
-交接时 `启动管理后台.command` 已在持久 Terminal 会话中运行，管理后台地址为 `http://localhost:5173`，后端健康接口返回 `aiEncryptionReady: true`。新任务仍应先检查实际进程状态；Terminal 被关闭后需重新双击启动文件。
+交接时管理后台地址为 `http://localhost:5173`，后端通过当前 Codex 持续终端会话运行在 8081。Codex 执行环境会回收由短命令脱离的 `nohup` 子进程，这不代表用户双击 `.command` 的持久 Terminal 模式失败。新任务仍应先检查实际进程；当前持续会话结束后可重新双击 `启动管理后台.command`。
 
 ## 6. 微信开发者工具现状
 
 已经完成：
 
 - 服务端口已由用户手动开启；
-- `.ide` 文件曾显示本机服务端口 `56879`；
-- CLI 成功连接 IDE；
-- `cli auto` 曾成功识别 `touristappid` 并返回 `✔ auto`；
+- 当前 `.ide` 服务端口为 `44091`；
+- CLI 已连接现有 IDE，识别真实 AppID `wx9864f5f5c7870c36` 并返回 `✔ auto`；
+- 显式启用 9420 自动化端口后，`miniprogram-automator@0.12.1` 成功读取当前页 `pages/home/index`；
 - 项目目录为 `/Users/onion/Desktop/AI_Testing/Weixin_Shop/miniprogram`，不能误选内层 `miniprogram/miniprogram`。
 
 尚未完成：
 
-- 微信开发者工具中的首页、商品、DIY、方案和订单人工/自动化页面验收；
-- 自动化客户端未成功取得调试 WebSocket，等待超过 120 秒后已主动终止；
+- AI 咨询页最终界面验收：自动化 `reLaunch` 后会话卡住，需要用户在已经打开的工具中点一次“编译”，不要重新打开或导入项目；
+- 首页、商品、DIY、方案和订单的完整人工/自动化页面验收；
 - 开发者工具日志曾出现 `需要重新登录, access_token missing` 和微信服务 TLS 连接中断；
 - 用户截图显示“调试基础库”推送失败，基础库列表不可用；
 - 用户说明没有主动使用代理，并要求如果存在由 Codex 写入的代理记录则删除。代理排查在旧任务中被中断，尚未完成系统代理、开发者工具代理和残留配置的完整核对。
 
-临时目录 `/private/tmp/weixin-shop-automator` 曾安装 `miniprogram-automator@0.12.1` 用于连接验证。该依赖没有写入项目仓库；其依赖链报告 10 个漏洞，不应直接纳入产品或 CI。临时脚本没有产生有效页面截图。
+临时目录 `/private/tmp/weixin-shop-automator` 安装了 `miniprogram-automator@0.12.1` 用于连接验证，没有写入项目依赖。当前连接和首页读取成功，但 AI 页截图调用卡住并已终止。
 
 ## 7. 代理与网络排查边界
 
@@ -159,11 +173,11 @@
 ## 8. 下一步执行顺序
 
 1. 读取本交接文档与 `docs/progress.md`，执行 `git status`，保护 `miniprogram/project.config.json` 和所有用户改动；
-2. 双击 `启动管理后台.command`，确认后台可打开且 `/api/public/project-health` 的 `aiEncryptionReady` 为 `true`；
-3. 用户通过后台“AI 模型”页面输入有效 Key，保存官方 Base URL、`deepseek-v4-flash`、超时与启用状态，点击“测试连接”；不要删除 `.local-secrets/ai-config-encryption-key`；
-4. 仅在用户明确授权 live 后，以环境变量 opt-in 运行 `scripts/recommendation-smoke.sh`，记录真实 `/test` + 单套推荐结果；绝不回显 Key；
-5. 在微信开发者工具验收推荐暂停/可用页面、服务端价格、免责声明和一次性进入 DIY，并继续验收既有商品/DIY/订单页面；
-6. 复跑 `./scripts/verify.sh` 与四个真实 HTTP smoke，更新进度后提交/推送；
+2. 保持 Docker 的 MySQL/Redis、后端 8081 和后台 5173 运行；不要删除 `.local-secrets/ai-config-encryption-key`；
+3. 请用户在已经打开的微信开发者工具中点击顶部“编译”，人工验收生日必填、期望选填、生日画像和具体错误展示；不要重新打开或导入项目；
+4. 若继续处理 Provider 输出稳定性，应基于已记录的安全结构原因优化正式提示约束；不得输出模型原文或 API Key，也不得启用用户明确禁止的本地降级；
+5. 再做一次真实多套推荐，以 `plans` 数量、每套 3～5 个唯一当前 SKU、免责声明和选择方案进入 DIY 为成功标准；
+6. 用户确认后再决定是否提交/推送当前改动；不得顺带提交 `.pnpm-store/`、`Pic/`、本机配置或其他用户文件；
 7. 增加 GitHub Actions；微信登录、真实支付和对象存储继续留在上线准备阶段。
 
 ## 9. 常用命令

@@ -20,7 +20,7 @@
 
   <view wx:else class="scheme-list">
     <view wx:for="{{schemes}}" wx:key="id" class="scheme-card">
-      <image class="scheme-preview" src="{{item.previewUrl}}" mode="aspectFill" />
+      <image class="scheme-preview" src="{{item.previewUrl}}" mode="aspectFit" />
       <view class="scheme-body">
         <view class="scheme-title-row">
           <text class="scheme-title">{{item.name}}</text>
@@ -35,8 +35,7 @@
         <view class="scheme-actions">
           <button class="checkout" data-id="{{item.id}}" bindtap="createOrder">去下单</button>
           <button data-id="{{item.id}}" bindtap="openScheme">继续编辑</button>
-          <button data-id="{{item.id}}" bindtap="copyScheme">复制</button>
-          <button data-id="{{item.id}}" bindtap="deleteScheme">删除</button>
+          <button class="delete" data-id="{{item.id}}" bindtap="deleteScheme">删除</button>
         </view>
       </view>
     </view>

@@ -146,14 +146,6 @@ export async function updateScheme(
   )
 }
 
-export async function copyScheme(id: number): Promise<DiySchemeResponse> {
-  return normalizeScheme(
-    await request<DiySchemeResponse>(`/app/diy/schemes/${id}/copies`, {
-      method: 'POST',
-    }),
-  )
-}
-
 export function deleteScheme(id: number): Promise<boolean> {
   return request<boolean>(`/app/diy/schemes/${id}`, {
     method: 'DELETE',

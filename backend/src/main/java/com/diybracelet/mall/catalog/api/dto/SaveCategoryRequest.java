@@ -1,6 +1,7 @@
 package com.diybracelet.mall.catalog.api.dto;
 
 import com.diybracelet.mall.catalog.domain.CatalogStatus;
+import com.diybracelet.mall.catalog.domain.ProductType;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -22,6 +23,8 @@ public record SaveCategoryRequest(
                 message = "分类 slug 只能包含小写字母、数字和连字符"
         )
         String slug,
+
+        ProductType productType,
 
         @NotNull(message = "分类排序不能为空")
         @PositiveOrZero(message = "分类排序不能为负数")

@@ -1,6 +1,6 @@
 # 数据模型
 
-最后更新：2026-07-13
+最后更新：2026-07-19
 
 本文件只记录已经通过 Flyway 落地的表。当前迁移：
 
@@ -10,6 +10,8 @@
 - `V4__diy_seed.sql`：默认 DIY 规则、工艺费和绳材演示配置。
 - `V5__commerce_order_inventory_schema.sql`：库存、订单、模拟支付和履约结构及演示库存。
 - `V6__ai_model_config.sql`：唯一一行 DeepSeek 配置、默认模型和密钥密文列。
+- `V7__ai_recommendation_preferences.sql`：后台推荐提示词与推荐套数。
+- `V8__catalog_product_types_and_inventory_warning.sql`：分类商品类型、绳类/其他饰品分类和可空的非珠子直径。
 
 ## 1. 关系
 
@@ -36,7 +38,7 @@ ai_model_config 1 ── 全局唯一 DeepSeek 配置（推荐结果不持久化
 
 ### `category`
 
-包含分类名称、`slug`、排序、状态和审计时间。公共目录只返回 `ON_SALE` 分类。
+包含分类名称、`slug`、`product_type`、排序、状态和审计时间。`product_type` 只允许 `BEAD`、`CORD`、`ACCESSORY`；公共珠子目录只返回 `ON_SALE + BEAD` 分类。V8 默认新增“绳类”和“其他饰品”两个后台分类。
 
 ### `bead_sku`
 
@@ -45,12 +47,14 @@ ai_model_config 1 ── 全局唯一 DeepSeek 配置（推荐结果不持久化
 | `category_id` | 所属分类外键 |
 | `sku_code` | SKU 编码，唯一 |
 | `name/material/color` | 名称、材质、颜色 |
-| `diameter_mm` | 珠子直径，必须大于 0 |
+| `diameter_mm` | 珠子直径；`BEAD` 必填且大于 0，绳类和其他饰品保存为 `null` |
 | `sale_price/cost_price` | 售价、成本价，非负 |
-| `stock_alert_threshold` | 库存预警阈值，非负；余额已落地，后台告警任务待实现 |
+| `stock_alert_threshold` | 库存预警阈值，非负；后台列表在 `available_qty <= threshold` 时显示“补货” |
 | `cover_asset_id` | 可空封面素材外键 |
 | `tags_json` | 标签数组 |
 | `status` | `DRAFT`、`ON_SALE`、`OFF_SALE` |
+
+`bead_sku` 是沿用的历史表名，V8 后同时承载珠子、绳类和其他饰品 SKU。分类的 `product_type` 是类型权威来源；公共珠子列表、DIY 计价、套餐明细和 AI 推荐只接受 `BEAD`，避免无珠径商品进入排珠链路。
 
 ### `product_package` 与 `package_item`
 
@@ -121,6 +125,8 @@ ai_model_config 1 ── 全局唯一 DeepSeek 配置（推荐结果不持久化
 - `sold_qty`：支付成功确认销售的累计数量。
 - `version`：每次库存流转递增。
 
+后台商品分页会批量读取当前页库存余额并返回 `availableQty/reservedQty/soldQty/stockWarningStatus`；`stockWarningStatus` 在可用库存达到或低于 SKU 预警值时为 `RESTOCK`，否则为 `NORMAL`。这属于实时列表状态，不另建重复的预警状态列。
+
 `inventory_ledger` 记录每次流转前后的三类余额，类型包括 `INIT`、`RESERVE`、`PAY_CONFIRM`、`RELEASE`、`ADJUST`。下单、支付和取消均先锁定余额行，再执行带数量下限条件的更新；事务失败时余额、流水和订单一起回滚。
 
 ### `customer_order` 与 `order_item`
@@ -128,8 +134,9 @@ ai_model_config 1 ── 全局唯一 DeepSeek 配置（推荐结果不持久化
 `customer_order` 保存顾客、来源方案、收货信息、方案快照、分项金额、总额、状态和各阶段时间。状态为：
 
 ```text
-PENDING_PAYMENT -> PAID -> IN_PRODUCTION -> SHIPPED -> COMPLETED
+PENDING_PAYMENT -> IN_PRODUCTION -> PENDING_SHIPMENT -> SHIPPED -> COMPLETED
 PENDING_PAYMENT -> CANCELLED
+任意业务约定入口 -> AFTER_SALE -> REFUNDED
 ```
 
 `scheme_snapshot_json` 保留原始 SKU 顺序和数量统计；`order_item` 按 SKU 聚合保存编码、名称、数量、单价、总价和稳定排序，作为生产 BOM 与历史价格快照。商品后续调价、改名或下架不会改变已有订单。
@@ -140,7 +147,7 @@ PENDING_PAYMENT -> CANCELLED
 
 ### `fulfillment_task`
 
-支付成功后每个订单创建唯一履约任务。`bom_json` 保存订单 SKU 数量快照；状态为 `PENDING`、`IN_PRODUCTION`、`SHIPPED`、`COMPLETED`。发货保存模拟物流公司、运单号和时间，完成保存完成时间。
+支付成功后每个订单创建唯一履约任务。`bom_json` 保存订单 SKU 数量快照；状态为 `IN_PRODUCTION`、`PENDING_SHIPMENT`、`SHIPPED`、`COMPLETED`，并保存制作开始、制作完成、发货和完成时间。发货保存物流公司和运单号。
 
 ### V5 演示库存
 
@@ -150,12 +157,12 @@ SKU `2001`～`2004` 各初始化 200 个可用库存，并写入 `INIT` 流水�
 
 ### `ai_model_config`
 
-Flyway V6 固定创建 `id=1`、`provider=DEEPSEEK` 的单例行。字段包括官方 `base_url`、默认 `model_name=deepseek-v4-flash`、`encrypted_api_key`、启停状态、请求超时、最大输出 Token、乐观锁 `version` 和审计时间。
+Flyway V6 固定创建 `id=1`、`provider=DEEPSEEK` 的单例行；V7 新增非空 `recommendation_prompt` 和默认值为 3、限制 1～5 的 `plan_count`。其余字段包括官方 `base_url`、固定 `model_name=deepseek-v4-flash`、`encrypted_api_key`、启停状态、请求超时、最大输出 Token、乐观锁 `version` 和审计时间。
 
 - API Key 使用 AES-256-GCM，每次保存生成随机 12-byte nonce，数据库只保存 `base64(nonce + ciphertext + tag)`。
 - `AI_CONFIG_ENCRYPTION_KEY` 是 Base64 编码的 32 字节主密钥，只来自后端运行环境，不保存到数据库或仓库。
-- 后台读取只返回 `apiKeyConfigured`，不返回明文或密文；空 Key 保存会保留已有密钥。
-- 推荐请求、生日、自由文本、模型原始响应和推荐结果均不落库。最终方案只有在顾客进入 DIY 并主动保存后才按既有 `diy_scheme` 模型持久化。
+- 后台普通读取只返回 `apiKeyConfigured`；显式密钥查看接口要求管理员 JWT 且禁止缓存，空 Key 保存会保留已有密钥。
+- 推荐请求、生日、期望、模型原始响应和推荐结果均不落库。最终方案只有在顾客选择某套进入 DIY 并主动保存后才按既有 `diy_scheme` 模型持久化。
 
 ### 3 款图片演示散珠导入
 

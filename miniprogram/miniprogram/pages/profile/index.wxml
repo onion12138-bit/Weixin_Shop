@@ -1,0 +1,94 @@
+<view class="profile-page">
+  <view class="profile-hero">
+    <image
+      class="profile-bracelet"
+      src="/assets/images/home/hero-bracelet-lotus.webp"
+      mode="widthFix"
+      aria-label="粉紫水晶手串"
+    />
+    <image
+      class="profile-avatar"
+      src="{{avatarUrl}}"
+      mode="aspectFill"
+      aria-label="个人头像"
+    />
+    <view class="profile-copy">
+      <view class="profile-name-row">
+        <text class="profile-name">{{nickname}}</text>
+        <button class="edit-button" bindtap="openProfileEditor" hover-class="soft-pressed">编辑</button>
+      </view>
+      <view class="profile-tagline">
+        <text>串起灵感，戴出心愿</text>
+        <image src="/assets/icons/home/heart-line.svg" mode="aspectFit" aria-label="" />
+      </view>
+    </view>
+  </view>
+
+  <button class="feature-card design-card" bindtap="openSchemes" hover-class="card-pressed">
+    <image src="/assets/images/profile/my-design.webp" mode="aspectFill" aria-label="我的设计，打造属于你的独一无二" />
+  </button>
+
+  <button class="feature-card order-card" bindtap="openOrders" hover-class="card-pressed">
+    <image src="/assets/images/profile/my-orders.webp" mode="aspectFill" aria-label="我的订单，查看订单状态与物流" />
+  </button>
+
+  <view class="utility-grid">
+    <button
+      class="utility-card"
+      bindtap="openFavorites"
+      hover-class="card-pressed"
+    >
+      <image class="utility-art" src="/assets/images/profile/favorites.webp" mode="aspectFit" aria-label="心形首饰盒中的粉紫手串" />
+      <text class="utility-title">我的收藏</text>
+      <text class="utility-summary">收藏的喜爱设计</text>
+      <view class="utility-arrow">
+        <image src="/assets/icons/home/arrow-right-s-white.svg" mode="aspectFit" aria-label="" />
+      </view>
+    </button>
+
+    <button
+      class="utility-card"
+      bindtap="openAddresses"
+      hover-class="card-pressed"
+    >
+      <image class="utility-art" src="/assets/images/profile/address.webp" mode="aspectFit" aria-label="粉色地址标记" />
+      <text class="utility-title">收货地址</text>
+      <text class="utility-summary">管理我的收货信息</text>
+      <view class="utility-arrow">
+        <image src="/assets/icons/home/arrow-right-s-white.svg" mode="aspectFit" aria-label="" />
+      </view>
+    </button>
+
+    <button
+      class="utility-card"
+      bindtap="openCoupons"
+      hover-class="card-pressed"
+    >
+      <image class="utility-art" src="/assets/images/profile/benefits.webp" mode="aspectFit" aria-label="粉色优惠券" />
+      <text class="utility-title">优惠券与权益</text>
+      <text class="utility-summary">查看可用优惠与权益</text>
+      <view class="utility-arrow">
+        <image src="/assets/icons/home/arrow-right-s-white.svg" mode="aspectFit" aria-label="" />
+      </view>
+    </button>
+  </view>
+
+  <view class="bottom-nav">
+    <button class="nav-item" bindtap="openHome" hover-class="soft-pressed">
+      <image src="/assets/icons/home/home-5-fill.svg" mode="aspectFit" />
+      <text>首页</text>
+    </button>
+    <button class="nav-item" bindtap="openRecommendation" hover-class="soft-pressed">
+      <image src="/assets/icons/home/sparkling-line.svg" mode="aspectFit" />
+      <text>灵感</text>
+    </button>
+    <button class="nav-item" bindtap="openDiy" hover-class="soft-pressed">
+      <image src="/assets/icons/home/palette-line.svg" mode="aspectFit" />
+      <text>DIY</text>
+    </button>
+    <button class="nav-item active" bindtap="scrollToTop" hover-class="soft-pressed">
+      <image src="/assets/icons/home/user-3-line.svg" mode="aspectFit" />
+      <text>我的</text>
+    </button>
+  </view>
+</view>

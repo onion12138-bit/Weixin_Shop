@@ -43,10 +43,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 @Sql(statements = {
         "delete from inventory_ledger where order_id is not null",
+        "delete from order_operation_log",
         "delete from fulfillment_task",
         "delete from payment_record",
         "delete from order_item",
         "delete from customer_order",
+        "delete from customer_coupon",
+        "delete from coupon_template",
         "delete from diy_scheme",
         "delete from customer_identity",
         """
@@ -63,10 +66,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Sql(
         statements = {
                 "delete from inventory_ledger where order_id is not null",
+                "delete from order_operation_log",
                 "delete from fulfillment_task",
                 "delete from payment_record",
                 "delete from order_item",
                 "delete from customer_order",
+                "delete from customer_coupon",
+                "delete from coupon_template",
                 "delete from diy_scheme",
                 "delete from customer_identity",
                 """
@@ -124,6 +130,117 @@ class AppOrderControllerTest extends MySqlIntegrationTest {
                 .containsEntry("available_qty", 191)
                 .containsEntry("reserved_qty", 9)
                 .containsEntry("sold_qty", 0);
+        assertThat(jdbcTemplate.queryForObject(
+                "select status from diy_scheme where id = ?",
+                String.class,
+                schemeId
+        )).isEqualTo("DELETED");
+
+        mockMvc.perform(get("/api/app/diy/schemes")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").isEmpty());
+    }
+
+    @Test
+    void shouldCreateOrderWhenDesignLengthIsOutsideTarget() throws Exception {
+        String token = customerToken("73081048-bd94-41be-a296-f5d19a8509d0");
+        Long schemeId = createScheme(token, sequence(23, 0));
+
+        mockMvc.perform(post("/api/app/orders")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "schemeId", schemeId,
+                                "contactName", "王六",
+                                "contactPhone", "13600000000",
+                                "addressDetail", "上海市长宁区演示路 4 号"
+                        ))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.status")
+                        .value("PENDING_PAYMENT"))
+                .andExpect(jsonPath("$.data.totalAmount").value(304.40));
+
+        assertThat(inventory(2001L))
+                .containsEntry("available_qty", 177)
+                .containsEntry("reserved_qty", 23)
+                .containsEntry("sold_qty", 0);
+    }
+
+    @Test
+    void shouldApplyCouponAndRestoreItWhenPendingOrderIsCancelled()
+            throws Exception {
+        String token = customerToken("6817d2a6-dd2f-43ec-bab6-478ea91f42b8");
+        Long customerId = jdbcTemplate.queryForObject(
+                "select max(id) from customer_identity",
+                Long.class
+        );
+        jdbcTemplate.update("""
+                insert into coupon_template (
+                    code, name, description, discount_amount,
+                    minimum_spend, valid_days, status
+                ) values ('ORDER-20', '订单立减券', '测试优惠券', 20, 100, 30, 'ACTIVE')
+                """);
+        Long templateId = jdbcTemplate.queryForObject(
+                "select id from coupon_template where code = 'ORDER-20'",
+                Long.class
+        );
+        jdbcTemplate.update("""
+                insert into customer_coupon (
+                    coupon_template_id, customer_identity_id, status,
+                    issued_at, expires_at
+                ) values (?, ?, 'UNUSED', now(), date_add(now(), interval 30 day))
+                """, templateId, customerId);
+        Long couponId = jdbcTemplate.queryForObject(
+                "select max(id) from customer_coupon",
+                Long.class
+        );
+        Long schemeId = createScheme(token, sequence(12, 9));
+
+        String response = mockMvc.perform(post("/api/app/orders")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "schemeId", schemeId,
+                                "couponId", couponId,
+                                "contactName", "优惠顾客",
+                                "contactPhone", "13800000000",
+                                "addressDetail", "上海市测试路 20 号"
+                        ))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.couponId").value(couponId))
+                .andExpect(jsonPath("$.data.discountAmount").value(20.00))
+                .andExpect(jsonPath("$.data.totalAmount").value(294.80))
+                .andReturn().getResponse().getContentAsString();
+        Long orderId = objectMapper.readTree(response).path("data").path("id").asLong();
+        assertThat(jdbcTemplate.queryForObject(
+                "select status from customer_coupon where id = ?",
+                String.class,
+                couponId
+        )).isEqualTo("USED");
+
+        mockMvc.perform(post("/api/app/orders/{orderId}/cancel", orderId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+        assertThat(jdbcTemplate.queryForObject(
+                "select status from customer_coupon where id = ?",
+                String.class,
+                couponId
+        )).isEqualTo("UNUSED");
+
+        Long nextSchemeId = createScheme(token, sequence(12, 9));
+        mockMvc.perform(post("/api/app/orders")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "schemeId", nextSchemeId,
+                                "couponId", couponId,
+                                "contactName", "优惠顾客",
+                                "contactPhone", "13800000000",
+                                "addressDetail", "上海市测试路 20 号"
+                        ))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.discountAmount").value(20.00));
     }
 
     @Test
@@ -172,7 +289,7 @@ class AppOrderControllerTest extends MySqlIntegrationTest {
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.id").value(orderId))
-                .andExpect(jsonPath("$.data.status").value("PAID"));
+                .andExpect(jsonPath("$.data.status").value("IN_PRODUCTION"));
 
         assertThat(inventory(2001L))
                 .containsEntry("available_qty", 188)
@@ -190,7 +307,7 @@ class AppOrderControllerTest extends MySqlIntegrationTest {
         )).isEqualTo(1);
         assertThat(count(
                 "select count(*) from fulfillment_task "
-                        + "where order_id = ? and status = 'PENDING'",
+                        + "where order_id = ? and status = 'IN_PRODUCTION'",
                 orderId
         )).isEqualTo(1);
         assertThat(count(
@@ -226,6 +343,54 @@ class AppOrderControllerTest extends MySqlIntegrationTest {
                         + "where order_id = ? and change_type = 'PAY_CONFIRM'",
                 orderId
         )).isEqualTo(2);
+    }
+
+    @Test
+    void shouldSynchronizeShipmentAndCustomerReceiptAcrossAdminAndApp()
+            throws Exception {
+        String token = customerToken("03bd2d8c-fc6c-4dd5-9db0-748af1d31bad");
+        Long schemeId = createScheme(token, sequence(12, 9));
+        Long orderId = createOrder(token, schemeId).path("id").asLong();
+        mockPay(token, orderId);
+        String adminToken = loginAsAdmin();
+
+        mockMvc.perform(post(
+                        "/api/admin/orders/{orderId}/complete-production",
+                        orderId
+                ).header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status")
+                        .value("PENDING_SHIPMENT"));
+
+        mockMvc.perform(post("/api/admin/orders/{orderId}/ship", orderId)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "logisticsCompany": "顺丰速运",
+                                  "trackingNo": "SF-SYNC-001"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("SHIPPED"));
+
+        mockMvc.perform(post(
+                        "/api/app/orders/{orderId}/confirm-receipt",
+                        orderId
+                ).header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.data.logisticsCompany")
+                        .value("顺丰速运"))
+                .andExpect(jsonPath("$.data.trackingNo")
+                        .value("SF-SYNC-001"));
+
+        assertThat(count(
+                "select count(*) from order_operation_log "
+                        + "where order_id = ? and action_code = "
+                        + "'RECEIPT_CONFIRMED'",
+                orderId
+        )).isEqualTo(1);
     }
 
     @Test
@@ -333,7 +498,7 @@ class AppOrderControllerTest extends MySqlIntegrationTest {
         mockMvc.perform(post("/api/app/orders/{orderId}/mock-pay", orderId)
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("PAID"));
+                .andExpect(jsonPath("$.data.status").value("IN_PRODUCTION"));
     }
 
     private Long createScheme(String token, List<Long> sequence)
@@ -377,5 +542,20 @@ class AppOrderControllerTest extends MySqlIntegrationTest {
                 .getContentAsString();
         JsonNode response = objectMapper.readTree(responseBody);
         return response.path("data").path("accessToken").asText();
+    }
+
+    private String loginAsAdmin() throws Exception {
+        String responseBody = mockMvc.perform(post("/api/admin/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "admin",
+                                  "password": "Admin@123"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(responseBody)
+                .path("data").path("accessToken").asText();
     }
 }

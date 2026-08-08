@@ -125,11 +125,7 @@ public class CatalogQueryService {
      * 查询一个已上架散珠详情。
      */
     public BeadSkuDetail getBead(Long id) {
-        BeadSku bead = beadSkuMapper.selectOne(
-                new LambdaQueryWrapper<BeadSku>()
-                        .eq(BeadSku::getId, id)
-                        .eq(BeadSku::getStatus, CatalogStatus.ON_SALE)
-        );
+        BeadSku bead = beadSkuMapper.selectPublicById(id);
         if (bead == null) {
             throw new BusinessException(
                     ErrorCode.COMMON_NOT_FOUND,
@@ -169,6 +165,22 @@ public class CatalogQueryService {
                 .map(item -> toPackageSummary(item, coverUrls))
                 .toList();
         return new PageResponse<>(items, total, page, size);
+    }
+
+    /**
+     * 查询首页成品精选推荐位。推荐状态由后台配置，公开端仍强制过滤下架成品。
+     */
+    public List<PackageSummary> listRecommendedPackages(int limit) {
+        List<ProductPackage> packages =
+                productPackageMapper.selectRecommended(limit);
+        Map<Long, String> coverUrls = loadCoverUrls(
+                packages.stream()
+                        .map(ProductPackage::getCoverAssetId)
+                        .toList()
+        );
+        return packages.stream()
+                .map(item -> toPackageSummary(item, coverUrls))
+                .toList();
     }
 
     /**

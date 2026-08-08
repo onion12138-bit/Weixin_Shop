@@ -1,7 +1,12 @@
 package com.diybracelet.mall.order.application;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.diybracelet.mall.catalog.domain.BeadSku;
 import com.diybracelet.mall.catalog.infrastructure.mapper.BeadSkuMapper;
+import com.diybracelet.mall.customer.domain.CouponTemplate;
+import com.diybracelet.mall.customer.domain.CustomerCoupon;
+import com.diybracelet.mall.customer.infrastructure.CouponTemplateMapper;
+import com.diybracelet.mall.customer.infrastructure.CustomerCouponMapper;
 import com.diybracelet.mall.diy.domain.DiyDesignCommand;
 import com.diybracelet.mall.diy.domain.DiyEvaluation;
 import com.diybracelet.mall.diy.domain.DiyScheme;
@@ -14,11 +19,13 @@ import com.diybracelet.mall.order.api.dto.OrderResponse;
 import com.diybracelet.mall.order.domain.CustomerOrder;
 import com.diybracelet.mall.order.domain.FulfillmentTask;
 import com.diybracelet.mall.order.domain.OrderItem;
+import com.diybracelet.mall.order.domain.OrderOperationLog;
 import com.diybracelet.mall.order.domain.OrderStatus;
 import com.diybracelet.mall.order.domain.PaymentRecord;
 import com.diybracelet.mall.order.infrastructure.mapper.CustomerOrderMapper;
 import com.diybracelet.mall.order.infrastructure.mapper.FulfillmentTaskMapper;
 import com.diybracelet.mall.order.infrastructure.mapper.OrderItemMapper;
+import com.diybracelet.mall.order.infrastructure.mapper.OrderOperationLogMapper;
 import com.diybracelet.mall.order.infrastructure.mapper.PaymentRecordMapper;
 import com.diybracelet.mall.shared.error.BusinessException;
 import com.diybracelet.mall.shared.error.ErrorCode;
@@ -62,6 +69,9 @@ public class OrderService {
     private final OrderItemMapper itemMapper;
     private final PaymentRecordMapper paymentMapper;
     private final FulfillmentTaskMapper fulfillmentMapper;
+    private final OrderOperationLogMapper operationMapper;
+    private final CustomerCouponMapper customerCouponMapper;
+    private final CouponTemplateMapper couponTemplateMapper;
     private final InventoryReservationService inventoryReservationService;
     private final ObjectMapper objectMapper;
 
@@ -74,6 +84,9 @@ public class OrderService {
             OrderItemMapper itemMapper,
             PaymentRecordMapper paymentMapper,
             FulfillmentTaskMapper fulfillmentMapper,
+            OrderOperationLogMapper operationMapper,
+            CustomerCouponMapper customerCouponMapper,
+            CouponTemplateMapper couponTemplateMapper,
             InventoryReservationService inventoryReservationService,
             ObjectMapper objectMapper
     ) {
@@ -85,6 +98,9 @@ public class OrderService {
         this.itemMapper = itemMapper;
         this.paymentMapper = paymentMapper;
         this.fulfillmentMapper = fulfillmentMapper;
+        this.operationMapper = operationMapper;
+        this.customerCouponMapper = customerCouponMapper;
+        this.couponTemplateMapper = couponTemplateMapper;
         this.inventoryReservationService = inventoryReservationService;
         this.objectMapper = objectMapper;
     }
@@ -112,20 +128,37 @@ public class OrderService {
 
         Map<Long, Integer> quantities = quantitiesByFirstAppearance(sequence);
         Map<Long, BeadSku> beadsById = loadSellableBeads(quantities);
+        CouponSelection coupon = selectCoupon(
+                request.couponId(),
+                customerId,
+                evaluation.totalAmount()
+        );
         CustomerOrder order = buildOrder(
                 customerId,
                 scheme,
                 request,
                 sequence,
                 quantities,
-                evaluation
+                evaluation,
+                coupon
         );
         orderMapper.insert(order);
+        addOperation(
+                order.getId(), "ORDER_CREATED", "USER", "用户", "提交订单",
+                LocalDateTime.now()
+        );
         List<OrderItem> items = buildItems(order.getId(), quantities, beadsById);
         for (OrderItem item : items) {
             itemMapper.insert(item);
         }
         inventoryReservationService.reserve(order.getId(), quantities);
+        markCouponUsed(coupon);
+        if (schemeMapper.softDeleteOwned(scheme.getId(), customerId) != 1) {
+            throw new BusinessException(
+                    ErrorCode.COMMON_CONFLICT,
+                    "方案状态已发生变化，请刷新后重试"
+            );
+        }
         CustomerOrder saved = orderMapper.selectById(order.getId());
         return toResponse(saved, itemMapper.selectByOrderId(order.getId()));
     }
@@ -173,7 +206,8 @@ public class OrderService {
     public OrderResponse mockPay(Long orderId) {
         CustomerOrder order = requireOwnedOrderForUpdate(orderId);
         List<OrderItem> items = itemMapper.selectByOrderId(orderId);
-        if (order.getStatus() == OrderStatus.PAID) {
+        if (order.getPaidAt() != null
+                && order.getStatus() != OrderStatus.CANCELLED) {
             return toResponse(order, items);
         }
         if (order.getStatus() != OrderStatus.PENDING_PAYMENT) {
@@ -189,13 +223,21 @@ public class OrderService {
                 itemQuantities(items)
         );
         createPaymentRecord(order, paidAt);
-        createFulfillmentTask(orderId, items);
-        if (orderMapper.markPaid(orderId, paidAt) != 1) {
+        createFulfillmentTask(orderId, items, paidAt);
+        if (orderMapper.markPaidAndStartProduction(orderId, paidAt) != 1) {
             throw new BusinessException(
                     ErrorCode.COMMON_CONFLICT,
                     "订单支付状态更新失败"
             );
         }
+        addOperation(
+                orderId, "PAYMENT_SUCCEEDED", "SYSTEM", "系统",
+                "微信支付成功", paidAt
+        );
+        addOperation(
+                orderId, "BOM_GENERATED", "SYSTEM", "系统",
+                "生成制作 BOM", paidAt
+        );
         return currentResponse(orderId);
     }
 
@@ -217,12 +259,54 @@ public class OrderService {
         }
 
         inventoryReservationService.release(orderId, itemQuantities(items));
-        if (orderMapper.markCancelled(orderId, LocalDateTime.now()) != 1) {
+        restoreCoupon(order);
+        LocalDateTime cancelledAt = LocalDateTime.now();
+        if (orderMapper.markCancelled(orderId, cancelledAt) != 1) {
             throw new BusinessException(
                     ErrorCode.COMMON_CONFLICT,
                     "订单取消状态更新失败"
             );
         }
+        addOperation(
+                orderId, "ORDER_CANCELLED", "USER", "用户",
+                "取消订单", cancelledAt
+        );
+        return currentResponse(orderId);
+    }
+
+    /** 顾客确认收货后，后台与小程序同步进入已完成。 */
+    @Transactional
+    public OrderResponse confirmReceipt(Long orderId) {
+        CustomerOrder order = requireOwnedOrderForUpdate(orderId);
+        if (order.getStatus() == OrderStatus.COMPLETED) {
+            return currentResponse(orderId);
+        }
+        if (order.getStatus() != OrderStatus.SHIPPED) {
+            throw new BusinessException(
+                    ErrorCode.COMMON_CONFLICT,
+                    "只有待收货订单可以确认收货"
+            );
+        }
+        FulfillmentTask fulfillment =
+                fulfillmentMapper.selectByOrderIdForUpdate(orderId);
+        if (fulfillment == null || !"SHIPPED".equals(fulfillment.getStatus())) {
+            throw new BusinessException(
+                    ErrorCode.COMMON_CONFLICT,
+                    "订单履约状态已发生变化"
+            );
+        }
+        LocalDateTime completedAt = LocalDateTime.now();
+        if (orderMapper.markCompleted(orderId, completedAt) != 1
+                || fulfillmentMapper.complete(orderId, completedAt) != 1) {
+            throw new BusinessException(
+                    ErrorCode.COMMON_CONFLICT,
+                    "确认收货失败，订单状态已变化"
+            );
+        }
+        addOperation(
+                orderId, "RECEIPT_CONFIRMED", "USER", "用户",
+                "确认收货", completedAt
+        );
         return currentResponse(orderId);
     }
 
@@ -273,7 +357,8 @@ public class OrderService {
 
     private void createFulfillmentTask(
             Long orderId,
-            List<OrderItem> items
+            List<OrderItem> items,
+            LocalDateTime productionStartedAt
     ) {
         List<Map<String, Object>> bom = items.stream()
                 .map(item -> Map.<String, Object>of(
@@ -285,7 +370,8 @@ public class OrderService {
                 .toList();
         FulfillmentTask task = new FulfillmentTask();
         task.setOrderId(orderId);
-        task.setStatus("PENDING");
+        task.setStatus("IN_PRODUCTION");
+        task.setProductionStartedAt(productionStartedAt);
         task.setBomJson(writeJson(bom));
         fulfillmentMapper.insert(task);
     }
@@ -328,7 +414,8 @@ public class OrderService {
             CreateOrderRequest request,
             List<Long> sequence,
             Map<Long, Integer> quantities,
-            DiyEvaluation evaluation
+            DiyEvaluation evaluation,
+            CouponSelection coupon
     ) {
         CustomerOrder order = new CustomerOrder();
         order.setOrderNo(generateOrderNo());
@@ -348,7 +435,12 @@ public class OrderService {
         order.setBeadAmount(evaluation.beadAmount());
         order.setCraftFee(evaluation.craftFee());
         order.setCordFee(evaluation.cordFee());
-        order.setTotalAmount(evaluation.totalAmount());
+        order.setCouponId(coupon.customerCoupon() == null
+                ? null : coupon.customerCoupon().getId());
+        order.setDiscountAmount(coupon.discountAmount());
+        order.setTotalAmount(evaluation.totalAmount().subtract(
+                coupon.discountAmount()
+        ));
         order.setVersion(0L);
         return order;
     }
@@ -380,6 +472,8 @@ public class OrderService {
             CustomerOrder order,
             List<OrderItem> items
     ) {
+        FulfillmentTask fulfillment =
+                fulfillmentMapper.selectByOrderId(order.getId());
         return new OrderResponse(
                 order.getId(),
                 order.getOrderNo(),
@@ -388,6 +482,8 @@ public class OrderService {
                 order.getBeadAmount(),
                 order.getCraftFee(),
                 order.getCordFee(),
+                order.getCouponId(),
+                order.getDiscountAmount(),
                 order.getTotalAmount(),
                 order.getContactName(),
                 order.getContactPhone(),
@@ -400,9 +496,32 @@ public class OrderService {
                         item.getUnitPrice(),
                         item.getTotalPrice()
                 )).toList(),
+                fulfillment == null ? null : fulfillment.getLogisticsCompany(),
+                fulfillment == null ? null : fulfillment.getTrackingNo(),
+                order.getPaidAt(),
+                order.getShippedAt(),
+                order.getCompletedAt(),
                 order.getCreatedAt(),
                 order.getUpdatedAt()
         );
+    }
+
+    private void addOperation(
+            Long orderId,
+            String actionCode,
+            String operatorType,
+            String operatorName,
+            String content,
+            LocalDateTime occurredAt
+    ) {
+        OrderOperationLog operation = new OrderOperationLog();
+        operation.setOrderId(orderId);
+        operation.setActionCode(actionCode);
+        operation.setOperatorType(operatorType);
+        operation.setOperatorName(operatorName);
+        operation.setContent(content);
+        operation.setOccurredAt(occurredAt);
+        operationMapper.insert(operation);
     }
 
     private Map<Long, Integer> quantitiesByFirstAppearance(List<Long> sequence) {
@@ -418,6 +537,95 @@ public class OrderService {
                 + LocalDateTime.now().format(ORDER_TIME)
                 + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
     }
+
+    private CouponSelection selectCoupon(
+            Long couponId,
+            Long customerId,
+            BigDecimal orderAmount
+    ) {
+        if (couponId == null) {
+            return new CouponSelection(null, BigDecimal.ZERO);
+        }
+        CustomerCoupon customerCoupon = customerCouponMapper.selectOne(
+                new LambdaQueryWrapper<CustomerCoupon>()
+                        .eq(CustomerCoupon::getId, couponId)
+                        .eq(CustomerCoupon::getCustomerIdentityId, customerId)
+                        .last("for update")
+        );
+        if (customerCoupon == null) {
+            throw new BusinessException(
+                    ErrorCode.COMMON_NOT_FOUND,
+                    "优惠券不存在"
+            );
+        }
+        if (!"UNUSED".equals(customerCoupon.getStatus())) {
+            throw new BusinessException(
+                    ErrorCode.COMMON_CONFLICT,
+                    "优惠券已使用或已失效"
+            );
+        }
+        if (!customerCoupon.getExpiresAt().isAfter(LocalDateTime.now())) {
+            customerCoupon.setStatus("EXPIRED");
+            customerCouponMapper.updateById(customerCoupon);
+            throw new BusinessException(
+                    ErrorCode.COMMON_CONFLICT,
+                    "优惠券已过期"
+            );
+        }
+        CouponTemplate template = couponTemplateMapper.selectById(
+                customerCoupon.getCouponTemplateId()
+        );
+        if (template == null) {
+            throw new BusinessException(
+                    ErrorCode.COMMON_NOT_FOUND,
+                    "优惠券模板不存在"
+            );
+        }
+        if (orderAmount.compareTo(template.getMinimumSpend()) < 0) {
+            throw new BusinessException(
+                    ErrorCode.COMMON_CONFLICT,
+                    "订单金额未达到优惠券使用门槛"
+            );
+        }
+        return new CouponSelection(
+                customerCoupon,
+                template.getDiscountAmount().min(orderAmount)
+        );
+    }
+
+    private void markCouponUsed(CouponSelection selection) {
+        CustomerCoupon coupon = selection.customerCoupon();
+        if (coupon == null) return;
+        coupon.setStatus("USED");
+        coupon.setUsedAt(LocalDateTime.now());
+        if (customerCouponMapper.updateById(coupon) != 1) {
+            throw new BusinessException(
+                    ErrorCode.COMMON_CONFLICT,
+                    "优惠券核销失败，请刷新后重试"
+            );
+        }
+    }
+
+    private void restoreCoupon(CustomerOrder order) {
+        if (order.getCouponId() == null) return;
+        CustomerCoupon coupon = customerCouponMapper.selectById(
+                order.getCouponId()
+        );
+        if (coupon == null || !"USED".equals(coupon.getStatus())) return;
+        coupon.setStatus("UNUSED");
+        coupon.setUsedAt(null);
+        if (customerCouponMapper.updateById(coupon) != 1) {
+            throw new BusinessException(
+                    ErrorCode.COMMON_CONFLICT,
+                    "优惠券退回失败，请刷新后重试"
+            );
+        }
+    }
+
+    private record CouponSelection(
+            CustomerCoupon customerCoupon,
+            BigDecimal discountAmount
+    ) { }
 
     private List<Long> parseSequence(String json) {
         try {

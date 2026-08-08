@@ -17,11 +17,18 @@ public record OrderResponse(
         BigDecimal beadAmount,
         BigDecimal craftFee,
         BigDecimal cordFee,
+        Long couponId,
+        BigDecimal discountAmount,
         BigDecimal totalAmount,
         String contactName,
         String contactPhone,
         String addressDetail,
         List<Item> items,
+        String logisticsCompany,
+        String trackingNo,
+        LocalDateTime paidAt,
+        LocalDateTime shippedAt,
+        LocalDateTime completedAt,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {

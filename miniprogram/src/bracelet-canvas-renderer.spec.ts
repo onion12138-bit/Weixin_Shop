@@ -110,7 +110,6 @@ describe('bracelet canvas renderer', () => {
 
     expect(ctx.operations).toEqual([
       'background',
-      'bracelet-shadow',
       'cord',
       'bead-shadow(0)',
       'bead-fallback(0:#cc8899)',

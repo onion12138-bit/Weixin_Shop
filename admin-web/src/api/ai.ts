@@ -8,6 +8,8 @@ export interface AiConfiguration {
   enabled: boolean
   timeoutSeconds: number
   maxOutputTokens: number
+  recommendationPrompt: string
+  planCount: number
   version: number
 }
 
@@ -18,7 +20,13 @@ export interface SaveAiConfigurationPayload {
   enabled: boolean
   timeoutSeconds: number
   maxOutputTokens: number
+  recommendationPrompt: string
+  planCount: number
   version: number
+}
+
+export interface AiApiKeyView {
+  apiKey: string
 }
 
 export const getAiConfiguration = (): Promise<AiConfiguration> =>
@@ -34,6 +42,9 @@ export const saveAiConfiguration = (
 
 export const testAiConfiguration = (): Promise<void> =>
   request<void>('/admin/ai/config/test', { method: 'POST' })
+
+export const revealAiApiKey = (): Promise<AiApiKeyView> =>
+  request<AiApiKeyView>('/admin/ai/config/api-key')
 
 export const clearAiApiKey = (version: number): Promise<AiConfiguration> =>
   request<AiConfiguration>(

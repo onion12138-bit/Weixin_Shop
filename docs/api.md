@@ -1,6 +1,6 @@
 # API 接口文档
 
-最后更新：2026-07-13
+最后更新：2026-08-08
 
 默认后端：`http://localhost:8081`。
 
@@ -25,7 +25,7 @@
 - 参数错误返回 400，未认证 401，不存在 404，业务冲突 409。
 - 商品状态：`DRAFT`、`ON_SALE`、`OFF_SALE`。
 - 方案报价状态：`NOT_QUOTED`、`VALID`、`STALE`、`INVALID`。
-- 订单状态：`PENDING_PAYMENT`、`PAID`、`IN_PRODUCTION`、`SHIPPED`、`COMPLETED`、`CANCELLED`。
+- 订单状态：`PENDING_PAYMENT`、`IN_PRODUCTION`、`PENDING_SHIPMENT`、`SHIPPED`、`COMPLETED`、`CANCELLED`、`AFTER_SALE`、`REFUNDED`。
 
 ## 2. 认证、访客身份和文件
 
@@ -52,7 +52,7 @@
 
 | 方法 | 路径 | 查询参数 | 说明 |
 | --- | --- | --- | --- |
-| GET | `/api/public/catalog/categories` | 无 | 已上架分类 |
+| GET | `/api/public/catalog/categories` | 无 | 已上架的珠子分类 |
 | GET | `/api/public/catalog/beads` | `categoryId? keyword? page size` | 已上架散珠分页 |
 | GET | `/api/public/catalog/beads/{id}` | 无 | 散珠详情 |
 | GET | `/api/public/catalog/packages` | `page size` | 已上架套餐分页 |
@@ -72,9 +72,19 @@
 | GET/POST | `/beads` | 散珠分页/新增 |
 | GET/PUT | `/beads/{id}` | 散珠详情/修改 |
 | PATCH | `/beads/{id}/status` | 切换散珠状态 |
+| GET | `/beads/import-template` | 下载当前分类对应的 `.xlsx` 导入模板 |
+| POST | `/beads/import` | `multipart/form-data` 上传 `.xlsx`，字段名为 `file` |
 | GET/POST | `/packages` | 套餐分页/新增 |
 | GET/PUT | `/packages/{id}` | 含有序散珠明细的套餐详情/修改 |
 | PATCH | `/packages/{id}/status` | 切换套餐状态 |
+
+分类写入字段 `productType` 支持 `BEAD`（珠子）、`CORD`（绳类）和 `ACCESSORY`（其他饰品）。为兼容旧调用，省略时后端按 `BEAD` 处理；已有商品的分类不能再修改商品类型。
+
+后台 `GET /beads` 的列表项除经营字段外还返回：
+
+- `productType`：分类对应的商品类型；
+- `availableQty/reservedQty/soldQty`：当前可用、预占和累计已售库存；
+- `stockWarningStatus`：`NORMAL` 或 `RESTOCK`，计算规则为 `availableQty <= stockAlertThreshold` 时需要补货。
 
 新增散珠示例：
 
@@ -97,6 +107,21 @@
 ```
 
 `initialStock` 只属于新增 DTO，范围为非负整数；修改散珠时不接收该字段。新增商品、库存余额和非零库存的 `INIT` 流水在同一事务完成。
+
+绳类或其他饰品沿用同一新增接口，但不传 `diameterMm`；后端会把非珠子直径保存为 `null`。珠子分类仍强制要求有效珠径。非珠子商品可在后台独立维护和查看库存，但不会出现在公共珠子目录、DIY、套餐珠子或 AI 推荐候选中。
+
+批量模板包含 `SKU编码、商品名称、分类名称、材质、颜色、珠径(mm)、销售价(元)、成本价(元)、初始库存、库存预警、标签、状态`。图片不写入 Excel，商品导入后再通过编辑页上传。单次限制 1000 行和 10 MB；合法行独立创建商品、库存余额和初始化流水，失败行不会回滚其他成功行。响应示例：
+
+```json
+{
+  "totalRows": 3,
+  "successCount": 2,
+  "failureCount": 1,
+  "errors": [
+    {"rowNumber": 4, "skuCode": "BEAD-EXAMPLE", "message": "珠子商品必须填写珠径"}
+  ]
+}
+```
 
 ## 5. DIY 配置管理
 
@@ -202,19 +227,21 @@
 | GET | `/api/app/orders/{id}` | 当前顾客订单详情与 SKU 聚合明细 |
 | POST | `/api/app/orders/{id}/mock-pay` | 本地模拟支付；重复调用幂等 |
 | POST | `/api/app/orders/{id}/cancel` | 取消待支付订单并释放预占库存 |
+| POST | `/api/app/orders/{id}/confirm-receipt` | 顾客确认收货，`SHIPPED → COMPLETED` |
 
 创建订单请求：
 
 ```json
 {
   "schemeId": 123,
+  "couponId": 456,
   "contactName": "张三",
   "contactPhone": "13800000000",
   "addressDetail": "上海市浦东新区演示路 1 号"
 }
 ```
 
-创建订单时不接收前端金额。后端重新读取方案、SKU、价格和配置完成权威报价，并在同一事务内写入订单、明细和库存预占。库存不足返回 HTTP 409 与业务码 `INVENTORY_INSUFFICIENT`。
+`couponId` 可省略。创建订单时不接收前端金额。后端重新读取方案、SKU、价格、配置和顾客优惠券完成权威结算，并在同一事务内写入订单、明细、优惠金额、优惠券核销状态和库存预占。取消待支付订单时会退回优惠券，之后可以再次使用。库存不足返回 HTTP 409 与业务码 `INVENTORY_INSUFFICIENT`。
 
 ### 8.2 管理后台订单
 
@@ -222,11 +249,15 @@
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/admin/orders` | 分页查询订单；参数为 `status? page size` |
-| GET | `/api/admin/orders/{id}` | 订单、BOM 和履约详情 |
-| POST | `/api/admin/orders/{id}/start-production` | `PAID → IN_PRODUCTION` |
-| POST | `/api/admin/orders/{id}/ship` | `IN_PRODUCTION → SHIPPED`，保存模拟物流 |
+| GET | `/api/admin/orders` | 分页查询订单；支持订单号、收件人、手机号、状态、日期、金额、支付方式和排序筛选 |
+| GET | `/api/admin/orders/statistics` | 按当前筛选条件统计各订单状态数量 |
+| GET | `/api/admin/orders/{id}` | 订单、顾客收货信息、商品方案、BOM、支付、履约和操作记录详情 |
+| POST | `/api/admin/orders/{id}/remind-payment` | 记录待付款提醒操作 |
+| POST | `/api/admin/orders/{id}/complete-production` | `IN_PRODUCTION → PENDING_SHIPMENT` |
+| POST | `/api/admin/orders/{id}/ship` | `PENDING_SHIPMENT → SHIPPED`，保存物流信息 |
 | POST | `/api/admin/orders/{id}/complete` | `SHIPPED → COMPLETED` |
+| POST | `/api/admin/orders/{id}/cancel` | 取消待付款订单并释放库存、退回优惠券 |
+| PATCH | `/api/admin/orders/{id}/address` | 修改订单收件人、手机号、地址和备注 |
 
 发货请求：
 
@@ -241,22 +272,24 @@
 
 ### 8.3 模拟支付边界
 
-- 当前支付渠道固定为 `MOCK`，不会调用微信支付或产生真实扣款。
+- 当前支付记录渠道兼容本地 `MOCK`/微信演示标识，不会调用真实微信支付或产生真实扣款。
 - 支付成功创建唯一 `payment_record` 和唯一 `fulfillment_task`。
+- 支付成功后订单与履约任务直接进入 `IN_PRODUCTION`。
 - 同一订单重复模拟支付直接返回当前已支付订单，不重复扣库存。
 - 后续接微信支付时应保持订单、库存和幂等语义不变，通过支付网关适配器接入下单与回调。
 
-## 9. DeepSeek 配置与单套推荐
+## 9. DeepSeek 配置与多套推荐
 
 ### 9.1 管理员单例配置
 
-所有接口都需要管理员 JWT。API Key 只允许在保存请求中提交，读取和保存响应都只返回 `apiKeyConfigured`，不会回显明文或密文。
+所有接口都需要管理员 JWT。普通读取和保存响应只返回 `apiKeyConfigured`；只有管理员显式点击眼睛按钮时才调用禁止缓存的密钥查看接口。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/api/admin/ai/config` | 读取唯一配置及乐观锁 `version` |
 | PUT | `/api/admin/ai/config` | 保存官方地址、模型、启停、超时、Token 上限及可选新 Key |
 | POST | `/api/admin/ai/config/test` | 调用 DeepSeek `/models` 校验鉴权和模型存在性 |
+| GET | `/api/admin/ai/config/api-key` | 显式查看已保存 Key；响应使用 `Cache-Control: no-store` |
 | DELETE | `/api/admin/ai/config/api-key?version={version}` | 清除已保存 Key |
 
 保存请求：
@@ -269,46 +302,40 @@
   "enabled": true,
   "timeoutSeconds": 30,
   "maxOutputTokens": 2048,
+  "recommendationPrompt": "根据生日画像和期望推荐有区分的日常珠子材质搭配",
+  "planCount": 3,
   "version": 0
 }
 ```
 
-Provider 固定为 `DEEPSEEK`，Base URL 只接受 DeepSeek 官方 HTTPS origin。Key 以 AES-GCM 密文保存，解密主密钥来自后端环境 `AI_CONFIG_ENCRYPTION_KEY`；该主密钥不进入数据库。
+Provider 固定为 `DEEPSEEK`，Base URL 只接受 DeepSeek 官方 HTTPS origin，模型固定为 `deepseek-v4-flash`。`recommendationPrompt` 必填且最多 4000 字，`planCount` 为 1～5、默认 3。Key 以 AES-GCM 密文保存，解密主密钥来自后端环境 `AI_CONFIG_ENCRYPTION_KEY`；该主密钥不进入数据库。
 
 ### 9.2 顾客推荐
 
-两个接口都必须使用 `/api/app/session/guest` 返回的顾客 JWT；管理员 JWT 不能代替。
+状态和生日画像接口公开且不依赖访客会话；正式生成必须使用 `/api/app/session/guest` 返回的顾客 JWT，管理员 JWT 不能代替。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/app/recommendations/status` | 返回 `AVAILABLE`、`NOT_CONFIGURED` 或 `DISABLED` |
-| POST | `/api/app/recommendations` | 调用模型一次并返回一套经后端复核的推荐 |
+| GET | `/api/public/recommendations/status` | 返回 `AVAILABLE`、`NOT_CONFIGURED` 或 `DISABLED` |
+| GET | `/api/public/recommendations/profile?birthDate=YYYY-MM-DD` | 由生日计算星座、生肖和星座元素 |
+| POST | `/api/app/recommendations` | 调用模型并返回后台配置套数的库存材质推荐 |
 
 请求示例：
 
 ```json
 {
   "birthDate": "1992-01-20",
-  "constellation": "水瓶座",
-  "zodiac": "猴",
-  "elementPreference": "水",
-  "wish": "专注与从容",
-  "scene": "通勤",
-  "colorPreference": "灰蓝",
-  "budget": 500,
-  "wristCircumferenceMm": 160,
-  "fitType": "STANDARD",
-  "freeText": "偏好日常搭配"
+  "wish": "希望日常搭配更从容"
 }
 ```
 
-响应只有一套对象，不是候选列表；核心字段包括 `schemeName`、有序 `sequence`、`quantities`、带当前图片与理由的 `items`、`cordOption`、服务端重算的 `beadAmount/craftFee/cordFee/totalAmount`、`quoteFingerprint` 和 `culturalDisclaimer`。模型只能从当前已上架且有库存的 SKU 中选择；后端会再次校验 SKU、库存、预算、腕围、文案、绳材和权威价格，任一失败都不返回部分方案。
+响应包含 `profile`、`plans` 和 `culturalDisclaimer`。`profile` 返回 `birthDate/constellation/zodiac/constellationElement`；每套 `plan` 包含 `schemeName/summary/items`，每套选择 3～5 种不同珠子，每项只返回服务端当前 `skuId/name/imageUrl` 与模型给出的 `reason`。模型输入只包含后台业务提示词、生日画像、可选期望和当前在售有库存珠子的 `skuId/name/material`，不包含成本、售价、手围、松紧、数量、排列或绳材。后端严格校验套数、结构、SKU、当前库存和文案，任一失败都不返回部分方案。
 
-生日和完整咨询文本只在本次请求内使用，不持久化、不写日志、不回显。小程序进入 DIY 时只写入 `sequence`、`wristCircumferenceMm`、`fitType`、`cordOptionId`，并在 `source=ai` 首次读取时删除；价格、理由、生日和自由文本不进入 handoff。
+生日和期望只在本次请求内使用，不持久化、不写日志。小程序选择某套进入 DIY 时只一次性写入该套去重后的 SKU 类型；编辑器读取即删除，并使用 DIY 自己的默认手围、松紧和绳材，后续数量、排列与价格仍由既有 DIY 规则处理。
 
 无 Key 时状态精确为 `NOT_CONFIGURED`，POST 返回 HTTP 503 + `AI_NOT_CONFIGURED`，小程序文案为“AI 推荐暂未开放”；管理员停用时状态为 `DISABLED`，POST 返回 HTTP 503 + `AI_DISABLED`，文案为“AI 推荐暂停使用”。系统没有规则或本地降级，不会把暂停状态包装成成功。
 
-其他稳定错误包括 `AI_UNAUTHORIZED`、`AI_MODEL_UNAVAILABLE`、`AI_RATE_LIMITED`、`AI_TEMPORARILY_UNAVAILABLE` 和 `AI_INVALID_RECOMMENDATION`；错误响应不含上游完整响应体。
+推荐错误按原因区分为 `AI_PROMPT_NOT_CONFIGURED`、`AI_UNAUTHORIZED`、`AI_MODEL_UNAVAILABLE`、`AI_RATE_LIMITED`、`AI_TIMEOUT`、`AI_UPSTREAM_ERROR`、`AI_RESPONSE_FORMAT_INVALID`、`AI_RESULT_COUNT_INVALID`、`AI_RESULT_ITEM_COUNT_INVALID`、`AI_RESULT_DUPLICATE_SKU`、`AI_RESULT_SKU_INVALID`、`AI_RESPONSE_CONTENT_UNSAFE`、`BIRTH_DATE_REQUIRED`、`BIRTH_DATE_INVALID` 和 `CATALOG_EMPTY`。只有格式、套数、单套珠子种类数、重复 SKU、无效 SKU 或文案校验失败时，后端允许同一模型纠正一次；鉴权、限流、超时和上游错误不重试，也没有本地或其他模型降级。错误响应不含上游完整响应体。
 
 ## 10. 健康检查与冒烟
 
@@ -369,3 +396,27 @@ Provider 固定为 `DEEPSEEK`，Base URL 只接受 DeepSeek 官方 HTTPS origin�
 ```
 
 `trayUrl` 与 `canvasUrl` 可独立读取；客户端分别降级到 `coverUrl`，再降级为颜色占位。
+
+## 12. 管理端顾客地址与批量发券
+
+以下接口均需要管理员 JWT：
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/admin/customers` | 返回顾客资料、默认地址和 `addressCount` |
+| GET | `/api/admin/customers/search?phone={keyword}&limit=50` | 按手机号片段服务端模糊搜索顾客，最多返回 100 位 |
+| GET | `/api/admin/customer-addresses?customerIdentityId={id}&status={status}` | 查询指定顾客的多个地址，可选 `ACTIVE/DELETED` 状态 |
+| PATCH | `/api/admin/customer-addresses/{id}/status` | 停用或恢复地址 |
+| POST | `/api/admin/coupons/{templateId}/grants/batch` | 向多选顾客或全部有效顾客发送优惠券 |
+
+多选发送请求：
+
+```json
+{
+  "recipientMode": "SELECTED",
+  "customerIdentityIds": [12, 15, 18],
+  "note": "客服关怀"
+}
+```
+
+全量发送将 `recipientMode` 改为 `ALL`，`customerIdentityIds` 传空数组。服务端按 500 条一批写入，响应返回 `requestedCount`、`grantedCount` 和 `skippedCount`；多选模式会去重并跳过不存在或已停用的顾客。

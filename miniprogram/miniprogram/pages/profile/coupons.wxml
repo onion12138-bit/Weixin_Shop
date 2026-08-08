@@ -1,0 +1,13 @@
+<view class="subpage coupon-page">
+  <text class="page-kicker">MY BENEFITS</text><text class="page-title">优惠券与权益</text><text class="page-subtitle">每一份优惠，都是为你的灵感加一点甜</text>
+  <view class="status-tabs"><button class="{{activeStatus === 'UNUSED' ? 'active' : ''}}" data-status="UNUSED" bindtap="chooseStatus">可使用</button><button class="{{activeStatus === 'USED' ? 'active' : ''}}" data-status="USED" bindtap="chooseStatus">已使用</button><button class="{{activeStatus === 'EXPIRED' ? 'active' : ''}}" data-status="EXPIRED" bindtap="chooseStatus">已过期</button><button class="{{activeStatus === 'ALL' ? 'active' : ''}}" data-status="ALL" bindtap="chooseStatus">全部</button></view>
+  <view wx:if="{{errorMessage}}" class="inline-error">{{errorMessage}}</view>
+  <view wx:if="{{loading}}" class="soft-card state-card">正在读取优惠权益…</view>
+  <view wx:elif="{{!couponCards.length}}" class="soft-card state-card">当前没有{{activeStatus === 'UNUSED' ? '可使用的' : ''}}优惠券</view>
+  <view wx:else class="coupon-list">
+    <view wx:for="{{couponCards}}" wx:key="id" class="soft-card coupon-card {{item.status !== 'UNUSED' ? 'inactive' : ''}}">
+      <view class="coupon-value"><strong>{{item.amountText}}</strong><text>{{item.thresholdText}}</text></view>
+      <view class="coupon-content"><view class="coupon-heading"><strong>{{item.name}}</strong><i>{{item.statusLabel}}</i></view><text class="coupon-description">{{item.description}}</text><text class="coupon-date">{{item.expiresText}}</text><text wx:if="{{item.note}}" class="coupon-note">{{item.note}}</text></view>
+    </view>
+  </view>
+</view>

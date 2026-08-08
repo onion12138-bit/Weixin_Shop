@@ -1,5 +1,6 @@
 import {
   cancelOrder,
+  confirmOrderReceipt,
   getOrder,
   mockPayOrder,
 } from '../../services/orders'
@@ -16,7 +17,7 @@ Page({
     operating: false,
     errorMessage: '',
     order: null as OrderDetail | null,
-    steps: ['已下单', '已支付', '制作中', '已发货', '已完成'],
+    steps: ['待付款', '制作中', '待发货', '待收货', '已完成'],
   },
 
   onLoad(options: Record<string, string>) {
@@ -58,6 +59,18 @@ Page({
       '确认取消',
     )) return
     await this.runAction(() => cancelOrder(this.data.id), '订单已取消')
+  },
+
+  async confirmReceipt() {
+    if (!await confirmAction(
+      '确认收货',
+      '确认已经收到手串吗？确认后订单将进入已完成。',
+      '确认收货',
+    )) return
+    await this.runAction(
+      () => confirmOrderReceipt(this.data.id),
+      '已确认收货',
+    )
   },
 
   async runAction(

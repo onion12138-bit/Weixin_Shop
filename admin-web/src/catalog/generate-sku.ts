@@ -2,9 +2,10 @@
  * 生成可读且可编辑的散珠 SKU：业务前缀 + 分类 + 规格 + 日期 + 唯一尾码。
  * 后端仍负责格式与唯一性终检，前端不会在用户手动修改后自动覆盖。
  */
-export function generateBeadSku(
+export function generateCatalogSku(
+  productType: 'BEAD' | 'CORD' | 'ACCESSORY',
   categorySlug: string,
-  diameterMm: number,
+  diameterMm: number | null,
   now = new Date(),
   randomValue = Math.random(),
 ): string {
@@ -32,5 +33,22 @@ export function generateBeadSku(
     .toString(36)
     .toUpperCase()
     .padStart(4, '0')
-  return `BEAD-${category}-${diameter}MM-${date}-${suffix}`
+  const prefix = productType === 'ACCESSORY' ? 'ACC' : productType
+  const specification = productType === 'BEAD' ? `-${diameter}MM` : ''
+  return `${prefix}-${category}${specification}-${date}-${suffix}`
+}
+
+export function generateBeadSku(
+  categorySlug: string,
+  diameterMm: number,
+  now = new Date(),
+  randomValue = Math.random(),
+): string {
+  return generateCatalogSku(
+    'BEAD',
+    categorySlug,
+    diameterMm,
+    now,
+    randomValue,
+  )
 }

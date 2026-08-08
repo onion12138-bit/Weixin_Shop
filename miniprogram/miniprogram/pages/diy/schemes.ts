@@ -1,5 +1,4 @@
 import {
-  copyScheme as copyDiyScheme,
   deleteScheme as deleteDiyScheme,
   listSchemes,
 } from '../../services/diy'
@@ -14,6 +13,7 @@ interface PendingPreview {
 }
 
 const PREVIEW_PENDING_KEY = 'diy_preview_pending'
+const MAX_SCHEME_COUNT = 3
 
 Page({
   data: {
@@ -60,23 +60,6 @@ Page({
     wx.navigateTo({ url: '/pages/order/list' })
   },
 
-  async copyScheme(event: WechatMiniprogram.TouchEvent) {
-    const id = Number(event.currentTarget.dataset.id || 0)
-    if (!id) return
-    wx.showLoading({ title: '正在复制', mask: true })
-    try {
-      await copyDiyScheme(id)
-      await this.loadSchemes()
-      wx.showToast({ title: '已复制', icon: 'success' })
-    } catch (error) {
-      this.setData({
-        errorMessage: error instanceof Error ? error.message : '复制失败',
-      })
-    } finally {
-      wx.hideLoading()
-    }
-  },
-
   async deleteScheme(event: WechatMiniprogram.TouchEvent) {
     const id = Number(event.currentTarget.dataset.id || 0)
     if (!id) return
@@ -97,6 +80,10 @@ Page({
   },
 
   createScheme() {
+    if (this.data.schemes.length >= MAX_SCHEME_COUNT) {
+      wx.showToast({ title: '最多保存 3 个 DIY 方案', icon: 'none' })
+      return
+    }
     wx.navigateTo({ url: '/pages/diy/editor' })
   },
 })

@@ -1,10 +1,16 @@
-import { getScheme } from '../../services/diy'
+import { listAddresses, listCoupons, type CustomerAddress } from '../../services/account'
+import { getScheme, type DiySchemeResponse } from '../../services/diy'
 import { createOrder } from '../../services/orders'
 import { ApiError } from '../../services/request'
 import {
-  toSchemeCard,
-  type SchemeCard,
-} from '../../utils/diy-view-model'
+  buildCheckoutBeads,
+  buildCheckoutCoupons,
+  couponDiscountCents,
+  formatCents,
+  maskPhone,
+  yuanToCents,
+  type CheckoutCouponItem,
+} from '../../utils/order-checkout-view-model'
 
 Page({
   data: {
@@ -12,49 +18,138 @@ Page({
     loading: true,
     submitting: false,
     errorMessage: '',
-    scheme: null as SchemeCard | null,
-    contactName: '',
-    contactPhone: '',
-    addressDetail: '',
+    scheme: null as DiySchemeResponse | null,
+    previewUrl: '/assets/images/bead-placeholder.svg',
+    productName: '我的专属手串',
+    beadCountText: '0 颗',
+    beadRows: [] as ReturnType<typeof buildCheckoutBeads>['rows'],
+    hasMoreBeads: false,
+    address: null as CustomerAddress | null,
+    maskedPhone: '',
+    coupons: [] as CheckoutCouponItem[],
+    selectedCouponId: 0,
+    selectedCouponName: '暂不使用优惠券',
+    couponModalVisible: false,
+    productTotalCents: 0,
+    productTotalText: '¥0.00',
+    discountCents: 0,
+    discountText: '-¥0.00',
+    payableCents: 0,
+    payableText: '¥0.00',
+    savedText: '已优惠 ¥0.00',
   },
+
+  pageReady: false,
 
   onLoad(options: Record<string, string>) {
-    const schemeId = Number(options.schemeId || 0)
-    this.setData({ schemeId })
-    void this.loadScheme()
+    this.setData({ schemeId: Number(options.schemeId || 0) })
+    void this.loadCheckout()
   },
 
-  async loadScheme() {
+  onShow() {
+    if (this.pageReady) void this.refreshAddress()
+  },
+
+  async loadCheckout() {
     if (!this.data.schemeId) {
       this.setData({ loading: false, errorMessage: '方案编号无效' })
       return
     }
     this.setData({ loading: true, errorMessage: '' })
     try {
+      const [scheme, addresses, rawCoupons] = await Promise.all([
+        getScheme(this.data.schemeId),
+        listAddresses().catch(() => []),
+        listCoupons().catch(() => []),
+      ])
+      const address = preferredAddress(addresses)
+      const productTotalCents = yuanToCents(scheme.totalAmount)
+      const beadSummary = buildCheckoutBeads(scheme)
+      const coupons = buildCheckoutCoupons(rawCoupons, productTotalCents, 0)
       this.setData({
-        scheme: toSchemeCard(await getScheme(this.data.schemeId)),
+        scheme,
+        previewUrl: scheme.previewUrl || '/assets/images/bead-placeholder.svg',
+        productName: scheme.name || '我的专属手串',
+        beadCountText: `${scheme.beadCount} 颗`,
+        beadRows: beadSummary.rows,
+        hasMoreBeads: beadSummary.hasMore,
+        address,
+        maskedPhone: address ? maskPhone(address.phone) : '',
+        coupons,
+        productTotalCents,
+        productTotalText: formatCents(productTotalCents),
+        payableCents: productTotalCents,
+        payableText: formatCents(productTotalCents),
       })
+      this.pageReady = true
     } catch (error) {
-      this.setData({ errorMessage: readableError(error, '方案加载失败') })
+      this.setData({ errorMessage: readableError(error, '订单信息加载失败') })
     } finally {
       this.setData({ loading: false })
     }
   },
 
-  updateField(
-    event: WechatMiniprogram.Input & WechatMiniprogram.TouchEvent,
-  ) {
-    const field = String(event.currentTarget.dataset.field || '')
-    if (!field) return
-    this.setData({ [field]: event.detail.value } as never)
+  async refreshAddress() {
+    try {
+      const address = preferredAddress(await listAddresses())
+      this.setData({
+        address,
+        maskedPhone: address ? maskPhone(address.phone) : '',
+      })
+    } catch {
+      // 保留当前地址，避免返回页面时短暂的网络错误清空已展示内容。
+    }
+  },
+
+  openAddresses() {
+    wx.navigateTo({ url: '/pages/profile/addresses' })
+  },
+
+  openCouponModal() {
+    this.setData({ couponModalVisible: true })
+  },
+
+  closeCouponModal() {
+    this.setData({ couponModalVisible: false })
+  },
+
+  keepCouponModalOpen() {},
+
+  selectCoupon(event: WechatMiniprogram.TouchEvent) {
+    const id = Number(event.currentTarget.dataset.id || 0)
+    const coupon = this.data.coupons.find((item) => item.id === id)
+    if (id && (!coupon || !coupon.usable)) {
+      wx.showToast({ title: coupon?.statusText || '该优惠券暂不可用', icon: 'none' })
+      return
+    }
+    const coupons = this.data.coupons.map((item) => ({
+      ...item,
+      selected: item.id === id && item.usable,
+    }))
+    const discountCents = couponDiscountCents(
+      coupons,
+      id,
+      this.data.productTotalCents,
+    )
+    const payableCents = Math.max(0, this.data.productTotalCents - discountCents)
+    this.setData({
+      coupons,
+      selectedCouponId: id,
+      selectedCouponName: id ? (coupon?.name || '已选择优惠券') : '暂不使用优惠券',
+      discountCents,
+      discountText: `-${formatCents(discountCents)}`,
+      payableCents,
+      payableText: formatCents(payableCents),
+      savedText: `已优惠 ${formatCents(discountCents)}`,
+      couponModalVisible: false,
+    })
   },
 
   async submitOrder() {
-    const contactName = this.data.contactName.trim()
-    const contactPhone = this.data.contactPhone.trim()
-    const addressDetail = this.data.addressDetail.trim()
-    if (!contactName || !contactPhone || !addressDetail) {
-      this.setData({ errorMessage: '请完整填写收货人、联系电话和地址' })
+    const address = this.data.address
+    if (!address) {
+      wx.showToast({ title: '请先添加收货地址', icon: 'none' })
+      this.openAddresses()
       return
     }
 
@@ -62,29 +157,28 @@ Page({
     try {
       const order = await createOrder({
         schemeId: this.data.schemeId,
-        contactName,
-        contactPhone,
-        addressDetail,
+        contactName: address.receiverName,
+        contactPhone: address.phone,
+        addressDetail: `${address.region} ${address.detail}`,
+        couponId: this.data.selectedCouponId || undefined,
       })
       wx.showToast({ title: '订单已创建', icon: 'success' })
-      wx.navigateTo({ url: `/pages/order/detail?id=${order.id}` })
+      wx.redirectTo({ url: `/pages/order/detail?id=${order.id}` })
     } catch (error) {
       this.setData({ errorMessage: readableError(error, '创建订单失败') })
     } finally {
       this.setData({ submitting: false })
     }
   },
-
-  openOrders() {
-    wx.navigateTo({ url: '/pages/order/list' })
-  },
 })
+
+function preferredAddress(addresses: CustomerAddress[]): CustomerAddress | null {
+  return addresses.find((item) => item.isDefault) || addresses[0] || null
+}
 
 function readableError(error: unknown, fallback: string): string {
   if (error instanceof ApiError) {
-    return error.traceId
-      ? `${error.message}（${error.traceId}）`
-      : error.message
+    return error.traceId ? `${error.message}（${error.traceId}）` : error.message
   }
   return error instanceof Error ? error.message : fallback
 }

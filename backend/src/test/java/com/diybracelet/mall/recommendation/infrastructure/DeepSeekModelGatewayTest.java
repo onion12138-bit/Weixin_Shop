@@ -11,15 +11,16 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.diybracelet.mall.recommendation.domain.AiModelConfig;
-import com.diybracelet.mall.diy.domain.FitType;
 import com.diybracelet.mall.recommendation.domain.ModelRecommendation;
 import com.diybracelet.mall.recommendation.domain.RecommendationCandidate;
 import com.diybracelet.mall.recommendation.domain.RecommendationProfile;
+import com.diybracelet.mall.recommendation.domain.RecommendationRepairFeedback;
 import com.diybracelet.mall.shared.error.BusinessException;
 import com.diybracelet.mall.shared.error.ErrorCode;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -38,10 +39,10 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
-/** DeepSeek HTTP adapter tests that never use a real network or API key. */
+/** HTTP boundary, strict JSON, safe prompt, and distinct error mapping tests. */
 class DeepSeekModelGatewayTest {
 
-    private static final String SECRET = "ds-sensitive-gateway-secret";
+    private static final String SECRET = "ds-sensitive-gateway-key";
     private static final String MASTER_KEY = Base64.getEncoder().encodeToString(
         "0123456789abcdef0123456789abcdef".getBytes(StandardCharsets.UTF_8)
     );
@@ -64,20 +65,23 @@ class DeepSeekModelGatewayTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void shouldCallModelsOnceWithBearerAuthenticationAndRequestTimeout() throws Exception {
+    void shouldCallModelsOnceWithBearerAuthenticationAndTimeout() throws Exception {
         HttpClient client = mock(HttpClient.class);
-        HttpResponse<String> response = mock(HttpResponse.class);
-        when(response.statusCode()).thenReturn(200);
-        when(response.body()).thenReturn("{\"data\":[{\"id\":\"deepseek-chat\"},{\"id\":\"deepseek-v4-flash\"}]}");
+        HttpResponse<String> response = response(
+            200,
+            "{\"data\":[{\"id\":\"deepseek-chat\"},{\"id\":\"deepseek-v4-flash\"}]}"
+        );
         when(client.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
             .thenReturn(response);
-        DeepSeekModelGateway gateway = gateway(client);
 
-        List<String> models = gateway.listModels(config(17));
+        assertThat(gateway(client).listModels(config(17, 2)))
+            .containsExactly("deepseek-chat", "deepseek-v4-flash");
 
-        assertThat(models).containsExactly("deepseek-chat", "deepseek-v4-flash");
-        ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
-        verify(client, times(1)).send(requestCaptor.capture(), any(HttpResponse.BodyHandler.class));
+        ArgumentCaptor<HttpRequest> requestCaptor =
+            ArgumentCaptor.forClass(HttpRequest.class);
+        verify(client).send(
+            requestCaptor.capture(), any(HttpResponse.BodyHandler.class)
+        );
         HttpRequest request = requestCaptor.getValue();
         assertThat(request.uri().toString()).isEqualTo("https://api.deepseek.com/models");
         assertThat(request.method()).isEqualTo("GET");
@@ -86,286 +90,444 @@ class DeepSeekModelGatewayTest {
             .contains("Bearer " + SECRET);
     }
 
-    @ParameterizedTest(name = "upstream HTTP {0}")
-    @MethodSource("statusMappings")
+    @ParameterizedTest(name = "models HTTP {0}")
+    @MethodSource("upstreamStatuses")
     @SuppressWarnings("unchecked")
-    void shouldMapUpstreamStatusesWithoutReturningTheBody(
-            int upstreamStatus,
-            ErrorCode expectedCode
-    ) throws Exception {
-        String upstreamBody = "upstream-sensitive-body-" + upstreamStatus;
-        HttpClient client = mock(HttpClient.class);
-        HttpResponse<String> response = mock(HttpResponse.class);
-        when(response.statusCode()).thenReturn(upstreamStatus);
-        when(response.body()).thenReturn(upstreamBody);
-        when(client.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-            .thenReturn(response);
-
-        assertThatThrownBy(() -> gateway(client).listModels(config(10)))
-            .isInstanceOf(BusinessException.class)
-            .satisfies(error -> assertThat(((BusinessException) error).errorCode())
-                .isEqualTo(expectedCode))
-            .hasMessageNotContaining(upstreamBody)
-            .hasMessageNotContaining(SECRET)
-            .hasMessageNotContaining("Authorization");
-        verify(client, times(1)).send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
-    void shouldMapTimeoutWithoutRetryingOrExposingTheCauseMessage() throws Exception {
-        HttpClient client = mock(HttpClient.class);
-        String sensitiveCause = "timeout-upstream-sensitive-body";
-        when(client.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-            .thenThrow(new HttpTimeoutException(sensitiveCause));
-
-        assertThatThrownBy(() -> gateway(client).listModels(config(1)))
-            .isInstanceOf(BusinessException.class)
-            .satisfies(error -> assertThat(((BusinessException) error).errorCode())
-                .isEqualTo(ErrorCode.AI_TEMPORARILY_UNAVAILABLE))
-            .hasMessageNotContaining(sensitiveCause)
-            .hasMessageNotContaining(SECRET)
-            .hasMessageNotContaining("Authorization");
-        verify(client, times(1)).send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
-    void shouldTreatMalformedSuccessBodyAsTemporaryUnavailability() throws Exception {
-        HttpClient client = mock(HttpClient.class);
-        HttpResponse<String> response = mock(HttpResponse.class);
-        when(response.statusCode()).thenReturn(200);
-        when(response.body()).thenReturn("upstream-sensitive-not-json");
-        when(client.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-            .thenReturn(response);
-
-        assertThatThrownBy(() -> gateway(client).listModels(config(10)))
-            .isInstanceOf(BusinessException.class)
-            .satisfies(error -> assertThat(((BusinessException) error).errorCode())
-                .isEqualTo(ErrorCode.AI_TEMPORARILY_UNAVAILABLE))
-            .hasMessageNotContaining("upstream-sensitive-not-json")
-            .hasMessageNotContaining(SECRET);
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
-    void shouldControlInvalidHeaderValuesWithoutSendingOrExposingTheKey() throws Exception {
-        HttpClient client = mock(HttpClient.class);
-        String invalidKey = "sensitive-key\r\nInjected: value";
-
-        assertThatThrownBy(() -> gateway(client).listModels(config(10, invalidKey)))
-            .isInstanceOf(BusinessException.class)
-            .satisfies(error -> assertThat(((BusinessException) error).errorCode())
-                .isEqualTo(ErrorCode.AI_TEMPORARILY_UNAVAILABLE))
-            .hasMessageNotContaining(invalidKey)
-            .hasMessageNotContaining("Injected");
-        verify(client, never()).send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
-    void shouldCallChatOnceWithControlledJsonAndConfiguredLimits() throws Exception {
-        HttpClient client = mock(HttpClient.class);
-        HttpResponse<String> response = mock(HttpResponse.class);
-        when(response.statusCode()).thenReturn(200);
-        when(response.body()).thenReturn(chatEnvelope("""
-            {"schemeName":"灰蓝通勤","sequence":[2001,2002,2001],
-             "reasons":[{"skuId":2001,"reason":"清透层次"},{"skuId":2002,"reason":"紫色点缀"}],
-             "summary":"适合日常通勤。"}
-            """));
-        when(client.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-            .thenReturn(response);
-        RecommendationProfile profile = profile("private complete consultation text");
-
-        ModelRecommendation result = gateway(client).recommend(
-            config(17), profile, candidates()
-        );
-
-        assertThat(result.sequence()).containsExactly(2001L, 2002L, 2001L);
-        ArgumentCaptor<HttpRequest> captor = ArgumentCaptor.forClass(HttpRequest.class);
-        verify(client, times(1)).send(captor.capture(), any(HttpResponse.BodyHandler.class));
-        HttpRequest request = captor.getValue();
-        assertThat(request.uri().toString())
-            .isEqualTo("https://api.deepseek.com/chat/completions");
-        assertThat(request.timeout()).contains(Duration.ofSeconds(17));
-        String json = requestBody(request);
-        JsonNode root = new ObjectMapper().readTree(json);
-        assertThat(root.path("model").asText()).isEqualTo("deepseek-v4-flash");
-        assertThat(root.path("temperature").decimalValue()).isEqualByComparingTo("0.2");
-        assertThat(root.path("max_tokens").asInt()).isEqualTo(2048);
-        assertThat(root.path("response_format").path("type").asText())
-            .isEqualTo("json_object");
-        JsonNode prompt = new ObjectMapper().readTree(
-            root.path("messages").get(1).path("content").asText()
-        );
-        assertThat(prompt.path("profile").has("birthDate")).isFalse();
-        assertThat(prompt.path("profile").path("freeText").asText())
-            .isEqualTo("private complete consultation text");
-        assertThat(prompt.path("candidates").get(0).fieldNames()).toIterable()
-            .containsExactlyInAnyOrder(
-                "skuId", "name", "material", "color", "diameterMm",
-                "salePrice", "tags", "availableQty"
-            );
-        assertThat(json).doesNotContain(
-            "1992-01-20", "costPrice", "cost_price", "/private/image.png"
-        );
-        assertThat(profile.toString())
-            .doesNotContain("private complete consultation text", "birthDate", "freeText")
-            .contains("sensitiveFieldsRedacted=true");
-    }
-
-    @ParameterizedTest(name = "invalid chat: {0}")
-    @MethodSource("invalidChatContents")
-    @SuppressWarnings("unchecked")
-    void shouldStrictlyRejectMalformedOrOutOfContractModelJson(
-            String scenario,
-            String content
-    ) throws Exception {
-        HttpClient client = mock(HttpClient.class);
-        HttpResponse<String> response = mock(HttpResponse.class);
-        when(response.statusCode()).thenReturn(200);
-        when(response.body()).thenReturn(chatEnvelope(content));
-        when(client.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-            .thenReturn(response);
-
-        assertThatThrownBy(() -> gateway(client).recommend(
-                config(10), profile(null), candidates()
-            ))
-            .isInstanceOf(BusinessException.class)
-            .satisfies(error -> assertThat(((BusinessException) error).errorCode())
-                .isEqualTo(ErrorCode.AI_INVALID_RECOMMENDATION))
-            .hasMessageNotContaining(content)
-            .hasMessageNotContaining(SECRET);
-        verify(client, times(1)).send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
-    }
-
-    @ParameterizedTest(name = "chat upstream {0}")
-    @MethodSource("chatStatusMappings")
-    @SuppressWarnings("unchecked")
-    void shouldMapChatUpstreamWithoutRetryOrSensitiveBody(
+    void shouldMapModelDiscoveryStatusesToDistinctSafeErrors(
             int status,
             ErrorCode expectedCode
     ) throws Exception {
-        String sensitiveBody = "sensitive-chat-upstream-" + status;
+        String sensitiveBody = "sensitive-models-body-" + status;
         HttpClient client = mock(HttpClient.class);
-        HttpResponse<String> response = mock(HttpResponse.class);
-        when(response.statusCode()).thenReturn(status);
-        when(response.body()).thenReturn(sensitiveBody);
+        HttpResponse<String> upstreamResponse = response(status, sensitiveBody);
         when(client.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-            .thenReturn(response);
+            .thenReturn(upstreamResponse);
 
-        assertThatThrownBy(() -> gateway(client).recommend(
-                config(10), profile(null), candidates()
-            ))
+        assertThatThrownBy(() -> gateway(client).listModels(config(10, 2)))
             .isInstanceOf(BusinessException.class)
             .satisfies(error -> assertThat(((BusinessException) error).errorCode())
                 .isEqualTo(expectedCode))
             .hasMessageNotContaining(sensitiveBody)
             .hasMessageNotContaining(SECRET);
-        verify(client, times(1)).send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
+        verify(client, times(1)).send(any(), any());
     }
 
     @Test
     @SuppressWarnings("unchecked")
-    void shouldMapChatTimeoutWithoutRetryOrSensitiveInput() throws Exception {
+    void shouldMapTimeoutSeparatelyWithoutRetryOrSensitiveDetail() throws Exception {
         HttpClient client = mock(HttpClient.class);
         when(client.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-            .thenThrow(new HttpTimeoutException("sensitive-timeout-body"));
+            .thenThrow(new HttpTimeoutException("sensitive-timeout-detail"));
 
-        assertThatThrownBy(() -> gateway(client).recommend(
-                config(1), profile("private complete consultation text"), candidates()
-            ))
+        assertThatThrownBy(() -> gateway(client).listModels(config(1, 2)))
             .isInstanceOf(BusinessException.class)
             .satisfies(error -> assertThat(((BusinessException) error).errorCode())
-                .isEqualTo(ErrorCode.AI_TEMPORARILY_UNAVAILABLE))
-            .hasMessageNotContaining("sensitive-timeout-body")
-            .hasMessageNotContaining("private complete consultation text")
+                .isEqualTo(ErrorCode.AI_TIMEOUT))
+            .hasMessageNotContaining("sensitive-timeout-detail")
             .hasMessageNotContaining(SECRET);
-        verify(client, times(1)).send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class));
+        verify(client, times(1)).send(any(), any());
     }
 
-    private static Stream<Arguments> statusMappings() {
-        return Stream.of(
-            Arguments.of(401, ErrorCode.AI_UNAUTHORIZED),
-            Arguments.of(403, ErrorCode.AI_UNAUTHORIZED),
-            Arguments.of(429, ErrorCode.AI_RATE_LIMITED),
-            Arguments.of(500, ErrorCode.AI_TEMPORARILY_UNAVAILABLE),
-            Arguments.of(503, ErrorCode.AI_TEMPORARILY_UNAVAILABLE)
+    @Test
+    @SuppressWarnings("unchecked")
+    void shouldMapIoFailureAndMalformedModelsBodyToUpstreamError() throws Exception {
+        HttpClient ioClient = mock(HttpClient.class);
+        when(ioClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+            .thenThrow(new IOException("sensitive-io-detail"));
+        assertCode(
+            () -> gateway(ioClient).listModels(config(10, 2)),
+            ErrorCode.AI_UPSTREAM_ERROR
+        );
+
+        HttpClient malformedClient = mock(HttpClient.class);
+        HttpResponse<String> malformedResponse = response(200, "sensitive-not-json");
+        when(malformedClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+            .thenReturn(malformedResponse);
+        assertCode(
+            () -> gateway(malformedClient).listModels(config(10, 2)),
+            ErrorCode.AI_UPSTREAM_ERROR
         );
     }
 
-    private static Stream<Arguments> chatStatusMappings() {
+    @Test
+    @SuppressWarnings("unchecked")
+    void shouldControlInvalidHeaderValuesWithoutSendingOrExposingTheKey()
+            throws Exception {
+        HttpClient client = mock(HttpClient.class);
+        String invalidKey = "sensitive\r\nInjected: value";
+
+        assertThatThrownBy(() -> gateway(client).listModels(config(10, 2, invalidKey)))
+            .isInstanceOf(BusinessException.class)
+            .satisfies(error -> assertThat(((BusinessException) error).errorCode())
+                .isEqualTo(ErrorCode.AI_UPSTREAM_ERROR))
+            .hasMessageNotContaining(invalidKey)
+            .hasMessageNotContaining("Injected");
+        verify(client, never()).send(any(), any());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void shouldCallChatWithBirthdayProfileBusinessPromptCandidatesAndPlanCount()
+            throws Exception {
+        HttpClient client = mock(HttpClient.class);
+        HttpResponse<String> chatResponse = response(
+            200, chatEnvelope(validContent(2))
+        );
+        when(client.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+            .thenReturn(chatResponse);
+
+        ModelRecommendation result = gateway(client).recommend(
+            config(17, 2), profile(), candidates(), null
+        );
+
+        assertThat(result.plans()).hasSize(2);
+        assertThat(result.plans().get(0).items())
+            .extracting(ModelRecommendation.Item::skuId)
+            .containsExactly(2001L, 2002L, 2003L);
+
+        ArgumentCaptor<HttpRequest> requestCaptor =
+            ArgumentCaptor.forClass(HttpRequest.class);
+        verify(client).send(requestCaptor.capture(), any());
+        HttpRequest request = requestCaptor.getValue();
+        assertThat(request.uri().toString())
+            .isEqualTo("https://api.deepseek.com/chat/completions");
+        assertThat(request.timeout()).contains(Duration.ofSeconds(17));
+        JsonNode root = new ObjectMapper().readTree(requestBody(request));
+        assertThat(root.path("model").asText()).isEqualTo("deepseek-v4-flash");
+        assertThat(root.path("temperature").decimalValue()).isEqualByComparingTo("0");
+        assertThat(root.path("max_tokens").asInt()).isEqualTo(2048);
+        assertThat(root.path("thinking").path("type").asText())
+            .isEqualTo("disabled");
+        assertThat(root.path("response_format").path("type").asText())
+            .isEqualTo("json_object");
+
+        JsonNode prompt = new ObjectMapper().readTree(
+            root.path("messages").get(1).path("content").asText()
+        );
+        assertThat(prompt.path("businessPrompt").asText())
+            .isEqualTo("生成日常材质搭配");
+        assertThat(prompt.path("requiredPlanCount").asInt()).isEqualTo(2);
+        assertThat(prompt.path("repair").isMissingNode()).isTrue();
+        assertThat(prompt.path("exactOutputExample").path("plans")).hasSize(2);
+        assertThat(prompt.path("exactOutputExample").path("plans").get(0).path("items"))
+            .hasSize(3);
+        assertThat(prompt.path("exactOutputExample").path("plans").get(0).path("items"))
+            .extracting(item -> item.path("skuId").asLong())
+            .containsExactly(2001L, 2002L, 2003L);
+        assertThat(prompt.path("exactOutputExample").path("plans").get(1).path("items"))
+            .extracting(item -> item.path("skuId").asLong())
+            .containsExactly(2002L, 2003L, 2004L);
+        assertThat(prompt.path("customerProfile").path("birthDate").asText())
+            .isEqualTo("1992-01-20");
+        assertThat(prompt.path("customerProfile").path("constellation").asText())
+            .isEqualTo("水瓶座");
+        assertThat(prompt.path("customerProfile").path("zodiac").asText())
+            .isEqualTo("猴");
+        assertThat(prompt.path("customerProfile").path("constellationElement").asText())
+            .isEqualTo("风象");
+        assertThat(prompt.path("customerProfile").path("wishInspiration").asText())
+            .isEqualTo("事业");
+        assertThat(prompt.path("customerProfile").path("wish").asText())
+            .isEqualTo("private wish");
+        assertThat(prompt.path("candidates").get(0).fieldNames()).toIterable()
+            .containsExactlyInAnyOrder("skuId", "name", "material");
+        assertThat(requestBody(request))
+            .doesNotContain(
+                "salePrice", "costPrice", "availableQty", "imageUrl",
+                "/private/image.png"
+            );
+        assertThat(profile().toString())
+            .doesNotContain("1992-01-20", "private wish")
+            .contains("sensitiveFieldsRedacted=true");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void shouldSendOnlyTheAllowListedRepairCodeWithoutPriorModelText() throws Exception {
+        HttpClient client = mock(HttpClient.class);
+        HttpResponse<String> chatResponse = response(
+            200, chatEnvelope(validContent(2))
+        );
+        when(client.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+            .thenReturn(chatResponse);
+
+        gateway(client).recommend(
+            config(10, 2),
+            profile(),
+            candidates(),
+            new RecommendationRepairFeedback("AI_RESULT_COUNT_INVALID")
+        );
+
+        ArgumentCaptor<HttpRequest> requestCaptor =
+            ArgumentCaptor.forClass(HttpRequest.class);
+        verify(client).send(requestCaptor.capture(), any());
+        JsonNode request = new ObjectMapper().readTree(
+            requestBody(requestCaptor.getValue())
+        );
+        JsonNode prompt = new ObjectMapper().readTree(
+            request.path("messages").get(1).path("content").asText()
+        );
+        assertThat(prompt.path("repair").path("previousResultRejected").asBoolean())
+            .isTrue();
+        assertThat(prompt.path("repair").path("code").asText())
+            .isEqualTo("AI_RESULT_COUNT_INVALID");
+        assertThat(prompt.path("repair").path("requiredPlanCount").asInt())
+            .isEqualTo(2);
+        assertThat(prompt.path("repair").path("requiredItemsPerPlan").asInt())
+            .isEqualTo(3);
+        assertThat(
+            prompt.path("repair").path("requireUniqueSkuIdsWithinPlan").asBoolean()
+        ).isTrue();
+        assertThat(prompt.path("repair").size()).isEqualTo(5);
+        assertThat(request.toString())
+            .doesNotContain("prior model output", SECRET);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void shouldRequireExactlyThreeItemsWhenRepairingItemCount() throws Exception {
+        HttpClient client = mock(HttpClient.class);
+        HttpResponse<String> chatResponse = response(
+            200, chatEnvelope(validContent(2))
+        );
+        when(client.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+            .thenReturn(chatResponse);
+
+        gateway(client).recommend(
+            config(10, 2),
+            profile(),
+            candidates(),
+            new RecommendationRepairFeedback("AI_RESULT_ITEM_COUNT_INVALID")
+        );
+
+        ArgumentCaptor<HttpRequest> requestCaptor =
+            ArgumentCaptor.forClass(HttpRequest.class);
+        verify(client).send(requestCaptor.capture(), any());
+        JsonNode request = new ObjectMapper().readTree(
+            requestBody(requestCaptor.getValue())
+        );
+        JsonNode prompt = new ObjectMapper().readTree(
+            request.path("messages").get(1).path("content").asText()
+        );
+        assertThat(prompt.path("repair").path("requiredItemsPerPlan").asInt())
+            .isEqualTo(3);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void shouldRequireUniqueSkuIdsWhenRepairingDuplicates() throws Exception {
+        HttpClient client = mock(HttpClient.class);
+        HttpResponse<String> chatResponse = response(
+            200, chatEnvelope(validContent(2))
+        );
+        when(client.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+            .thenReturn(chatResponse);
+
+        gateway(client).recommend(
+            config(10, 2),
+            profile(),
+            candidates(),
+            new RecommendationRepairFeedback("AI_RESULT_DUPLICATE_SKU")
+        );
+
+        ArgumentCaptor<HttpRequest> requestCaptor =
+            ArgumentCaptor.forClass(HttpRequest.class);
+        verify(client).send(requestCaptor.capture(), any());
+        JsonNode request = new ObjectMapper().readTree(
+            requestBody(requestCaptor.getValue())
+        );
+        JsonNode prompt = new ObjectMapper().readTree(
+            request.path("messages").get(1).path("content").asText()
+        );
+        assertThat(
+            prompt.path("repair").path("requireUniqueSkuIdsWithinPlan").asBoolean()
+        ).isTrue();
+    }
+
+    @ParameterizedTest(name = "invalid chat: {0}")
+    @MethodSource("invalidChatContents")
+    @SuppressWarnings("unchecked")
+    void shouldRejectMalformedOrOutOfContractModelJsonWithDistinctCode(
+            String scenario,
+            String content,
+            ErrorCode expectedCode
+    ) throws Exception {
+        HttpClient client = mock(HttpClient.class);
+        HttpResponse<String> chatResponse = response(200, chatEnvelope(content));
+        when(client.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+            .thenReturn(chatResponse);
+
+        assertThatThrownBy(() -> gateway(client).recommend(
+            config(10, 2), profile(), candidates(), null
+        ))
+            .isInstanceOf(BusinessException.class)
+            .satisfies(error -> assertThat(((BusinessException) error).errorCode())
+                .isEqualTo(expectedCode))
+            .hasMessageNotContaining(content)
+            .hasMessageNotContaining(SECRET);
+        verify(client, times(1)).send(any(), any());
+    }
+
+    @ParameterizedTest(name = "chat HTTP {0}")
+    @MethodSource("upstreamStatuses")
+    @SuppressWarnings("unchecked")
+    void shouldMapChatStatusesWithoutAutomaticRetry(
+            int status,
+            ErrorCode expectedCode
+    ) throws Exception {
+        HttpClient client = mock(HttpClient.class);
+        HttpResponse<String> upstreamResponse = response(
+            status, "sensitive-chat-body"
+        );
+        when(client.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+            .thenReturn(upstreamResponse);
+
+        assertCode(
+            () -> gateway(client).recommend(
+                config(10, 2), profile(), candidates(), null
+            ),
+            expectedCode
+        );
+        verify(client, times(1)).send(any(), any());
+    }
+
+    private static Stream<Arguments> upstreamStatuses() {
         return Stream.of(
             Arguments.of(400, ErrorCode.AI_MODEL_UNAVAILABLE),
             Arguments.of(401, ErrorCode.AI_UNAUTHORIZED),
             Arguments.of(403, ErrorCode.AI_UNAUTHORIZED),
             Arguments.of(404, ErrorCode.AI_MODEL_UNAVAILABLE),
             Arguments.of(429, ErrorCode.AI_RATE_LIMITED),
-            Arguments.of(500, ErrorCode.AI_TEMPORARILY_UNAVAILABLE)
+            Arguments.of(500, ErrorCode.AI_UPSTREAM_ERROR),
+            Arguments.of(503, ErrorCode.AI_UPSTREAM_ERROR)
         );
     }
 
     private static Stream<Arguments> invalidChatContents() {
-        String tooMany = Stream.generate(() -> "2001")
-            .limit(201)
-            .collect(java.util.stream.Collectors.joining(","));
+        String onePlan = """
+            {"plans":[{"schemeName":"A","summary":"S","items":[
+              {"skuId":2001,"reason":"a"},{"skuId":2002,"reason":"b"},
+              {"skuId":2003,"reason":"c"}]}]}
+            """;
+        String unknownSku = validContent(2).replaceFirst("2001", "9999");
         return Stream.of(
-            Arguments.of("not json", "not-json"),
-            Arguments.of("duplicate root field", "{\"schemeName\":\"first\",\"schemeName\":\"second\",\"sequence\":[2001],\"reasons\":[{\"skuId\":2001,\"reason\":\"x\"}],\"summary\":\"x\"}"),
-            Arguments.of("duplicate nested reason field", "{\"schemeName\":\"x\",\"sequence\":[2001],\"reasons\":[{\"skuId\":2001,\"reason\":\"first\",\"reason\":\"second\"}],\"summary\":\"x\"}"),
-            Arguments.of("trailing second root", "{\"schemeName\":\"x\",\"sequence\":[2001],\"reasons\":[{\"skuId\":2001,\"reason\":\"x\"}],\"summary\":\"x\"} {\"second\":true}"),
-            Arguments.of("trailing scalar token", "{\"schemeName\":\"x\",\"sequence\":[2001],\"reasons\":[{\"skuId\":2001,\"reason\":\"x\"}],\"summary\":\"x\"} 42"),
-            Arguments.of("missing field", "{\"schemeName\":\"x\",\"sequence\":[2001],\"reasons\":[]}"),
-            Arguments.of("model price field", "{\"schemeName\":\"x\",\"sequence\":[2001],\"reasons\":[{\"skuId\":2001,\"reason\":\"x\"}],\"summary\":\"x\",\"totalAmount\":0.01}"),
-            Arguments.of("nonpositive quantity field", "{\"schemeName\":\"x\",\"sequence\":[2001],\"quantities\":{\"2001\":-1},\"reasons\":[{\"skuId\":2001,\"reason\":\"x\"}],\"summary\":\"x\"}"),
-            Arguments.of("empty sequence", "{\"schemeName\":\"x\",\"sequence\":[],\"reasons\":[],\"summary\":\"x\"}"),
-            Arguments.of("too many beads", "{\"schemeName\":\"x\",\"sequence\":[" + tooMany + "],\"reasons\":[{\"skuId\":2001,\"reason\":\"x\"}],\"summary\":\"x\"}"),
-            Arguments.of("unknown sku", "{\"schemeName\":\"x\",\"sequence\":[9999],\"reasons\":[{\"skuId\":9999,\"reason\":\"x\"}],\"summary\":\"x\"}"),
-            Arguments.of("unselected reason", "{\"schemeName\":\"x\",\"sequence\":[2001],\"reasons\":[{\"skuId\":2002,\"reason\":\"x\"}],\"summary\":\"x\"}"),
-            Arguments.of("blank scheme", "{\"schemeName\":\" \",\"sequence\":[2001],\"reasons\":[{\"skuId\":2001,\"reason\":\"x\"}],\"summary\":\"x\"}"),
-            Arguments.of("long scheme", "{\"schemeName\":\"" + "a".repeat(81) + "\",\"sequence\":[2001],\"reasons\":[{\"skuId\":2001,\"reason\":\"x\"}],\"summary\":\"x\"}"),
-            Arguments.of("long reason", "{\"schemeName\":\"x\",\"sequence\":[2001],\"reasons\":[{\"skuId\":2001,\"reason\":\"" + "a".repeat(301) + "\"}],\"summary\":\"x\"}"),
-            Arguments.of("long summary", "{\"schemeName\":\"x\",\"sequence\":[2001],\"reasons\":[{\"skuId\":2001,\"reason\":\"x\"}],\"summary\":\"" + "a".repeat(1001) + "\"}")
-        );
-    }
-
-    private DeepSeekModelGateway gateway(HttpClient client) {
-        return new DeepSeekModelGateway(client, new ObjectMapper(), new AiSecretCipher(MASTER_KEY));
-    }
-
-    private RecommendationProfile profile(String freeText) {
-        return new RecommendationProfile(
-            "水瓶座",
-            "猴",
-            "水",
-            "专注",
-            "通勤",
-            "灰蓝",
-            new BigDecimal("500.00"),
-            new BigDecimal("160.00"),
-            FitType.STANDARD,
-            freeText
-        );
-    }
-
-    private List<RecommendationCandidate> candidates() {
-        return List.of(
-            new RecommendationCandidate(
-                2001L, "白水晶 8mm", "天然水晶", "透明",
-                new BigDecimal("8.00"), new BigDecimal("12.80"),
-                "[\"专注\",\"日常\"]", 20, "/private/image.png"
+            Arguments.of("not json", "not-json", ErrorCode.AI_RESPONSE_FORMAT_INVALID),
+            Arguments.of(
+                "wrong plan count", onePlan, ErrorCode.AI_RESULT_COUNT_INVALID
             ),
-            new RecommendationCandidate(
-                2002L, "紫水晶 8mm", "天然水晶", "紫色",
-                new BigDecimal("8.00"), new BigDecimal("16.80"),
-                "[\"通勤\"]", 20, "/private/image-2.png"
+            Arguments.of(
+                "unknown sku", unknownSku, ErrorCode.AI_RESULT_SKU_INVALID
+            ),
+            Arguments.of(
+                "extra root field",
+                validContent(2).replaceFirst("\\{", "{\"extra\":true,"),
+                ErrorCode.AI_RESPONSE_FORMAT_INVALID
+            ),
+            Arguments.of(
+                "duplicate item sku",
+                validContent(2).replaceFirst("2002", "2001"),
+                ErrorCode.AI_RESULT_DUPLICATE_SKU
+            ),
+            Arguments.of(
+                "too few items",
+                validContent(2).replaceFirst(
+                    ",\\{\"skuId\":2003,\"reason\":\"c\"}", ""
+                ),
+                ErrorCode.AI_RESULT_ITEM_COUNT_INVALID
+            ),
+            Arguments.of(
+                "trailing token",
+                validContent(2) + " 42",
+                ErrorCode.AI_RESPONSE_FORMAT_INVALID
             )
         );
     }
 
+    private static String validContent(int planCount) {
+        String first = """
+            {"schemeName":"清透通勤","summary":"日常搭配。","items":[
+              {"skuId":2001,"reason":"a"},{"skuId":2002,"reason":"b"},
+              {"skuId":2003,"reason":"c"}]}
+            """.replaceAll("\\s+", "");
+        String second = """
+            {"schemeName":"沉静层次","summary":"沉静搭配。","items":[
+              {"skuId":2003,"reason":"c"},{"skuId":2004,"reason":"d"},
+              {"skuId":2005,"reason":"e"}]}
+            """.replaceAll("\\s+", "");
+        return switch (planCount) {
+            case 1 -> "{\"plans\":[" + first + "]}";
+            case 2 -> "{\"plans\":[" + first + "," + second + "]}";
+            default -> throw new IllegalArgumentException("unsupported test plan count");
+        };
+    }
+
+    private DeepSeekModelGateway gateway(HttpClient client) {
+        return new DeepSeekModelGateway(
+            client,
+            new ObjectMapper(),
+            new AiSecretCipher(MASTER_KEY)
+        );
+    }
+
+    private RecommendationProfile profile() {
+        return new RecommendationProfile(
+            "1992-01-20", "水瓶座", "猴", "风象", "事业", "private wish"
+        );
+    }
+
+    private List<RecommendationCandidate> candidates() {
+        return Stream.of(2001L, 2002L, 2003L, 2004L, 2005L)
+            .map(id -> new RecommendationCandidate(
+                id,
+                "珠子 " + id,
+                "天然水晶",
+                "灰蓝",
+                new BigDecimal("8.00"),
+                new BigDecimal("10.00"),
+                "[\"日常\"]",
+                200,
+                "/private/image.png"
+            ))
+            .toList();
+    }
+
+    private AiModelConfig config(int timeoutSeconds, int planCount) {
+        return config(timeoutSeconds, planCount, SECRET);
+    }
+
+    private AiModelConfig config(
+            int timeoutSeconds,
+            int planCount,
+            String apiKey
+    ) {
+        AiSecretCipher cipher = new AiSecretCipher(MASTER_KEY);
+        AiModelConfig config = new AiModelConfig();
+        config.setId(1L);
+        config.setProvider("DEEPSEEK");
+        config.setBaseUrl("https://api.deepseek.com");
+        config.setModelName("deepseek-v4-flash");
+        config.setEncryptedApiKey(cipher.encrypt(apiKey));
+        config.setEnabled(true);
+        config.setTimeoutSeconds(timeoutSeconds);
+        config.setMaxOutputTokens(2048);
+        config.setRecommendationPrompt("  生成日常材质搭配  ");
+        config.setPlanCount(planCount);
+        config.setVersion(0L);
+        return config;
+    }
+
+    @SuppressWarnings("unchecked")
+    private HttpResponse<String> response(int status, String body) {
+        HttpResponse<String> response = mock(HttpResponse.class);
+        when(response.statusCode()).thenReturn(status);
+        when(response.body()).thenReturn(body);
+        return response;
+    }
+
     private String chatEnvelope(String content) throws Exception {
         return new ObjectMapper().writeValueAsString(java.util.Map.of(
-            "choices", List.of(java.util.Map.of(
+            "choices",
+            List.of(java.util.Map.of(
                 "message", java.util.Map.of("content", content)
             ))
         ));
@@ -377,23 +539,16 @@ class DeepSeekModelGatewayTest {
         return collector.body();
     }
 
-    private AiModelConfig config(int timeoutSeconds) {
-        return config(timeoutSeconds, SECRET);
-    }
-
-    private AiModelConfig config(int timeoutSeconds, String apiKey) {
-        AiSecretCipher cipher = new AiSecretCipher(MASTER_KEY);
-        AiModelConfig config = new AiModelConfig();
-        config.setId(1L);
-        config.setProvider("DEEPSEEK");
-        config.setBaseUrl("https://api.deepseek.com");
-        config.setModelName("deepseek-v4-flash");
-        config.setEncryptedApiKey(cipher.encrypt(apiKey));
-        config.setEnabled(true);
-        config.setTimeoutSeconds(timeoutSeconds);
-        config.setMaxOutputTokens(2048);
-        config.setVersion(0L);
-        return config;
+    private void assertCode(
+            org.assertj.core.api.ThrowableAssert.ThrowingCallable call,
+            ErrorCode expectedCode
+    ) {
+        assertThatThrownBy(call)
+            .isInstanceOf(BusinessException.class)
+            .satisfies(error -> assertThat(((BusinessException) error).errorCode())
+                .isEqualTo(expectedCode))
+            .hasMessageNotContaining(SECRET)
+            .hasMessageNotContaining("sensitive");
     }
 
     private static final class BodyCollector

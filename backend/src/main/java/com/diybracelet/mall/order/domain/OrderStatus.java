@@ -5,9 +5,11 @@ package com.diybracelet.mall.order.domain;
  */
 public enum OrderStatus {
     PENDING_PAYMENT,
-    PAID,
     IN_PRODUCTION,
+    PENDING_SHIPMENT,
     SHIPPED,
     COMPLETED,
-    CANCELLED
+    CANCELLED,
+    AFTER_SALE,
+    REFUNDED
 }

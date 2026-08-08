@@ -17,7 +17,9 @@ import java.util.List;
  * @param description 套餐说明
  * @param salePrice 销售价
  * @param coverAssetId 封面素材主键
+ * @param coverUrl 封面素材公开地址
  * @param status 目录状态
+ * @param recommended 是否进入小程序首页成品精选
  * @param items 有序散珠明细
  */
 public record AdminPackageDetail(
@@ -27,7 +29,9 @@ public record AdminPackageDetail(
         String description,
         BigDecimal salePrice,
         Long coverAssetId,
+        String coverUrl,
         CatalogStatus status,
+        Boolean recommended,
         List<AdminPackageItem> items
 ) {
 }

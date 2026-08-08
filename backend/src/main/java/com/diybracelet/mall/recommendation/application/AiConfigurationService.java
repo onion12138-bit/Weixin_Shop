@@ -1,5 +1,6 @@
 package com.diybracelet.mall.recommendation.application;
 
+import com.diybracelet.mall.recommendation.api.dto.AiApiKeyView;
 import com.diybracelet.mall.recommendation.api.dto.AiConfigurationView;
 import com.diybracelet.mall.recommendation.api.dto.SaveAiConfigurationRequest;
 import com.diybracelet.mall.recommendation.domain.AiModelConfig;
@@ -14,7 +15,7 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Maintains the singleton AI configuration without exposing either secret form. */
+/** Maintains the singleton AI configuration and its explicit admin-only reveal flow. */
 @Service
 public class AiConfigurationService {
 
@@ -43,6 +44,28 @@ public class AiConfigurationService {
         return toView(requireConfiguration());
     }
 
+    /** Decrypts the stored key only for the authenticated, explicit reveal endpoint. */
+    @Transactional(readOnly = true)
+    public AiApiKeyView revealApiKey() {
+        AiModelConfig config = requireConfiguration();
+        if (!hasConfiguredKey(config)) {
+            throw new BusinessException(
+                ErrorCode.AI_NOT_CONFIGURED,
+                "尚未配置 AI API Key"
+            );
+        }
+        try {
+            return new AiApiKeyView(
+                secretCipher.decrypt(config.getEncryptedApiKey())
+            );
+        } catch (IllegalStateException error) {
+            throw new BusinessException(
+                ErrorCode.AI_SERVER_MISCONFIGURED,
+                "AI 加密配置未就绪，请重新启动管理后台"
+            );
+        }
+    }
+
     /** Replaces settings with a version guard; a blank key preserves the stored key. */
     @Transactional
     public AiConfigurationView save(SaveAiConfigurationRequest request) {
@@ -58,6 +81,8 @@ public class AiConfigurationService {
         replacement.setEnabled(request.enabled());
         replacement.setTimeoutSeconds(request.timeoutSeconds());
         replacement.setMaxOutputTokens(request.maxOutputTokens());
+        replacement.setRecommendationPrompt(request.recommendationPrompt().trim());
+        replacement.setPlanCount(request.planCount());
 
         if (configMapper.updateWithVersion(replacement, request.version()) != 1) {
             throw versionConflict();
@@ -184,6 +209,8 @@ public class AiConfigurationService {
             Boolean.TRUE.equals(config.getEnabled()),
             config.getTimeoutSeconds(),
             config.getMaxOutputTokens(),
+            config.getRecommendationPrompt(),
+            config.getPlanCount(),
             config.getVersion()
         );
     }

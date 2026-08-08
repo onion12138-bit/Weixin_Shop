@@ -195,7 +195,7 @@ public class CatalogExcelImportService {
                 text(row, columns.get("商品名称")),
                 text(row, columns.get("材质")),
                 text(row, columns.get("颜色")),
-                requiredDecimal(row, columns.get("珠径(mm)"), "珠径"),
+                optionalDecimal(row, columns.get("珠径(mm)"), "珠径"),
                 requiredDecimal(row, columns.get("销售价(元)"), "销售价"),
                 requiredDecimal(row, columns.get("成本价(元)"), "成本价"),
                 requiredInteger(row, columns.get("库存预警"), "库存预警"),
@@ -377,7 +377,7 @@ public class CatalogExcelImportService {
                 "商品批量导入填写说明",
                 "1. 只支持 .xlsx 文件，单次最多 1000 行、10 MB。",
                 "2. 图片不在 Excel 中导入；商品创建后可在后台编辑并上传封面。",
-                "3. 珠径为必填项，请填写大于 0 的数字。",
+                "3. 珠子商品必须填写珠径；绳类和其他饰品请将珠径留空。",
                 "4. SKU 编码只能使用大写字母、数字和连字符，且不能与已有商品重复。",
                 "5. 标签使用中文或英文逗号分隔；状态填写草稿、已上架或已下架。",
                 "6. 当前可用分类：" + categories.stream()

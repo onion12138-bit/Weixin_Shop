@@ -22,6 +22,8 @@ public class FulfillmentTask {
     private String bomJson;
     private String logisticsCompany;
     private String trackingNo;
+    private LocalDateTime productionStartedAt;
+    private LocalDateTime productionCompletedAt;
     private LocalDateTime shippedAt;
     private LocalDateTime completedAt;
     private LocalDateTime createdAt;
@@ -76,6 +78,22 @@ public class FulfillmentTask {
 
     public void setTrackingNo(String trackingNo) {
         this.trackingNo = trackingNo;
+    }
+
+    public LocalDateTime getProductionStartedAt() {
+        return productionStartedAt;
+    }
+
+    public void setProductionStartedAt(LocalDateTime productionStartedAt) {
+        this.productionStartedAt = productionStartedAt;
+    }
+
+    public LocalDateTime getProductionCompletedAt() {
+        return productionCompletedAt;
+    }
+
+    public void setProductionCompletedAt(LocalDateTime productionCompletedAt) {
+        this.productionCompletedAt = productionCompletedAt;
     }
 
     public LocalDateTime getShippedAt() {

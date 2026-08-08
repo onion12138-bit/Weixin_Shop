@@ -112,7 +112,7 @@ export function toSchemeCard(input: SchemeCardInput): SchemeCard {
 export function sizeStatusText(status: SizeStatus): string {
   if (status === 'FIT') return '尺寸合适'
   if (status === 'TOO_SHORT') return '偏短，请增加珠子或调整腕围'
-  return '偏长，请减少珠子或调整腕围'
+  return '偏长，可减少珠子或调整腕围'
 }
 
 export function quoteStatusText(status: string): string {

@@ -106,6 +106,16 @@ button {
   background: white;
 }
 
+select {
+  padding-right: 44px;
+  appearance: none;
+  background-color: white;
+  background-image: url('./assets/icons/arrow-down-s-line.svg');
+  background-repeat: no-repeat;
+  background-position: right 16px center;
+  background-size: 16px 16px;
+}
+
 .danger-button {
   border: 1px solid #e4b8bd;
   color: #943a42;
@@ -737,6 +747,28 @@ tbody tr:hover {
   font-weight: 700;
 }
 
+.recommendation-button {
+  min-width: 70px;
+  padding: 6px 12px;
+  border: 1px solid #dcc8d1;
+  border-radius: 999px;
+  color: var(--berry);
+  font-size: 12px;
+  font-weight: 700;
+  background: #fff;
+}
+
+.recommendation-button.is-recommended {
+  border-color: #b86688;
+  color: #fff;
+  background: var(--berry);
+}
+
+.recommendation-button:disabled {
+  cursor: wait;
+  opacity: .62;
+}
+
 .empty-state {
   display: grid;
   gap: 8px;
@@ -1260,6 +1292,47 @@ tbody tr:hover {
   background: #faf8f6;
 }
 
+.ai-recommendation-panel {
+  display: grid;
+  gap: 14px;
+  margin-top: 22px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #faf8f6;
+}
+
+.ai-recommendation-panel strong,
+.ai-recommendation-panel small {
+  display: block;
+}
+
+.ai-recommendation-panel small {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.55;
+}
+
+.ai-recommendation-fields {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.24fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.ai-prompt-field textarea {
+  min-height: 166px;
+  padding: 12px 13px;
+  line-height: 1.65;
+  resize: vertical;
+}
+
+.ai-plan-count-field input {
+  max-width: 180px;
+}
+
 .ai-key-panel > header {
   display: flex;
   gap: 18px;
@@ -1274,6 +1347,52 @@ tbody tr:hover {
 
 .ai-key-panel small {
   margin-top: 5px;
+}
+
+.ai-key-input-wrap {
+  position: relative;
+}
+
+.ai-key-input-wrap input {
+  width: 100%;
+  padding-right: 52px;
+}
+
+.ai-key-visibility-button {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  color: var(--berry);
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  place-items: center;
+  transform: translateY(-50%);
+}
+
+.ai-key-visibility-button:hover:not(:disabled),
+.ai-key-visibility-button:focus-visible {
+  background: rgb(132 67 91 / 10%);
+}
+
+.ai-key-visibility-button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.ai-key-visibility-button svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
 }
 
 .connection-result {

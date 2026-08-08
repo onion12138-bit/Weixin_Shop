@@ -119,6 +119,41 @@ class AppDiyPricingControllerTest extends MySqlIntegrationTest {
     }
 
     @Test
+    void shouldQuoteDesignsOutsideTargetLengthWithoutBlocking() throws Exception {
+        String token = customerToken();
+
+        mockMvc.perform(post("/api/app/diy/quotes")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "wristCircumferenceMm", 160,
+                                "fitType", "STANDARD",
+                                "cordOptionId", 6001,
+                                "sequence", Collections.nCopies(5, 2001L)
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.quotable").value(true))
+                .andExpect(jsonPath("$.data.sizeStatus").value("TOO_SHORT"))
+                .andExpect(jsonPath("$.data.issues").isEmpty())
+                .andExpect(jsonPath("$.data.quoteFingerprint").isNotEmpty());
+
+        mockMvc.perform(post("/api/app/diy/quotes")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "wristCircumferenceMm", 160,
+                                "fitType", "STANDARD",
+                                "cordOptionId", 6001,
+                                "sequence", Collections.nCopies(23, 2001L)
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.quotable").value(true))
+                .andExpect(jsonPath("$.data.sizeStatus").value("TOO_LONG"))
+                .andExpect(jsonPath("$.data.issues").isEmpty())
+                .andExpect(jsonPath("$.data.quoteFingerprint").isNotEmpty());
+    }
+
+    @Test
     void shouldReturnRepairableIssueForUnavailableSku() throws Exception {
         mockMvc.perform(post("/api/app/diy/quotes")
                         .header("Authorization", "Bearer " + customerToken())

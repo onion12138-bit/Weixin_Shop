@@ -40,7 +40,6 @@ public record CreateBeadSkuRequest(
         @Size(max = 80, message = "颜色不能超过 80 个字符")
         String color,
 
-        @NotNull(message = "珠径不能为空")
         @DecimalMin(value = "0.01", message = "珠径必须大于零")
         BigDecimal diameterMm,
 

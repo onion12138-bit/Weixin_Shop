@@ -1,0 +1,10 @@
+.subpage { box-sizing: border-box; min-height: 100vh; padding: 34rpx 28rpx 70rpx; color: #351f2b; background: #fff8fa; }
+.page-kicker { display: block; color: #c16a91; font-size: 19rpx; font-weight: 700; letter-spacing: 5rpx; }
+.page-title { display: block; margin-top: 12rpx; font-family: "Songti SC", serif; font-size: 48rpx; font-weight: 700; }
+.page-subtitle { display: block; margin-top: 10rpx; color: #8e7c84; font-size: 24rpx; }
+.soft-card { box-sizing: border-box; border: 1rpx solid rgba(232,207,217,.86); border-radius: 30rpx; background: rgba(255,255,255,.84); box-shadow: 0 16rpx 40rpx rgba(147,83,108,.08); }
+.primary-action { height: 80rpx; border-radius: 40rpx; color: #fff; font-size: 26rpx; line-height: 80rpx; background: linear-gradient(135deg,#e56c9e,#b84e7d); box-shadow: 0 14rpx 30rpx rgba(205,81,131,.2); }
+.secondary-action { height: 68rpx; border-radius: 34rpx; color: #984762; font-size: 23rpx; line-height: 68rpx; background: #f8e8ee; }
+button::after { border: 0; }
+.state-card { margin-top: 28rpx; padding: 46rpx 28rpx; color: #8f7f86; font-size: 24rpx; text-align: center; }
+.inline-error { margin-top: 18rpx; padding: 18rpx 22rpx; border-radius: 18rpx; color: #aa4b60; font-size: 22rpx; background: #fff0f2; }

@@ -2,16 +2,18 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import CatalogView from './CatalogView.vue'
 import {
+  changePackageRecommendation,
   createAdminBead,
   downloadBeadImportTemplate,
+  getAdminPackage,
   importAdminBeads,
   listBeadVisuals,
-  createManualBeadVisual,
-  publishBeadVisual,
-  rollbackBeadVisual,
   listAdminBeads,
   listAdminCategories,
   listAdminPackages,
+  createManualBeadVisual,
+  publishBeadVisual,
+  rollbackBeadVisual,
   uploadCatalogFile,
   updateAdminBead,
 } from '../api/catalog'
@@ -32,6 +34,7 @@ vi.mock('../api/catalog', () => ({
   createAdminPackage: vi.fn(),
   updateAdminPackage: vi.fn(),
   changePackageStatus: vi.fn(),
+  changePackageRecommendation: vi.fn(),
   uploadCatalogFile: vi.fn(),
   listBeadVisuals: vi.fn(),
   createManualBeadVisual: vi.fn(),
@@ -50,7 +53,24 @@ describe('CatalogView', () => {
         id: 1001,
         name: '天然水晶',
         slug: 'natural-crystal',
+        productType: 'BEAD',
         sortOrder: 10,
+        status: 'ON_SALE',
+      },
+      {
+        id: 1003,
+        name: '绳类',
+        slug: 'cord',
+        productType: 'CORD',
+        sortOrder: 30,
+        status: 'ON_SALE',
+      },
+      {
+        id: 1004,
+        name: '其他饰品',
+        slug: 'accessory',
+        productType: 'ACCESSORY',
+        sortOrder: 40,
         status: 'ON_SALE',
       },
     ])
@@ -59,6 +79,7 @@ describe('CatalogView', () => {
         {
           id: 2001,
           categoryId: 1001,
+          productType: 'BEAD',
           skuCode: 'BEAD-CRYSTAL-001',
           name: '白水晶 8mm',
           material: '天然水晶',
@@ -67,6 +88,10 @@ describe('CatalogView', () => {
           salePrice: 12.8,
           costPrice: 5.2,
           stockAlertThreshold: 20,
+          availableQty: 200,
+          reservedQty: 0,
+          soldQty: 0,
+          stockWarningStatus: 'NORMAL',
           coverAssetId: 5001,
           coverUrl: '/api/public/files/2026/07/white-crystal.png',
           tagsJson: '["净化","日常"]',
@@ -87,11 +112,24 @@ describe('CatalogView', () => {
           salePrice: 168,
           coverAssetId: null,
           status: 'ON_SALE',
+          recommended: false,
         },
       ],
       total: 1,
       page: 1,
       size: 20,
+    })
+    vi.mocked(getAdminPackage).mockResolvedValue({
+      id: 3001,
+      packageCode: 'PACKAGE-CALM-001',
+      name: '澄心日常手串',
+      description: '白水晶与老山檀组成的日常搭配。',
+      salePrice: 168,
+      coverAssetId: 5903,
+      coverUrl: '/api/public/files/catalog/saved-package-cover.webp',
+      status: 'ON_SALE',
+      recommended: false,
+      items: [{ beadSkuId: 2001, quantity: 1, sortOrder: 10 }],
     })
     vi.mocked(downloadBeadImportTemplate).mockResolvedValue(
       new Blob(['template']),
@@ -181,6 +219,7 @@ describe('CatalogView', () => {
         items: [{
           id: 2001,
           categoryId: 1001,
+          productType: 'BEAD',
           skuCode: 'BEAD-LATEST',
           name: '最新列表',
           material: '水晶',
@@ -189,6 +228,10 @@ describe('CatalogView', () => {
           salePrice: 10,
           costPrice: 2,
           stockAlertThreshold: 20,
+          availableQty: 20,
+          reservedQty: 0,
+          soldQty: 180,
+          stockWarningStatus: 'RESTOCK',
           coverAssetId: null,
           coverUrl: null,
           tagsJson: '[]',
@@ -209,6 +252,7 @@ describe('CatalogView', () => {
       items: [{
         id: 2002,
         categoryId: 1001,
+        productType: 'BEAD',
         skuCode: 'BEAD-OLDER',
         name: '过期列表',
         material: '水晶',
@@ -217,6 +261,10 @@ describe('CatalogView', () => {
         salePrice: 10,
         costPrice: 2,
         stockAlertThreshold: 20,
+        availableQty: 200,
+        reservedQty: 0,
+        soldQty: 0,
+        stockWarningStatus: 'NORMAL',
         coverAssetId: null,
         coverUrl: null,
         tagsJson: '[]',
@@ -241,6 +289,42 @@ describe('CatalogView', () => {
     expect(wrapper.find('[data-test="edit-bead-2001"]').exists()).toBe(true)
   })
 
+  it('shows inventory quantity and a restock warning in the product list', async () => {
+    vi.mocked(listAdminBeads).mockResolvedValueOnce({
+      items: [{
+        id: 2009,
+        categoryId: 1001,
+        productType: 'BEAD',
+        skuCode: 'BEAD-LOW-STOCK',
+        name: '低库存珠子',
+        material: '水晶',
+        color: '透明',
+        diameterMm: 8,
+        salePrice: 10,
+        costPrice: 2,
+        stockAlertThreshold: 20,
+        availableQty: 20,
+        reservedQty: 3,
+        soldQty: 177,
+        stockWarningStatus: 'RESTOCK',
+        coverAssetId: null,
+        coverUrl: null,
+        tagsJson: '[]',
+        status: 'ON_SALE',
+      }],
+      total: 1,
+      page: 1,
+      size: 20,
+    })
+    const wrapper = mount(CatalogView)
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="available-stock"]').text()).toBe('20')
+    expect(wrapper.text()).toContain('预占 3 · 已售 177')
+    expect(wrapper.get('[data-test="stock-warning-status"]').text())
+      .toBe('补货')
+  })
+
   it('loads the selected package maintenance panel through the API module', async () => {
     const wrapper = mount(CatalogView)
     await flushPromises()
@@ -251,6 +335,68 @@ describe('CatalogView', () => {
     expect(listAdminPackages).toHaveBeenCalled()
     expect(wrapper.text()).toContain('澄心日常手串')
     expect(wrapper.find('[data-test="create-package"]').exists()).toBe(true)
+  })
+
+  it('marks a finished product as recommended for the mini-program home', async () => {
+    vi.mocked(changePackageRecommendation).mockResolvedValue({
+      id: 3001,
+      packageCode: 'PACKAGE-CALM-001',
+      name: '澄心日常手串',
+      description: '白水晶与老山檀组成的日常搭配。',
+      salePrice: 168,
+      coverAssetId: null,
+      status: 'ON_SALE',
+      recommended: true,
+    })
+    const wrapper = mount(CatalogView)
+    await flushPromises()
+
+    await wrapper.get('[data-test="tab-packages"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="toggle-package-recommendation-3001"]')
+      .trigger('click')
+    await flushPromises()
+
+    expect(changePackageRecommendation).toHaveBeenCalledWith(3001, true)
+    expect(wrapper.get('[data-test="package-toast"]').text())
+      .toContain('已加入小程序首页成品精选')
+    expect(wrapper.find('[data-test="package-success-notice"]').exists())
+      .toBe(false)
+    expect(wrapper.get('[data-test="toggle-package-recommendation-3001"]')
+      .text()).toBe('已推荐')
+  })
+
+  it('shows the saved cover when editing a finished product', async () => {
+    const wrapper = mount(CatalogView)
+    await flushPromises()
+
+    await wrapper.get('[data-test="tab-packages"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="edit-package-3001"]').trigger('click')
+    await flushPromises()
+
+    expect(getAdminPackage).toHaveBeenCalledWith(3001)
+    expect(wrapper.get('img[alt="成品搭配封面预览"]')
+      .attributes('src')).toContain('saved-package-cover.webp')
+  })
+
+  it('clears the package search keyword and reloads the list', async () => {
+    const wrapper = mount(CatalogView)
+    await flushPromises()
+
+    await wrapper.get('[data-test="tab-packages"]').trigger('click')
+    await flushPromises()
+    const searchInput = wrapper.get<HTMLInputElement>(
+      'input[aria-label="搜索套餐"]',
+    )
+    await searchInput.setValue('澄心')
+    await wrapper.get('[data-test="clear-package-search"]').trigger('click')
+    await flushPromises()
+
+    expect(searchInput.element.value).toBe('')
+    expect(listAdminPackages).toHaveBeenLastCalledWith(
+      expect.objectContaining({ keyword: '' }),
+    )
   })
 
   it('includes initial stock only when creating a bead', async () => {
@@ -285,6 +431,36 @@ describe('CatalogView', () => {
 
     const updatePayload = vi.mocked(updateAdminBead).mock.calls[0][1]
     expect(updatePayload).not.toHaveProperty('initialStock')
+  })
+
+  it('creates cord and accessory products without a diameter field', async () => {
+    const wrapper = mount(CatalogView)
+    await flushPromises()
+
+    await wrapper.get('[data-test="create-bead"]').trigger('click')
+    await wrapper.get('[data-test="product-category"]').setValue('1003')
+
+    expect(wrapper.find('[data-test="diameter-field"]').exists()).toBe(false)
+    expect(wrapper.get<HTMLInputElement>('[data-test="bead-sku-code"]')
+      .element.value).toMatch(/^CORD-CORD-\d{8}-[A-Z0-9]{4}$/)
+
+    const labels = wrapper.findAll('.catalog-form label')
+    await labels.find((label) => label.text().includes('商品名称'))!
+      .get('input').setValue('透明弹力绳')
+    await labels.find((label) => label.text().includes('材质'))!
+      .get('input').setValue('弹力线')
+    await labels.find((label) => label.text().includes('颜色'))!
+      .get('input').setValue('透明')
+    await wrapper.get('.catalog-form').trigger('submit')
+    await flushPromises()
+
+    expect(createAdminBead).toHaveBeenCalledWith(
+      expect.objectContaining({
+        categoryId: 1003,
+        diameterMm: null,
+        initialStock: 200,
+      }),
+    )
   })
 
   it('uses a decimal 5 MB upload limit before sending the file', async () => {

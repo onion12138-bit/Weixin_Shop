@@ -31,6 +31,8 @@ public class ProductPackage {
 
     private CatalogStatus status;
 
+    private Boolean recommended;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
@@ -95,6 +97,14 @@ public class ProductPackage {
 
     public void setStatus(CatalogStatus status) {
         this.status = status;
+    }
+
+    public Boolean getRecommended() {
+        return recommended;
+    }
+
+    public void setRecommended(Boolean recommended) {
+        this.recommended = recommended;
     }
 
     public LocalDateTime getCreatedAt() {

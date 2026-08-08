@@ -1,8 +1,24 @@
 .diy-page {
+  position: relative;
   min-height: 100vh;
   padding: 24rpx 24rpx 180rpx;
   background: #faf6f3;
   box-sizing: border-box;
+}
+
+.loading-overlay {
+  position: fixed;
+  z-index: 20;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8d8186;
+  font-size: 26rpx;
+  background: #faf6f3;
 }
 
 .page-state {
@@ -136,6 +152,11 @@
   background: #f4e7ec;
 }
 
+.selected-actions button[disabled] {
+  color: #b7a9ae;
+  background: #f6f1f3;
+}
+
 .category-tabs {
   margin-bottom: 18rpx;
   white-space: nowrap;
@@ -184,24 +205,159 @@
   background: #754657;
 }
 
+.bead-search .favorite-filter {
+  width: 128rpx;
+  border: 2rpx solid #e6b9ca;
+  color: #a94f73;
+  background: #fff6f9;
+}
+
+.bead-search .favorite-filter.active {
+  border-color: #c65380;
+  color: #fff;
+  background: #c65380;
+}
+
 .bead-tray {
   padding: 8rpx 0 24rpx;
   white-space: nowrap;
 }
 
-.bead-tray button {
+.tray-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 6rpx 0 10rpx;
+}
+
+.tray-heading view text {
+  display: block;
+}
+
+.tray-heading view text:first-child {
+  color: #49363e;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.tray-heading view text:last-child {
+  margin-top: 5rpx;
+  color: #a08c94;
+  font-size: 19rpx;
+}
+
+.tray-heading button {
+  width: auto;
+  min-width: 146rpx;
+  height: 58rpx;
+  margin: 0;
+  padding: 0 22rpx;
+  border: 1rpx solid #dfbdc9;
+  border-radius: 29rpx;
+  color: #87465e;
+  font-size: 21rpx;
+  line-height: 58rpx;
+  background: #fff8fa;
+}
+
+.bead-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16rpx;
+  padding: 12rpx 0 28rpx;
+}
+
+.bead-card {
+  position: relative;
+  display: inline-block;
+  width: 180rpx;
+  height: 158rpx;
+  margin-right: 16rpx;
+  vertical-align: top;
+}
+
+.bead-card.expanded {
+  display: block;
+  width: 100%;
+  height: 218rpx;
+  margin: 0;
+}
+
+.bead-card.expanded .bead-add {
+  width: 100%;
+  height: 218rpx;
+  padding: 16rpx 8rpx 12rpx;
+  box-sizing: border-box;
+}
+
+.bead-card.expanded .tray-bead {
+  width: 76rpx;
+  height: 76rpx;
+  margin-bottom: 8rpx;
+}
+
+.bead-card.expanded .bead-name {
+  display: block;
+  overflow: hidden;
+  width: 100%;
+  color: #46383e;
+  font-size: 19rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bead-card.expanded .bead-meta {
+  display: block;
+  margin-top: 4rpx;
+  color: #9b858e;
+  font-size: 17rpx;
+}
+
+.empty-catalog {
+  grid-column: 1 / -1;
+  padding: 70rpx 0;
+  border-radius: 24rpx;
+  color: #9b8a90;
+  font-size: 22rpx;
+  text-align: center;
+  background: rgba(255, 255, 255, .72);
+}
+
+.bead-card .bead-add {
   display: inline-flex;
   width: 180rpx;
   height: 158rpx;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  margin-right: 16rpx;
+  margin-right: 0;
   border-radius: 24rpx;
   color: #4a3c42;
   font-size: 20rpx;
   line-height: 1.35;
   background: #fff;
+}
+
+.bead-card .tray-heart {
+  position: absolute;
+  z-index: 3;
+  top: 8rpx;
+  right: 8rpx;
+  width: 46rpx;
+  min-width: 0;
+  height: 46rpx;
+  margin: 0;
+  padding: 0;
+  border-radius: 50%;
+  color: #a98d97;
+  font-size: 28rpx;
+  line-height: 46rpx;
+  background: rgba(255,255,255,.92);
+}
+
+.bead-card .tray-heart.active {
+  color: #df5d91;
+  background: #fff0f5;
 }
 
 .tray-bead {

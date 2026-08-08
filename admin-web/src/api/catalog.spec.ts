@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  changePackageRecommendation,
   createManualBeadVisual,
   downloadBeadImportTemplate,
   importAdminBeads,
@@ -42,6 +43,25 @@ describe('catalog Excel import API contract', () => {
     expect(init?.method).toBe('POST')
     expect(init?.body).toBeInstanceOf(FormData)
     expect((init?.body as FormData).get('file')).toBe(file)
+  })
+})
+
+describe('package recommendation API contract', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(request).mockResolvedValue(undefined)
+  })
+
+  it('updates the home recommendation flag independently from sale status', async () => {
+    await changePackageRecommendation(3001, true)
+
+    expect(request).toHaveBeenCalledWith(
+      '/admin/catalog/packages/3001/recommendation',
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ recommended: true }),
+      },
+    )
   })
 })
 

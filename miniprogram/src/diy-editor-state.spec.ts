@@ -63,17 +63,14 @@ describe('one-time AI recommendation handoff', () => {
   it('consumes a valid source=ai handoff as a new unsaved draft', () => {
     const values = storage({
       sequence: [2001, 2002, 2001],
-      wristCircumferenceMm: 165,
-      fitType: 'LOOSE',
-      cordOptionId: 6001,
     })
 
     expect(consumePendingAiRecommendation('ai', values, validation)).toEqual({
       schemeId: 0,
       schemeVersion: 0,
       name: 'AI 推荐手串',
-      wristCircumferenceMm: 165,
-      fitType: 'LOOSE',
+      wristCircumferenceMm: 160,
+      fitType: 'STANDARD',
       cordOptionId: 6001,
       sequence: [2001, 2002, 2001],
       selectedIndex: -1,
@@ -84,27 +81,16 @@ describe('one-time AI recommendation handoff', () => {
   it.each([
     {
       sequence: [9999],
-      wristCircumferenceMm: 165,
-      fitType: 'STANDARD',
-      cordOptionId: 6001,
     },
     {
       sequence: [2001],
-      wristCircumferenceMm: 999,
-      fitType: 'STANDARD',
-      cordOptionId: 6001,
+      wristCircumferenceMm: 160,
     },
     {
       sequence: Array.from({ length: 31 }, () => 2001),
-      wristCircumferenceMm: 165,
-      fitType: 'STANDARD',
-      cordOptionId: 6001,
     },
     {
       sequence: [2001],
-      wristCircumferenceMm: 165,
-      fitType: 'STANDARD',
-      cordOptionId: 6001,
       birthDate: '1992-01-20',
     },
   ])('rejects invalid structure or IDs and still deletes it', (value) => {
@@ -117,9 +103,6 @@ describe('one-time AI recommendation handoff', () => {
   it('does not read or delete the handoff without source=ai', () => {
     const values = storage({
       sequence: [2001],
-      wristCircumferenceMm: 165,
-      fitType: 'STANDARD',
-      cordOptionId: 6001,
     })
 
     expect(consumePendingAiRecommendation(undefined, values, validation))
@@ -141,9 +124,6 @@ describe('one-time AI recommendation handoff', () => {
   it('rejects an otherwise valid handoff when persistent removal throws', () => {
     const values = storage({
       sequence: [2001],
-      wristCircumferenceMm: 165,
-      fitType: 'STANDARD',
-      cordOptionId: 6001,
     })
     values.remove.mockImplementation(() => {
       throw new Error('storage cannot be cleared')

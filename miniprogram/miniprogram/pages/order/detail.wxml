@@ -13,7 +13,7 @@
       <text class="order-date">{{order.createdAtText}} 创建</text>
     </view>
 
-    <view wx:if="{{order.status !== 'CANCELLED'}}" class="progress-card">
+    <view wx:if="{{order.status !== 'CANCELLED' && order.status !== 'AFTER_SALE' && order.status !== 'REFUNDED'}}" class="progress-card">
       <view wx:for="{{steps}}" wx:key="*this" class="step {{index <= order.progressIndex ? 'active' : ''}}">
         <view class="step-dot">{{index + 1}}</view>
         <text>{{item}}</text>
@@ -45,12 +45,13 @@
       <view><text>珠子金额</text><text>{{order.beadAmountText}}</text></view>
       <view><text>工艺费</text><text>{{order.craftFeeText}}</text></view>
       <view><text>绳材加价</text><text>{{order.cordFeeText}}</text></view>
+      <view wx:if="{{order.discountAmount}}"><text>优惠券抵扣</text><text>{{order.discountAmountText}}</text></view>
       <view class="total-row"><text>订单总额</text><strong>{{order.amountText}}</strong></view>
     </view>
 
     <view wx:if="{{errorMessage}}" class="inline-error">{{errorMessage}}</view>
 
-    <view wx:if="{{order.canMockPay || order.canCancel}}" class="action-bar">
+    <view wx:if="{{order.canMockPay || order.canCancel || order.canConfirmReceipt}}" class="action-bar">
       <button
         wx:if="{{order.canCancel}}"
         disabled="{{operating}}"
@@ -67,6 +68,15 @@
         bindtap="mockPay"
       >
         模拟支付
+      </button>
+      <button
+        wx:if="{{order.canConfirmReceipt}}"
+        loading="{{operating}}"
+        disabled="{{operating}}"
+        class="primary-action"
+        bindtap="confirmReceipt"
+      >
+        确认收货
       </button>
     </view>
   </block>

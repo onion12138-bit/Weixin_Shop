@@ -83,6 +83,16 @@ public class PublicCatalogController {
         return success(catalogQueryService.listPackages(page, size));
     }
 
+    @GetMapping("/packages/recommended")
+    public ApiResponse<List<PackageSummary>> listRecommendedPackages(
+            @RequestParam(defaultValue = "4")
+            @Min(value = 1, message = "limit 必须大于等于 1")
+            @Max(value = 20, message = "limit 不能超过 20")
+            int limit
+    ) {
+        return success(catalogQueryService.listRecommendedPackages(limit));
+    }
+
     @GetMapping("/packages/{id}")
     public ApiResponse<PackageDetail> getPackage(
             @PathVariable

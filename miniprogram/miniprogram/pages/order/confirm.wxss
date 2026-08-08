@@ -1,197 +1,126 @@
 .order-page {
   min-height: 100vh;
-  padding: 34rpx 26rpx 190rpx;
-  background: #faf6f3;
+  padding: 24rpx 24rpx 190rpx;
+  color: #3f3238;
+  background: #fff7f6;
   box-sizing: border-box;
 }
 
-.page-heading,
-.scheme-summary,
-.checkout-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.kicker,
-.title,
-.summary-name,
-.scheme-summary view text,
-.card-title,
-.checkout-bar text,
-.checkout-bar strong {
-  display: block;
-}
-
-.kicker {
-  color: #a87587;
-  font-size: 19rpx;
-  font-weight: 700;
-  letter-spacing: 5rpx;
-}
-
-.title {
-  margin-top: 10rpx;
-  font-family: "Songti SC", serif;
-  font-size: 44rpx;
-  font-weight: 700;
-}
-
-.page-heading button {
-  width: 170rpx;
-  border-radius: 34rpx;
-  color: #754657;
-  font-size: 22rpx;
-  background: #f2e6ea;
-}
+button::after { border: 0; }
 
 .page-state {
   display: flex;
-  min-height: 600rpx;
+  min-height: 760rpx;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: #8b7e83;
+  color: #8d7e84;
   font-size: 25rpx;
 }
+.page-state button { margin-top: 22rpx; color: #87445f; background: #fff; }
+.error-state, .inline-error { color: #a44e59; }
 
-.page-state button {
-  margin-top: 24rpx;
-  color: #754657;
-  background: #fff;
+.section-card {
+  margin-bottom: 22rpx;
+  padding: 28rpx;
+  border: 1rpx solid rgba(225, 199, 207, .55);
+  border-radius: 30rpx;
+  background: rgba(255, 255, 255, .88);
+  box-shadow: 0 12rpx 34rpx rgba(95, 56, 70, .055);
 }
 
-.error-state,
-.inline-error {
-  color: #a04d59;
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 22rpx;
+}
+.section-heading > text { font-size: 31rpx; font-weight: 700; }
+.section-heading button {
+  width: auto; margin: 0; padding: 5rpx 12rpx; color: #a55874;
+  font-size: 21rpx; line-height: 1.5; background: transparent;
 }
 
-.scheme-summary,
-.address-card,
-.notice-card {
-  margin-top: 28rpx;
-  border-radius: 26rpx;
-  background: #fffdfb;
-  box-shadow: 0 14rpx 40rpx rgba(87, 54, 66, .07);
-}
-
-.scheme-summary {
+.address-ticket {
   position: relative;
-  justify-content: flex-start;
-  gap: 22rpx;
-  padding: 22rpx;
-}
-
-.scheme-summary image {
-  width: 140rpx;
-  height: 140rpx;
-  border-radius: 22rpx;
-  background: #eadde1;
-}
-
-.scheme-summary view text {
-  margin-top: 8rpx;
-  color: #887a80;
-  font-size: 22rpx;
-}
-
-.scheme-summary .summary-name {
-  margin-top: 0;
-  color: #392f34;
-  font-size: 29rpx;
-  font-weight: 700;
-}
-
-.quote-badge {
-  position: absolute;
-  top: 20rpx;
-  right: 20rpx;
-  padding: 6rpx 12rpx;
-  border-radius: 99rpx;
-  color: #7d4658;
-  font-size: 18rpx;
-  background: #f3e7eb;
-}
-
-.notice-card {
-  padding: 22rpx 26rpx;
-  color: #8a6b52;
-  font-size: 22rpx;
-  line-height: 1.7;
-  background: #fff7e9;
-}
-
-.address-card {
-  padding: 30rpx;
-}
-
-.card-title {
-  margin-bottom: 24rpx;
-  color: #45383e;
-  font-size: 30rpx;
-  font-weight: 700;
-}
-
-.address-card label {
-  display: block;
-  margin-top: 22rpx;
-}
-
-.address-card label > text {
-  display: block;
-  margin-bottom: 10rpx;
-  color: #6f6268;
-  font-size: 23rpx;
-  font-weight: 700;
-}
-
-.address-card input,
-.address-card textarea {
-  width: 100%;
-  padding: 20rpx;
-  border: 1rpx solid #e6dcd8;
-  border-radius: 16rpx;
-  background: #fff;
+  display: flex;
+  min-height: 112rpx;
+  align-items: center;
+  padding: 18rpx 38rpx 22rpx 18rpx;
+  border: 1rpx solid #ead9dd;
+  border-radius: 20rpx;
+  background: #fffaf9;
   box-sizing: border-box;
+  overflow: hidden;
 }
+.address-ticket > image:first-child { width: 72rpx; height: 72rpx; margin-right: 17rpx; border-radius: 50%; }
+.address-copy { min-width: 0; flex: 1; }
+.address-copy view { display: flex; align-items: center; gap: 18rpx; }
+.address-copy view text:first-child { font-size: 26rpx; font-weight: 700; }
+.address-copy view text:last-child { color: #8e7b83; font-size: 21rpx; }
+.address-copy > text { display: block; margin-top: 10rpx; color: #6d5b62; font-size: 21rpx; line-height: 1.45; }
+.row-arrow { width: 28rpx; height: 28rpx; flex: 0 0 auto; }
+.empty-address { height: 106rpx; border: 1rpx dashed #dfb9c7; border-radius: 20rpx; color: #98556d; font-size: 23rpx; line-height: 106rpx; background: #fff9fb; }
 
-.address-card textarea {
-  min-height: 150rpx;
-}
+.product-overview { display: flex; align-items: flex-start; gap: 22rpx; }
+.product-preview { width: 174rpx; height: 174rpx; flex: 0 0 auto; border-radius: 22rpx; background: #f0e0e5; }
+.product-copy { min-width: 0; flex: 1; }
+.product-copy > view:first-child { display: flex; align-items: flex-start; justify-content: space-between; gap: 12rpx; }
+.product-name { min-width: 0; flex: 1; font-size: 26rpx; font-weight: 700; }
+.product-total { color: #7c4057; font-size: 25rpx; font-weight: 700; }
+.product-subtitle { display: block; margin: 8rpx 0 14rpx; color: #9b8990; font-size: 19rpx; }
+.bead-list { padding-top: 8rpx; border-top: 1rpx solid #f0e4e7; }
+.bead-row { display: grid; grid-template-columns: 34rpx minmax(0, 1fr) auto auto; gap: 9rpx; align-items: center; min-height: 43rpx; color: #75646a; font-size: 18rpx; }
+.bead-row image, .bead-dot { width: 29rpx; height: 29rpx; border-radius: 50%; }
+.bead-row-name { overflow: hidden; color: #55454b; text-overflow: ellipsis; white-space: nowrap; }
+.more-beads { display: block; margin-top: 6rpx; color: #a38e96; font-size: 17rpx; }
 
-.inline-error {
-  margin-top: 20rpx;
-  font-size: 22rpx;
-}
+.coupon-section { display: flex; align-items: center; gap: 17rpx; }
+.coupon-icon { display: flex; width: 72rpx; height: 72rpx; flex: 0 0 auto; align-items: center; justify-content: center; border-radius: 50%; background: #fff0f4; overflow: hidden; }
+.coupon-icon image { width: 64rpx; height: 58rpx; }
+.coupon-summary { min-width: 0; flex: 1; }
+.coupon-summary text { display: block; }
+.coupon-summary text:first-child { font-size: 27rpx; font-weight: 700; }
+.coupon-summary text:last-child { margin-top: 5rpx; color: #9c8991; font-size: 19rpx; }
+.coupon-value { color: #a04468; font-size: 21rpx; font-weight: 650; }
+
+.amount-section > view { display: flex; align-items: center; justify-content: space-between; min-height: 58rpx; color: #75666c; font-size: 22rpx; }
+.amount-section > view text:last-child { color: #4f3f45; }
+.amount-section .discount-value { color: #b84f75; }
+.amount-section .amount-total { margin-top: 10rpx; padding-top: 19rpx; border-top: 1rpx solid #eee1e5; font-weight: 700; }
+.amount-section .amount-total text:last-child { color: #7e3f57; font-size: 31rpx; }
+.inline-error { margin: 6rpx 4rpx 20rpx; font-size: 21rpx; }
 
 .checkout-bar {
-  position: fixed;
-  z-index: 10;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  padding: 20rpx 30rpx calc(20rpx + env(safe-area-inset-bottom));
-  border-top: 1rpx solid #eadfdb;
-  background: rgba(255, 253, 251, .97);
+  position: fixed; z-index: 20; right: 0; bottom: 0; left: 0;
+  display: flex; align-items: center; justify-content: space-between; gap: 20rpx;
+  padding: 18rpx 24rpx calc(18rpx + env(safe-area-inset-bottom));
+  border-top: 1rpx solid #eadce0; background: rgba(255, 252, 251, .98);
 }
+.checkout-total > text { display: block; color: #c26785; font-size: 18rpx; }
+.checkout-total view { display: flex; align-items: baseline; gap: 9rpx; margin-top: 4rpx; }
+.checkout-total view text { color: #75656b; font-size: 21rpx; }
+.checkout-total strong { color: #7e3f57; font-size: 34rpx; }
+.checkout-bar > button { width: 290rpx; height: 82rpx; margin: 0; border-radius: 41rpx; color: #fff; font-size: 25rpx; line-height: 82rpx; background: #82445c; box-shadow: 0 10rpx 24rpx rgba(130,68,92,.2); }
 
-.checkout-bar text {
-  color: #92858a;
-  font-size: 19rpx;
-}
-
-.checkout-bar strong {
-  margin-top: 5rpx;
-  color: #754657;
-  font-size: 31rpx;
-}
-
-.checkout-bar button {
-  width: 260rpx;
-  height: 80rpx;
-  border-radius: 40rpx;
-  color: #fff;
-  font-size: 25rpx;
-  line-height: 80rpx;
-  background: #754657;
-}
+.coupon-backdrop { position: fixed; z-index: 80; inset: 0; display: flex; align-items: flex-end; background: rgba(45,29,35,.42); }
+.coupon-sheet { width: 100%; max-height: 78vh; padding: 14rpx 24rpx calc(26rpx + env(safe-area-inset-bottom)); border-radius: 34rpx 34rpx 0 0; background: #fff9f9; box-sizing: border-box; }
+.sheet-handle { width: 82rpx; height: 8rpx; margin: 0 auto 20rpx; border-radius: 4rpx; background: #ddcfd4; }
+.sheet-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18rpx; }
+.sheet-heading view text { display: block; }
+.sheet-heading view text:first-child { font-size: 32rpx; font-weight: 700; }
+.sheet-heading view text:last-child { margin-top: 5rpx; color: #a08c94; font-size: 19rpx; }
+.sheet-heading button { width: auto; margin: 0; padding: 8rpx 14rpx; color: #95526a; font-size: 21rpx; line-height: 1.4; background: transparent; }
+.coupon-scroll { max-height: 58vh; }
+.coupon-option { display: grid; grid-template-columns: 142rpx minmax(0, 1fr) 92rpx; gap: 18rpx; align-items: center; margin-bottom: 16rpx; padding: 20rpx; border: 1rpx solid #ead6dd; border-radius: 22rpx; background: #fff; box-sizing: border-box; }
+.coupon-option.disabled { opacity: .52; }
+.coupon-option.no-coupon { grid-template-columns: 1fr 48rpx; min-height: 102rpx; }
+.no-coupon > view:first-child text { display: block; }
+.no-coupon > view:first-child text:first-child { font-size: 24rpx; font-weight: 700; }
+.no-coupon > view:first-child text:last-child { margin-top: 6rpx; color: #9b8990; font-size: 19rpx; }
+.coupon-amount { display: flex; min-height: 88rpx; flex-direction: column; align-items: center; justify-content: center; border-right: 1rpx dashed #ddbfc9; color: #9d4264; }
+.coupon-amount strong { font-size: 29rpx; }.coupon-amount text { margin-top: 5rpx; font-size: 16rpx; }
+.coupon-detail text { display: block; }.coupon-detail text:first-child { font-size: 23rpx; font-weight: 700; }.coupon-detail text:nth-child(2) { margin-top: 5rpx; color: #796970; font-size: 18rpx; }.coupon-detail text:last-child { margin-top: 8rpx; color: #a38e96; font-size: 16rpx; }
+.coupon-status { display: flex; flex-direction: column; align-items: flex-end; gap: 13rpx; color: #9a586f; font-size: 17rpx; }
+.coupon-option radio { transform: scale(.82); }
+.empty-coupons { padding: 90rpx 0; color: #9b8990; font-size: 22rpx; text-align: center; }

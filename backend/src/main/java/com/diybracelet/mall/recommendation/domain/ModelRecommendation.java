@@ -2,18 +2,18 @@ package com.diybracelet.mall.recommendation.domain;
 
 import java.util.List;
 
-/** Strict provider output. Price and quantity fields are deliberately absent. */
-public record ModelRecommendation(
-    String schemeName,
-    List<Long> sequence,
-    List<Reason> reasons,
-    String summary
-) {
+/** Strict provider result containing material choices but no size or price. */
+public record ModelRecommendation(List<Plan> plans) {
     public ModelRecommendation {
-        sequence = sequence == null ? null : List.copyOf(sequence);
-        reasons = reasons == null ? null : List.copyOf(reasons);
+        plans = plans == null ? null : List.copyOf(plans);
     }
 
-    public record Reason(Long skuId, String reason) {
+    public record Plan(String schemeName, String summary, List<Item> items) {
+        public Plan {
+            items = items == null ? null : List.copyOf(items);
+        }
+    }
+
+    public record Item(Long skuId, String reason) {
     }
 }

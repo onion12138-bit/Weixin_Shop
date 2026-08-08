@@ -63,6 +63,7 @@ public class DiyPricingService {
 
     /**
      * 评估当前 DIY 设计是否可报价，并在可报价时返回权威价格。
+     * 尺寸偏差只作为搭配建议返回，不参与报价可用性判断。
      *
      * @param command 设计命令
      * @return 评估结果
@@ -119,11 +120,6 @@ public class DiyPricingService {
         );
         BigDecimal deviation = length(currentLength.subtract(targetLength));
         SizeStatus sizeStatus = sizeStatus(deviation, config.getToleranceMm());
-        if (sizeStatus == SizeStatus.TOO_SHORT) {
-            issues.add(issue("SIZE_TOO_SHORT", "当前设计长度偏短", null));
-        } else if (sizeStatus == SizeStatus.TOO_LONG) {
-            issues.add(issue("SIZE_TOO_LONG", "当前设计长度偏长", null));
-        }
 
         CraftFeeRule craftFee = matchingCraftFee(command.sequence().size());
         if (craftFee == null && !quantities.isEmpty()) {

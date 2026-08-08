@@ -47,6 +47,17 @@ public interface DiySchemeMapper extends BaseMapper<DiyScheme> {
     List<DiyScheme> selectOwnedList(@Param("customerId") Long customerId);
 
     /**
+     * 统计当前顾客尚未删除的方案数，用于限制可保存的方案数量。
+     */
+    @Select("""
+            select count(*)
+            from diy_scheme
+            where customer_identity_id = #{customerId}
+              and status = 'ACTIVE'
+            """)
+    long countOwnedActive(@Param("customerId") Long customerId);
+
+    /**
      * 使用乐观锁更新当前顾客拥有的方案。
      *
      * <p>只有请求版本与数据库版本一致时才更新；否则返回 0，由服务层转为 409。</p>

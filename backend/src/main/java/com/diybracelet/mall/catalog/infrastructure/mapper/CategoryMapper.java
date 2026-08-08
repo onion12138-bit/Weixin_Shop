@@ -24,6 +24,7 @@ public interface CategoryMapper extends BaseMapper<Category> {
             select *
             from category
             where status = 'ON_SALE'
+              and product_type = 'BEAD'
             order by sort_order asc, id asc
             """)
     List<Category> selectPublicList();

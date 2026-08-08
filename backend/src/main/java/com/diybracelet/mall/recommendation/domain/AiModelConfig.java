@@ -7,8 +7,8 @@ import java.time.LocalDateTime;
 /**
  * 唯一的 AI 模型配置。
  *
- * <p>API Key 字段只允许保存 {@code AiSecretCipher} 生成的密文。任何接口视图和日志
- * 都不得直接暴露该字段。</p>
+ * <p>API Key 字段只允许保存 {@code AiSecretCipher} 生成的密文。普通配置视图和日志
+ * 不得暴露该字段；明文只允许由管理员主动调用的专用查看接口短暂返回。</p>
  */
 @TableName("ai_model_config")
 public class AiModelConfig {
@@ -29,6 +29,10 @@ public class AiModelConfig {
     private Integer timeoutSeconds;
 
     private Integer maxOutputTokens;
+
+    private String recommendationPrompt;
+
+    private Integer planCount;
 
     private Long version;
 
@@ -101,6 +105,22 @@ public class AiModelConfig {
 
     public void setMaxOutputTokens(Integer maxOutputTokens) {
         this.maxOutputTokens = maxOutputTokens;
+    }
+
+    public String getRecommendationPrompt() {
+        return recommendationPrompt;
+    }
+
+    public void setRecommendationPrompt(String recommendationPrompt) {
+        this.recommendationPrompt = recommendationPrompt;
+    }
+
+    public Integer getPlanCount() {
+        return planCount;
+    }
+
+    public void setPlanCount(Integer planCount) {
+        this.planCount = planCount;
     }
 
     public Long getVersion() {

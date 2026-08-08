@@ -93,4 +93,15 @@ public class AppOrderController {
                 UUID.randomUUID().toString()
         );
     }
+
+    /** 顾客确认已发货订单收货。 */
+    @PostMapping("/{orderId}/confirm-receipt")
+    public ApiResponse<OrderResponse> confirmReceipt(
+            @PathVariable Long orderId
+    ) {
+        return ApiResponse.success(
+                orderService.confirmReceipt(orderId),
+                UUID.randomUUID().toString()
+        );
+    }
 }

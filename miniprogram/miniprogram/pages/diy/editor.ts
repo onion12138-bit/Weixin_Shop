@@ -50,6 +50,10 @@ import {
   resolveCanvasUrl,
   resolveTrayUrl,
 } from '../../domain/diy-visual-fallback'
+import {
+  readFavoriteBeadIds,
+  toggleFavoriteBead,
+} from '../../domain/favorite-beads'
 import { buildBraceletRenderPlan } from '../../domain/bracelet-render-plan'
 import {
   renderBraceletCanvas,
@@ -73,6 +77,7 @@ interface CatalogItem {
   coverImageUrl: string
   visualVersion: number
   colorHex: string
+  isFavorite: boolean
 }
 
 interface CordOptionItem {
@@ -161,6 +166,7 @@ Page({
   data: {
     loading: true,
     saving: false,
+    checkingOut: false,
     quoting: false,
     schemeId: 0,
     schemeVersion: 0,
@@ -181,6 +187,9 @@ Page({
     selectedIndex: -1,
     selectedNumber: 0,
     catalog: [] as CatalogItem[],
+    visibleCatalog: [] as CatalogItem[],
+    trayExpanded: false,
+    favoritesOnly: false,
     categories: [] as Category[],
     categoryId: 0,
     keyword: '',
@@ -217,6 +226,7 @@ Page({
   canvasRedrawTimer: null as ReturnType<typeof setTimeout> | null,
   editorActive: false,
   editorGeneration: 0,
+  initialVisualLoading: false,
   dragFromIndex: -1,
   dragToIndex: -1,
   pendingAiRecommendationRaw: null as unknown,
@@ -233,6 +243,7 @@ Page({
     this.canvasImages = {}
     this.canvasImageQueue = []
     this.activeCanvasImageLoads = 0
+    this.initialVisualLoading = true
     if (options.source === 'ai') {
       try {
         this.pendingAiRecommendationRaw = wx.getStorageSync(
@@ -261,6 +272,10 @@ Page({
     void this.bootstrap(options)
   },
 
+  onShow() {
+    this.refreshFavoriteState()
+  },
+
   onUnload() {
     this.cancelCanvasRedraw()
     this.editorActive = false
@@ -273,6 +288,7 @@ Page({
     this.canvasImages = {}
     this.canvasImageQueue = []
     this.activeCanvasImageLoads = 0
+    this.initialVisualLoading = false
   },
 
   async bootstrap(options: Record<string, string>) {
@@ -287,7 +303,11 @@ Page({
         beadsPromise,
       ])
       this.config = config
-      const catalog = beads.map(toCatalogItem)
+      const favoriteIds = new Set(readFavoriteBeadIds())
+      const catalog = beads.map(toCatalogItem).map((item) => ({
+        ...item,
+        isFavorite: favoriteIds.has(item.id),
+      }))
       const cordOptions = config.cordOptions.map(toCordOptionItem)
       const wristOptions = buildWristOptions(
         config.rule.minWristMm,
@@ -297,6 +317,7 @@ Page({
       this.setData({
         categories,
         catalog,
+        visibleCatalog: catalog,
         cordOptions,
         cordOptionNames: cordOptions.map((item) => item.name),
         cordOptionId: cordOptions[0]?.id || this.data.cordOptionId,
@@ -333,14 +354,14 @@ Page({
         pushHistory: false,
       })
     } catch (error) {
+      this.initialVisualLoading = false
       this.setData({
         errorMessage: error instanceof Error
           ? error.message
           : 'DIY 设计器加载失败，请稍后重试',
       })
     } finally {
-      this.setData({ loading: false })
-      this.drawBracelet()
+      if (this.data.errorMessage) this.setData({ loading: false })
     }
   },
 
@@ -409,6 +430,7 @@ Page({
       salePriceCents: 0,
       ...visualImageFields(item),
       colorHex: colorFromText(item.color || item.name),
+      isFavorite: false,
     })))
     return {
       schemeId: scheme.id,
@@ -422,10 +444,57 @@ Page({
     }
   },
 
-  mergeCatalog(items: CatalogItem[]) {
+  mergeCatalog(items: CatalogItem[], replaceVisible = false) {
     const merged = new Map(this.data.catalog.map((item) => [item.id, item]))
-    for (const item of items) merged.set(item.id, item)
-    this.setData({ catalog: Array.from(merged.values()) })
+    const favoriteIds = new Set(readFavoriteBeadIds())
+    const markedItems = items.map((item) => ({
+      ...item,
+      isFavorite: favoriteIds.has(item.id),
+    }))
+    for (const item of markedItems) merged.set(item.id, item)
+    const catalog = Array.from(merged.values())
+    const visibleSource = replaceVisible ? markedItems : catalog
+    this.setData({
+      catalog,
+      visibleCatalog: this.data.favoritesOnly
+        ? visibleSource.filter((item) => item.isFavorite)
+        : visibleSource,
+    })
+  },
+
+  refreshFavoriteState() {
+    const favoriteIds = new Set(readFavoriteBeadIds())
+    const catalog = this.data.catalog.map((item) => ({
+      ...item,
+      isFavorite: favoriteIds.has(item.id),
+    }))
+    const visibleCatalog = this.data.visibleCatalog.map((item) => ({
+      ...item,
+      isFavorite: favoriteIds.has(item.id),
+    })).filter((item) => !this.data.favoritesOnly || item.isFavorite)
+    this.setData({ catalog, visibleCatalog })
+  },
+
+  toggleFavorite(event: WechatMiniprogram.TouchEvent) {
+    const id = Number(event.currentTarget.dataset.id || 0)
+    if (!id) return
+    const isFavorite = toggleFavoriteBead(id)
+    const update = (items: CatalogItem[]) => items
+      .map((item) => item.id === id ? { ...item, isFavorite } : item)
+    this.setData({
+      catalog: update(this.data.catalog),
+      visibleCatalog: update(this.data.visibleCatalog)
+        .filter((item) => !this.data.favoritesOnly || item.isFavorite),
+    })
+    wx.showToast({
+      title: isFavorite ? '已加入喜欢' : '已取消喜欢',
+      icon: 'none',
+    })
+  },
+
+  toggleFavoritesOnly() {
+    this.setData({ favoritesOnly: !this.data.favoritesOnly })
+    void this.searchCatalog()
   },
 
   async chooseCategory(event: WechatMiniprogram.TouchEvent) {
@@ -440,13 +509,24 @@ Page({
 
   async searchCatalog() {
     try {
-      const page = await listBeads({
-        page: 1,
-        size: 30,
-        categoryId: this.data.categoryId || undefined,
-        keyword: this.data.keyword || undefined,
-      })
-      this.mergeCatalog(page.items.map(toCatalogItem))
+      if (this.data.favoritesOnly) {
+        const favoriteIds = new Set(readFavoriteBeadIds())
+        const keyword = this.data.keyword.trim().toLowerCase()
+        const items = (await listAllPublicBeads()).filter((item) => (
+          favoriteIds.has(item.id)
+          && (!keyword || [item.name, item.material, item.color]
+            .some((value) => value.toLowerCase().includes(keyword)))
+        ))
+        this.mergeCatalog(items.map(toCatalogItem), true)
+      } else {
+        const page = await listBeads({
+          page: 1,
+          size: 30,
+          categoryId: this.data.categoryId || undefined,
+          keyword: this.data.keyword || undefined,
+        })
+        this.mergeCatalog(page.items.map(toCatalogItem), true)
+      }
     } catch (error) {
       this.setData({
         errorMessage: error instanceof Error ? error.message : '珠子加载失败',
@@ -473,7 +553,15 @@ Page({
         : ''
       return { ...item, trayImageUrl: coverFallback }
     })
-    if (matched) this.setData({ catalog })
+    if (matched) {
+      const updated = catalog.find((item) => item.id === skuId)
+      this.setData({
+        catalog,
+        visibleCatalog: this.data.visibleCatalog.map((item) => (
+          item.id === skuId && updated ? updated : item
+        )),
+      })
+    }
   },
 
   addCatalogBead(event: WechatMiniprogram.TouchEvent) {
@@ -639,29 +727,34 @@ Page({
     })
   },
 
+  async persistScheme(): Promise<number> {
+    const payload = {
+      name: this.data.name || DEFAULT_NAME,
+      version: this.data.schemeVersion,
+      wristCircumferenceMm: this.data.wristCircumferenceMm,
+      fitType: this.data.fitType,
+      cordOptionId: this.data.cordOptionId,
+      sequence: this.data.sequence,
+    }
+    const saved = this.data.schemeId
+      ? await updateScheme(this.data.schemeId, payload)
+      : await createScheme(payload)
+    this.setData({
+      schemeId: saved.id,
+      schemeVersion: saved.version,
+      name: saved.name,
+    })
+    wx.removeStorageSync(DRAFT_CACHE_KEY)
+    await this.uploadPreviewSafely(saved.id)
+    return saved.id
+  },
+
   async saveDraft() {
     if (this.data.saving) return
     this.setData({ saving: true, errorMessage: '' })
     try {
-      const payload = {
-        name: this.data.name || DEFAULT_NAME,
-        version: this.data.schemeVersion,
-        wristCircumferenceMm: this.data.wristCircumferenceMm,
-        fitType: this.data.fitType,
-        cordOptionId: this.data.cordOptionId,
-        sequence: this.data.sequence,
-      }
-      const saved = this.data.schemeId
-        ? await updateScheme(this.data.schemeId, payload)
-        : await createScheme(payload)
-      this.setData({
-        schemeId: saved.id,
-        schemeVersion: saved.version,
-        name: saved.name,
-      })
-      wx.removeStorageSync(DRAFT_CACHE_KEY)
-      await this.uploadPreviewSafely(saved.id)
-      wx.showToast({ title: '方案已保存', icon: 'success' })
+      await this.persistScheme()
+      wx.showToast({ title: '方案保存成功', icon: 'success' })
     } catch (error) {
       this.setData({
         errorMessage: error instanceof Error ? error.message : '保存失败',
@@ -669,6 +762,29 @@ Page({
     } finally {
       this.setData({ saving: false })
     }
+  },
+
+  async goCheckout() {
+    if (this.data.checkingOut || this.data.saving) return
+    if (!this.data.sequence.length) {
+      wx.showToast({ title: '请先添加珠子', icon: 'none' })
+      return
+    }
+    this.setData({ checkingOut: true, errorMessage: '' })
+    try {
+      const schemeId = await this.persistScheme()
+      wx.navigateTo({ url: `/pages/order/confirm?schemeId=${schemeId}` })
+    } catch (error) {
+      this.setData({
+        errorMessage: error instanceof Error ? error.message : '方案保存失败',
+      })
+    } finally {
+      this.setData({ checkingOut: false })
+    }
+  },
+
+  toggleTrayExpanded() {
+    this.setData({ trayExpanded: !this.data.trayExpanded })
   },
 
   async confirmQuote() {
@@ -894,6 +1010,7 @@ Page({
         const height = canvasResult.height || 300
         if (!canvas) {
           this.refreshCanvasLayout(width, height)
+          this.finishInitialVisualLoading(true)
           return
         }
         if (this.canvasNode && this.canvasNode !== canvas) {
@@ -923,7 +1040,10 @@ Page({
     height: number,
   ) {
     const visualConfig = this.config?.visualConfig
-    if (!visualConfig) return
+    if (!visualConfig) {
+      this.finishInitialVisualLoading(true)
+      return
+    }
     const plan = buildBraceletRenderPlan(
       this.layoutPoints,
       visualConfig,
@@ -937,6 +1057,17 @@ Page({
       )
       return item ? this.resolveCanvasImage(canvas, item) : null
     })
+    this.finishInitialVisualLoading()
+  },
+
+  finishInitialVisualLoading(force = false) {
+    if (!this.initialVisualLoading) return
+    if (!force && (
+      this.canvasImageQueue.length > 0
+      || this.activeCanvasImageLoads > 0
+    )) return
+    this.initialVisualLoading = false
+    this.setData({ loading: false })
   },
 
   resolveCanvasImage(
@@ -1126,6 +1257,7 @@ function toCatalogItem(bead: PublicBead): CatalogItem {
     salePriceCents: yuanToCents(bead.salePrice),
     ...visualImageFields(bead),
     colorHex: colorFromText(`${bead.material}${bead.color}${bead.name}`),
+    isFavorite: false,
   }
 }
 

@@ -28,6 +28,9 @@ public enum ErrorCode {
     /** DIY 方案更新版本与服务端当前版本不一致。 */
     DIY_SCHEME_VERSION_CONFLICT(HttpStatus.CONFLICT),
 
+    /** 当前顾客保存的有效 DIY 方案数量已达到上限。 */
+    DIY_SCHEME_LIMIT_REACHED(HttpStatus.CONFLICT),
+
     /** 当前 DIY 设计不可报价，不能进入需要确定价格的后续流程。 */
     DIY_DESIGN_NOT_QUOTABLE(HttpStatus.UNPROCESSABLE_ENTITY),
 
@@ -36,6 +39,9 @@ public enum ErrorCode {
 
     /** AI Provider API Key 尚未配置。 */
     AI_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE),
+
+    /** AI 推荐业务提示词尚未配置。 */
+    AI_PROMPT_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE),
 
     /** 服务端缺少可用的 AI 密钥加密配置。 */
     AI_SERVER_MISCONFIGURED(HttpStatus.SERVICE_UNAVAILABLE),
@@ -55,8 +61,41 @@ public enum ErrorCode {
     /** AI Provider 超时或发生临时故障。 */
     AI_TEMPORARILY_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE),
 
+    /** AI Provider 请求超过当前配置的等待时间。 */
+    AI_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT),
+
+    /** AI Provider 返回了非鉴权、非限流类上游故障。 */
+    AI_UPSTREAM_ERROR(HttpStatus.BAD_GATEWAY),
+
     /** AI 推荐响应未通过后端契约或业务校验。 */
     AI_INVALID_RECOMMENDATION(HttpStatus.UNPROCESSABLE_ENTITY),
+
+    /** DeepSeek 返回内容不是约定的 JSON 结构。 */
+    AI_RESPONSE_FORMAT_INVALID(HttpStatus.UNPROCESSABLE_ENTITY),
+
+    /** DeepSeek 返回的推荐套数与后台配置不一致。 */
+    AI_RESULT_COUNT_INVALID(HttpStatus.UNPROCESSABLE_ENTITY),
+
+    /** DeepSeek 返回的单套珠子种类数不在 3～5 范围内。 */
+    AI_RESULT_ITEM_COUNT_INVALID(HttpStatus.UNPROCESSABLE_ENTITY),
+
+    /** DeepSeek 在同一套方案中重复选择了同一个 SKU。 */
+    AI_RESULT_DUPLICATE_SKU(HttpStatus.UNPROCESSABLE_ENTITY),
+
+    /** DeepSeek 选择了不存在、下架或无库存的 SKU。 */
+    AI_RESULT_SKU_INVALID(HttpStatus.UNPROCESSABLE_ENTITY),
+
+    /** DeepSeek 文案包含不允许的确定效果或健康承诺。 */
+    AI_RESPONSE_CONTENT_UNSAFE(HttpStatus.UNPROCESSABLE_ENTITY),
+
+    /** 必填生日为空。 */
+    BIRTH_DATE_REQUIRED(HttpStatus.BAD_REQUEST),
+
+    /** 生日格式不正确或晚于当前日期。 */
+    BIRTH_DATE_INVALID(HttpStatus.BAD_REQUEST),
+
+    /** 当前没有可供 AI 推荐的在售库存珠子。 */
+    CATALOG_EMPTY(HttpStatus.UNPROCESSABLE_ENTITY),
 
     /** 服务端发生未预期错误。 */
     COMMON_INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR);

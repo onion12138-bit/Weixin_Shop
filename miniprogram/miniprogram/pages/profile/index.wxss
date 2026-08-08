@@ -1,0 +1,237 @@
+.profile-page {
+  box-sizing: border-box;
+  min-height: 100vh;
+  padding: 18rpx 28rpx calc(112rpx + env(safe-area-inset-bottom));
+  overflow: hidden;
+  color: #351447;
+  background: #fff8fa;
+  font-family: "PingFang SC", "Noto Sans CJK SC", sans-serif;
+}
+
+button {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  color: inherit;
+  font: inherit;
+  line-height: normal;
+  background: transparent;
+}
+
+button::after {
+  border: 0;
+}
+
+.profile-hero {
+  position: relative;
+  display: flex;
+  box-sizing: border-box;
+  height: 292rpx;
+  align-items: center;
+  padding: 28rpx 24rpx;
+  overflow: hidden;
+}
+
+.profile-bracelet {
+  position: absolute;
+  z-index: 0;
+  top: -72rpx;
+  right: -146rpx;
+  width: 430rpx;
+  opacity: .54;
+}
+
+.profile-avatar {
+  position: relative;
+  z-index: 2;
+  width: 178rpx;
+  height: 178rpx;
+  flex: 0 0 auto;
+  border: 7rpx solid rgba(255, 255, 255, .9);
+  border-radius: 50%;
+  box-shadow: 0 16rpx 36rpx rgba(200, 118, 150, .18);
+}
+
+.profile-copy {
+  position: relative;
+  z-index: 2;
+  min-width: 0;
+  margin-left: 28rpx;
+}
+
+.profile-name-row,
+.profile-tagline {
+  display: flex;
+  align-items: center;
+}
+
+.profile-name {
+  color: #351447;
+  font-family: "Songti SC", "STSong", serif;
+  font-size: 48rpx;
+  font-weight: 600;
+  letter-spacing: 4rpx;
+}
+
+.edit-button {
+  min-width: 66rpx;
+  height: 40rpx;
+  margin-left: 12rpx;
+  border: 1rpx solid rgba(238, 105, 158, .42);
+  border-radius: 22rpx;
+  color: #eb679d;
+  font-size: 20rpx;
+  background: rgba(255, 255, 255, .78);
+}
+
+.profile-tagline {
+  margin-top: 18rpx;
+  color: #82767c;
+  font-size: 26rpx;
+  letter-spacing: 1rpx;
+}
+
+.profile-tagline image {
+  width: 30rpx;
+  height: 30rpx;
+  margin-left: 10rpx;
+}
+
+.feature-card {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 34rpx;
+  box-shadow: 0 16rpx 42rpx rgba(163, 96, 123, .1);
+}
+
+.feature-card image {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.design-card {
+  height: 324rpx;
+}
+
+.order-card {
+  height: 278rpx;
+  margin-top: 24rpx;
+}
+
+.utility-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14rpx;
+  margin-top: 24rpx;
+}
+
+.utility-card {
+  display: flex;
+  min-width: 0;
+  min-height: 352rpx;
+  flex-direction: column;
+  align-items: center;
+  padding: 18rpx 12rpx 20rpx;
+  overflow: hidden;
+  border: 2rpx solid rgba(255, 255, 255, .94);
+  border-radius: 34rpx;
+  background: rgba(255, 255, 255, .66);
+  box-shadow: 0 16rpx 36rpx rgba(173, 106, 133, .08);
+}
+
+.utility-art {
+  width: 184rpx;
+  height: 164rpx;
+  flex: 0 0 auto;
+}
+
+.utility-title,
+.utility-summary {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.utility-title {
+  margin-top: 7rpx;
+  color: #351447;
+  font-family: "Songti SC", "STSong", serif;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.utility-summary {
+  margin-top: 8rpx;
+  color: #8e8187;
+  font-size: 18rpx;
+}
+
+.utility-arrow {
+  display: flex;
+  width: 48rpx;
+  height: 48rpx;
+  align-items: center;
+  justify-content: center;
+  margin-top: 16rpx;
+  border-radius: 50%;
+  background: #ed6c9f;
+  box-shadow: 0 8rpx 18rpx rgba(227, 92, 145, .2);
+}
+
+.utility-arrow image {
+  width: 28rpx;
+  height: 28rpx;
+}
+
+.bottom-nav {
+  position: fixed;
+  z-index: 20;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  box-sizing: border-box;
+  height: calc(72rpx + env(safe-area-inset-bottom));
+  align-items: flex-start;
+  padding: 6rpx 36rpx env(safe-area-inset-bottom);
+  border-top: 1rpx solid rgba(226, 208, 214, .82);
+  background: rgba(255, 255, 255, .96);
+  box-shadow: 0 -10rpx 34rpx rgba(107, 80, 91, .08);
+}
+
+.nav-item {
+  display: flex;
+  height: 66rpx;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #8a7d82;
+  font-size: 20rpx;
+}
+
+.nav-item image {
+  width: 34rpx;
+  height: 34rpx;
+  margin-bottom: 3rpx;
+}
+
+.nav-item.active {
+  color: #ef649a;
+  font-weight: 600;
+}
+
+.card-pressed {
+  opacity: .84;
+  transform: scale(.985);
+}
+
+.soft-pressed {
+  opacity: .68;
+}

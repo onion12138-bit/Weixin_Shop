@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ApiError, resolveApiResourceUrl } from '../api/http'
 import {
+  changePackageRecommendation,
   changePackageStatus,
   createAdminPackage,
   getAdminPackage,
@@ -20,13 +21,14 @@ const availableBeads = ref<BeadSku[]>([])
 const total = ref(0)
 const loading = ref(false)
 const saving = ref(false)
+const recommendingId = ref<number | null>(null)
 const editorLoading = ref(false)
 const coverUploading = ref(false)
 const coverDropActive = ref(false)
 const showForm = ref(false)
 const editingId = ref<number | null>(null)
 const errorMessage = ref('')
-const successMessage = ref('')
+const toastMessage = ref('')
 const coverPreviewUrl = ref('')
 const MAX_COVER_SIZE_BYTES = 5_000_000
 const ACCEPTED_COVER_TYPES = new Set([
@@ -34,6 +36,7 @@ const ACCEPTED_COVER_TYPES = new Set([
   'image/jpeg',
   'image/webp',
 ])
+let toastTimer: ReturnType<typeof setTimeout> | null = null
 
 const filters = reactive({
   keyword: '',
@@ -71,6 +74,15 @@ function readableError(error: unknown): string {
       : error.message
   }
   return '套餐操作失败，请确认后端服务已启动'
+}
+
+function showToast(message: string): void {
+  toastMessage.value = message
+  if (toastTimer !== null) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => {
+    toastMessage.value = ''
+    toastTimer = null
+  }, 2600)
 }
 
 async function loadPackages(): Promise<void> {
@@ -148,7 +160,9 @@ async function openEdit(item: ProductPackage): Promise<void> {
         quantity: packageItem.quantity,
       })),
     })
-    coverPreviewUrl.value = ''
+    coverPreviewUrl.value = detail.coverUrl
+      ? resolveApiResourceUrl(detail.coverUrl)
+      : ''
     showForm.value = true
   } catch (error) {
     errorMessage.value = readableError(error)
@@ -215,7 +229,6 @@ function handleCoverDrop(event: DragEvent): void {
 async function submit(): Promise<void> {
   saving.value = true
   errorMessage.value = ''
-  successMessage.value = ''
   try {
     const payload: SavePackageRequest = {
       ...form,
@@ -226,10 +239,10 @@ async function submit(): Promise<void> {
     }
     if (editingId.value) {
       await updateAdminPackage(editingId.value, payload)
-      successMessage.value = '成品搭配已更新'
+      showToast('成品搭配已更新')
     } else {
       await createAdminPackage(payload)
-      successMessage.value = '成品搭配已创建'
+      showToast('成品搭配已创建')
     }
     showForm.value = false
     await loadPackages()
@@ -252,9 +265,35 @@ async function toggleStatus(item: ProductPackage): Promise<void> {
   }
 }
 
+async function toggleRecommendation(item: ProductPackage): Promise<void> {
+  recommendingId.value = item.id
+  errorMessage.value = ''
+  try {
+    const updated = await changePackageRecommendation(
+      item.id,
+      !item.recommended,
+    )
+    packages.value = packages.value.map((candidate) => (
+      candidate.id === updated.id ? updated : candidate
+    ))
+    showToast(updated.recommended
+      ? '已加入小程序首页成品精选'
+      : '已取消首页推荐')
+  } catch (error) {
+    errorMessage.value = readableError(error)
+  } finally {
+    recommendingId.value = null
+  }
+}
+
 function search(): void {
   filters.page = 1
   void loadPackages()
+}
+
+function clearSearch(): void {
+  filters.keyword = ''
+  search()
 }
 
 function changePage(page: number): void {
@@ -263,6 +302,9 @@ function changePage(page: number): void {
 }
 
 onMounted(loadPackages)
+onUnmounted(() => {
+  if (toastTimer !== null) clearTimeout(toastTimer)
+})
 </script>
 
 <template>
@@ -271,7 +313,9 @@ onMounted(loadPackages)
       <div>
         <p class="section-kicker">CATALOG / PACKAGES</p>
         <h1>成品搭配</h1>
-        <p class="muted">按顺序组合散珠，维护可直接浏览和后续下单的成品手串。</p>
+        <p class="muted">
+          按顺序组合散珠；已上架且标记为推荐的成品会显示在小程序首页。
+        </p>
       </div>
       <button
         class="primary-button"
@@ -286,19 +330,33 @@ onMounted(loadPackages)
     <div v-if="errorMessage" class="notice error-notice" role="alert">
       {{ errorMessage }}
     </div>
-    <div v-if="successMessage" class="notice success-notice">
-      {{ successMessage }}
+    <div
+      v-if="toastMessage"
+      class="package-toast"
+      data-test="package-toast"
+      role="status"
+    >
+      {{ toastMessage }}
     </div>
 
     <section class="toolbar" aria-label="套餐筛选">
-      <label class="search-field">
+      <div class="search-field search-field-with-clear">
         <span class="sr-only">搜索套餐</span>
         <input
           v-model="filters.keyword"
+          aria-label="搜索套餐"
           placeholder="搜索套餐编码或名称"
           @keyup.enter="search"
         />
-      </label>
+        <button
+          v-if="filters.keyword"
+          class="search-clear-button"
+          data-test="clear-package-search"
+          type="button"
+          aria-label="清空搜索"
+          @click="clearSearch"
+        >×</button>
+      </div>
       <label>
         <span class="sr-only">套餐状态</span>
         <select v-model="filters.status" @change="search">
@@ -326,6 +384,7 @@ onMounted(loadPackages)
               <th>说明</th>
               <th>销售价</th>
               <th>状态</th>
+              <th>首页推荐</th>
               <th class="align-right">操作</th>
             </tr>
           </thead>
@@ -342,8 +401,25 @@ onMounted(loadPackages)
                   {{ statusLabel(item.status) }}
                 </span>
               </td>
+              <td>
+                <button
+                  class="recommendation-button"
+                  :class="{ 'is-recommended': item.recommended }"
+                  :aria-pressed="item.recommended"
+                  :aria-label="item.recommended ? `取消推荐${item.name}` : `推荐${item.name}`"
+                  :data-test="`toggle-package-recommendation-${item.id}`"
+                  :disabled="recommendingId === item.id"
+                  @click="toggleRecommendation(item)"
+                >
+                  {{ recommendingId === item.id ? '处理中…' : item.recommended ? '已推荐' : '推荐' }}
+                </button>
+              </td>
               <td class="align-right">
-                <button class="text-button" @click="openEdit(item)">编辑</button>
+                <button
+                  class="text-button"
+                  :data-test="`edit-package-${item.id}`"
+                  @click="openEdit(item)"
+                >编辑</button>
                 <button class="text-button" @click="toggleStatus(item)">
                   {{ item.status === 'ON_SALE' ? '下架' : '上架' }}
                 </button>
@@ -509,3 +585,23 @@ onMounted(loadPackages)
     </div>
   </section>
 </template>
+
+<style scoped>
+.package-toast {
+  position: fixed;
+  z-index: 30;
+  top: 28px;
+  left: 50%;
+  max-width: min(480px, calc(100vw - 40px));
+  padding: 12px 18px;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+  background: #548b72;
+  box-shadow: 0 12px 28px rgba(54, 84, 68, .22);
+  transform: translateX(-50%);
+}
+</style>

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   clearAiApiKey,
   getAiConfiguration,
+  revealAiApiKey,
   saveAiConfiguration,
   testAiConfiguration,
   type SaveAiConfigurationPayload,
@@ -17,6 +18,8 @@ const payload: SaveAiConfigurationPayload = {
   enabled: true,
   timeoutSeconds: 30,
   maxOutputTokens: 2048,
+  recommendationPrompt: '只返回满足尺寸和预算的完整手串推荐。',
+  planCount: 3,
   version: 7,
 }
 
@@ -47,6 +50,12 @@ describe('AI configuration API contract', () => {
     expect(request).toHaveBeenCalledWith('/admin/ai/config/test', {
       method: 'POST',
     })
+  })
+
+  it('reveals the key only through the explicit GET endpoint', async () => {
+    await revealAiApiKey()
+
+    expect(request).toHaveBeenCalledWith('/admin/ai/config/api-key')
   })
 
   it('clears the key with DELETE and the encoded version query', async () => {

@@ -22,6 +22,8 @@ public class Category {
 
     private String slug;
 
+    private ProductType productType;
+
     private Integer sortOrder;
 
     private CatalogStatus status;
@@ -58,6 +60,14 @@ public class Category {
 
     public void setSlug(String slug) {
         this.slug = slug;
+    }
+
+    public ProductType getProductType() {
+        return productType;
+    }
+
+    public void setProductType(ProductType productType) {
+        this.productType = productType;
     }
 
     public Integer getSortOrder() {

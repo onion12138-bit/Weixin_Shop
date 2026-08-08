@@ -1,6 +1,7 @@
 package com.diybracelet.mall.catalog.api.dto;
 
 import com.diybracelet.mall.catalog.domain.CatalogStatus;
+import com.diybracelet.mall.catalog.domain.ProductType;
 import java.math.BigDecimal;
 
 /**
@@ -12,6 +13,7 @@ import java.math.BigDecimal;
 public record AdminBeadSkuView(
         Long id,
         Long categoryId,
+        ProductType productType,
         String skuCode,
         String name,
         String material,
@@ -20,6 +22,10 @@ public record AdminBeadSkuView(
         BigDecimal salePrice,
         BigDecimal costPrice,
         Integer stockAlertThreshold,
+        Integer availableQty,
+        Integer reservedQty,
+        Integer soldQty,
+        StockWarningStatus stockWarningStatus,
         Long coverAssetId,
         String coverUrl,
         String tagsJson,

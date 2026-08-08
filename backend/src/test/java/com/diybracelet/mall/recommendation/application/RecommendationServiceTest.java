@@ -3,19 +3,15 @@ package com.diybracelet.mall.recommendation.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.baomidou.mybatisplus.core.conditions.Wrapper;
-import com.diybracelet.mall.diy.application.DiyPricingService;
-import com.diybracelet.mall.diy.domain.CordOption;
-import com.diybracelet.mall.diy.domain.DiyEvaluation;
-import com.diybracelet.mall.diy.domain.FitType;
-import com.diybracelet.mall.diy.domain.OptionStatus;
-import com.diybracelet.mall.diy.domain.SizeStatus;
-import com.diybracelet.mall.diy.infrastructure.mapper.CordOptionMapper;
+import com.diybracelet.mall.recommendation.api.dto.BirthProfileResponse;
 import com.diybracelet.mall.recommendation.api.dto.RecommendationRequest;
 import com.diybracelet.mall.recommendation.api.dto.RecommendationResponse;
 import com.diybracelet.mall.recommendation.api.dto.RecommendationStatusResponse;
@@ -24,17 +20,14 @@ import com.diybracelet.mall.recommendation.domain.AiModelGateway;
 import com.diybracelet.mall.recommendation.domain.ModelRecommendation;
 import com.diybracelet.mall.recommendation.domain.RecommendationCandidate;
 import com.diybracelet.mall.recommendation.domain.RecommendationProfile;
+import com.diybracelet.mall.recommendation.domain.RecommendationRepairFeedback;
 import com.diybracelet.mall.recommendation.infrastructure.AiModelConfigMapper;
 import com.diybracelet.mall.recommendation.infrastructure.RecommendationCandidateMapper;
 import com.diybracelet.mall.shared.error.BusinessException;
 import com.diybracelet.mall.shared.error.ErrorCode;
-import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Stream;
-import org.apache.ibatis.annotations.Select;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -42,14 +35,12 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
 
-/** Backend authority tests for one ephemeral, fully validated recommendation. */
+/** Birthday derivation, model repair, and inventory authority tests. */
 class RecommendationServiceTest {
 
     private AiModelConfigMapper configMapper;
     private RecommendationCandidateMapper candidateMapper;
     private AiModelGateway gateway;
-    private CordOptionMapper cordOptionMapper;
-    private DiyPricingService pricingService;
     private RecommendationService service;
 
     @BeforeEach
@@ -57,21 +48,19 @@ class RecommendationServiceTest {
         configMapper = mock(AiModelConfigMapper.class);
         candidateMapper = mock(RecommendationCandidateMapper.class);
         gateway = mock(AiModelGateway.class);
-        cordOptionMapper = mock(CordOptionMapper.class);
-        pricingService = mock(DiyPricingService.class);
-        service = new RecommendationService(
-            configMapper,
-            candidateMapper,
-            gateway,
-            cordOptionMapper,
-            pricingService
-        );
+        service = new RecommendationService(configMapper, candidateMapper, gateway);
     }
 
     @Test
-    void shouldExposeNotConfiguredDisabledAndAvailableStatuses() {
-        when(configMapper.selectById(1L))
-            .thenReturn(null, config(false, true), config(true, false), config(true, true));
+    void shouldExposeOnlyConfiguredAndEnabledAiAsAvailable() {
+        when(configMapper.selectById(1L)).thenReturn(
+            null,
+            config(false, true, true, 2),
+            config(true, true, false, 2),
+            config(true, true, true, 0),
+            config(true, false, true, 2),
+            config(true, true, true, 2)
+        );
 
         assertThat(service.status()).isEqualTo(
             new RecommendationStatusResponse("NOT_CONFIGURED", false)
@@ -83,13 +72,42 @@ class RecommendationServiceTest {
             new RecommendationStatusResponse("DISABLED", false)
         );
         assertThat(service.status()).isEqualTo(
+            new RecommendationStatusResponse("NOT_CONFIGURED", false)
+        );
+        assertThat(service.status()).isEqualTo(
+            new RecommendationStatusResponse("NOT_CONFIGURED", false)
+        );
+        assertThat(service.status()).isEqualTo(
             new RecommendationStatusResponse("AVAILABLE", true)
         );
     }
 
     @ParameterizedTest(name = "{0}")
+    @MethodSource("birthdayProfiles")
+    void shouldDeriveAuthoritativeBirthdayProfile(
+            String scenario,
+            String birthDate,
+            String constellation,
+            String zodiac,
+            String element
+    ) {
+        assertThat(service.birthProfile(birthDate)).isEqualTo(
+            new BirthProfileResponse(birthDate, constellation, zodiac, element)
+        );
+    }
+
+    @ParameterizedTest(name = "invalid birthday: {0}")
+    @MethodSource("invalidBirthdays")
+    void shouldReturnPreciseBirthdayErrors(String raw, ErrorCode expectedCode) {
+        assertThatThrownBy(() -> service.birthProfile(raw))
+            .isInstanceOf(BusinessException.class)
+            .extracting(error -> ((BusinessException) error).errorCode())
+            .isEqualTo(expectedCode);
+    }
+
+    @ParameterizedTest(name = "unavailable config: {0}")
     @MethodSource("unavailableConfigurations")
-    void shouldFailExplicitlyWithoutLocalFallback(
+    void shouldFailBeforeCatalogOrModelWhenConfigurationIsUnavailable(
             String scenario,
             AiModelConfig config,
             ErrorCode expectedCode
@@ -98,505 +116,362 @@ class RecommendationServiceTest {
 
         assertThatThrownBy(() -> service.recommend(request()))
             .isInstanceOf(BusinessException.class)
-            .satisfies(error -> assertThat(((BusinessException) error).errorCode())
-                .isEqualTo(expectedCode));
+            .extracting(error -> ((BusinessException) error).errorCode())
+            .isEqualTo(expectedCode);
 
         verify(candidateMapper, never()).selectSellableCandidates();
-        verify(gateway, never()).recommend(any(), any(), any());
+        verify(gateway, never()).recommend(any(), any(), any(), any());
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void shouldReturnOnlyServerValidatedSequenceInventoryImagesCordAndAmounts() {
-        prepareConfiguredCandidates();
-        RecommendationRequest request = request(
-            LocalDate.of(1992, 1, 20),
-            "手动星座",
-            "手动生肖",
-            "水",
-            "希望保持专注",
-            "通勤",
-            "灰蓝",
-            new BigDecimal("500.00"),
-            new BigDecimal("160.00"),
-            FitType.STANDARD,
-            "sensitive-free-text"
+    void shouldReturnCatalogEmptyWithoutCallingTheModel() {
+        when(configMapper.selectById(1L)).thenReturn(configured());
+        when(candidateMapper.selectSellableCandidates()).thenReturn(List.of());
+
+        assertThatThrownBy(() -> service.recommend(request()))
+            .isInstanceOf(BusinessException.class)
+            .extracting(error -> ((BusinessException) error).errorCode())
+            .isEqualTo(ErrorCode.CATALOG_EMPTY);
+
+        verify(gateway, never()).recommend(any(), any(), any(), any());
+    }
+
+    @Test
+    void shouldRejectAnUnsupportedWishInspirationBeforeCallingTheModel() {
+        when(configMapper.selectById(1L)).thenReturn(configured());
+
+        assertThatThrownBy(() -> service.recommend(
+            new RecommendationRequest("1992-01-20", "未知心愿", "专注")
+        ))
+            .isInstanceOf(BusinessException.class)
+            .extracting(error -> ((BusinessException) error).errorCode())
+            .isEqualTo(ErrorCode.COMMON_BAD_REQUEST);
+
+        verify(candidateMapper, never()).selectSellableCandidates();
+        verify(gateway, never()).recommend(any(), any(), any(), any());
+    }
+
+    @Test
+    void shouldReturnValidatedBirthdayProfilePlansAndCurrentCatalogImages() {
+        prepareSuccess();
+        RecommendationRequest request = new RecommendationRequest(
+            " 1992-01-20 ", " 事业 ", "  希望日常专注  "
         );
-        when(gateway.recommend(any(), any(), any())).thenReturn(modelResult());
-        when(candidateMapper.selectCurrentSellableByIds(List.of(2001L, 2002L)))
-            .thenReturn(List.of(currentCandidate(2001L, 2), currentCandidate(2002L, 1)));
-        when(cordOptionMapper.selectList(any(Wrapper.class))).thenReturn(List.of(cord()));
-        when(pricingService.evaluate(any())).thenReturn(quotable("314.80"));
 
         RecommendationResponse response = service.recommend(request);
 
-        assertThat(response.schemeName()).isEqualTo("灰蓝通勤");
-        assertThat(response.sequence()).containsExactly(2001L, 2002L, 2001L);
-        LinkedHashMap<Long, Integer> expectedQuantities = new LinkedHashMap<>();
-        expectedQuantities.put(2001L, 2);
-        expectedQuantities.put(2002L, 1);
-        assertThat(response.quantities()).containsExactlyEntriesOf(expectedQuantities);
-        assertThat(response.quantities().values()).allMatch(quantity -> quantity > 0);
-        assertThat(response.items()).extracting(RecommendationResponse.Item::imageUrl)
-            .containsExactly("/current/2001.png", "/current/2002.png");
-        assertThat(response.items()).extracting(RecommendationResponse.Item::reason)
-            .containsExactly("清透层次", "紫色点缀");
-        assertThat(response.cordOption().id()).isEqualTo(6001L);
-        assertThat(response.beadAmount()).isEqualByComparingTo("300.00");
-        assertThat(response.craftFee()).isEqualByComparingTo("10.00");
-        assertThat(response.cordFee()).isEqualByComparingTo("4.80");
-        assertThat(response.totalAmount()).isEqualByComparingTo("314.80");
-        assertThat(response.quoteFingerprint()).isEqualTo("server-fingerprint");
-        assertThat(response.culturalDisclaimer()).contains("文化娱乐参考");
+        assertThat(response.profile()).isEqualTo(
+            new BirthProfileResponse("1992-01-20", "水瓶座", "猴", "风象")
+        );
+        assertThat(response.plans()).hasSize(2);
+        assertThat(response.plans()).extracting(RecommendationResponse.Plan::schemeName)
+            .containsExactly("清透通勤", "沉静层次");
+        assertThat(response.plans().get(0).items())
+            .extracting(RecommendationResponse.Item::imageUrl)
+            .containsExactly(
+                "/current/2001.png", "/current/2002.png", "/current/2003.png"
+            );
+        assertThat(response.plans().get(0).items())
+            .extracting(RecommendationResponse.Item::reason)
+            .containsExactly("清透质感", "柔和层次", "日常点缀");
+        assertThat(response.culturalDisclaimer()).contains("文化娱乐与搭配参考");
 
         ArgumentCaptor<RecommendationProfile> profileCaptor =
             ArgumentCaptor.forClass(RecommendationProfile.class);
-        verify(gateway).recommend(any(), profileCaptor.capture(), any());
+        verify(gateway).recommend(
+            any(), profileCaptor.capture(), any(), isNull()
+        );
         RecommendationProfile profile = profileCaptor.getValue();
-        assertThat(profile.constellation()).isEqualTo("手动星座");
-        assertThat(profile.zodiac()).isEqualTo("手动生肖");
-        assertThat(profile.elementPreference()).isEqualTo("水");
-        assertThat(profile.freeText()).isEqualTo("sensitive-free-text");
+        assertThat(profile.birthDate()).isEqualTo("1992-01-20");
+        assertThat(profile.constellation()).isEqualTo("水瓶座");
+        assertThat(profile.zodiac()).isEqualTo("猴");
+        assertThat(profile.constellationElement()).isEqualTo("风象");
+        assertThat(profile.wishInspiration()).isEqualTo("事业");
+        assertThat(profile.wish()).isEqualTo("希望日常专注");
         assertThat(profile.toString())
-            .doesNotContain(
-                "1992-01-20", "sensitive-free-text", "birthDate", "freeText"
-            )
+            .doesNotContain("1992-01-20", "希望日常专注")
             .contains("sensitiveFieldsRedacted=true");
         assertThat(request.toString())
-            .doesNotContain(
-                "1992-01-20", "sensitive-free-text", "birthDate", "freeText"
-            )
+            .doesNotContain("1992-01-20", "希望日常专注")
             .contains("sensitiveFieldsRedacted=true");
     }
 
-    @Test
-    void shouldDeriveConstellationAndZodiacButNeverFiveElementsFromBirthDate() {
-        prepareConfiguredCandidates();
-        when(gateway.recommend(any(), any(), any())).thenReturn(modelResult());
-        when(candidateMapper.selectCurrentSellableByIds(any()))
-            .thenReturn(List.of(currentCandidate(2001L, 2), currentCandidate(2002L, 1)));
-        when(cordOptionMapper.selectList(any(Wrapper.class))).thenReturn(List.of(cord()));
-        when(pricingService.evaluate(any())).thenReturn(quotable("314.80"));
-        RecommendationRequest request = request(
-            LocalDate.of(2020, 1, 20),
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            new BigDecimal("500.00"),
-            new BigDecimal("160.00"),
-            FitType.STANDARD,
-            null
-        );
-
-        service.recommend(request);
-
-        ArgumentCaptor<RecommendationProfile> profileCaptor =
-            ArgumentCaptor.forClass(RecommendationProfile.class);
-        verify(gateway).recommend(any(), profileCaptor.capture(), any());
-        assertThat(profileCaptor.getValue().constellation()).isEqualTo("水瓶座");
-        assertThat(profileCaptor.getValue().zodiac()).isEqualTo("鼠");
-        assertThat(profileCaptor.getValue().elementPreference()).isNull();
-    }
-
-    @Test
-    void shouldRejectUnknownModelSkuBeforeCurrentStateLookup() {
-        prepareConfiguredCandidates();
-        when(gateway.recommend(any(), any(), any())).thenReturn(new ModelRecommendation(
-            "未知商品",
-            List.of(9999L),
-            List.of(new ModelRecommendation.Reason(9999L, "未知")),
-            "不应返回"
-        ));
-
-        assertInvalidRecommendation(() -> service.recommend(request()));
-
-        verify(candidateMapper, never()).selectCurrentSellableByIds(any());
-        verify(pricingService, never()).evaluate(any());
-    }
-
-    @Test
-    void shouldRejectOffSaleRaceAfterTheModelReturns() {
-        prepareConfiguredCandidates();
-        when(gateway.recommend(any(), any(), any())).thenReturn(modelResult());
-        when(candidateMapper.selectCurrentSellableByIds(any()))
-            .thenReturn(List.of(currentCandidate(2001L, 2)));
-
-        assertInvalidRecommendation(() -> service.recommend(request()));
-
-        verify(pricingService, never()).evaluate(any());
-    }
-
-    @Test
-    void shouldRejectInventoryThatBecameInsufficientAfterTheModelReturns() {
-        prepareConfiguredCandidates();
-        when(gateway.recommend(any(), any(), any())).thenReturn(modelResult());
-        when(candidateMapper.selectCurrentSellableByIds(any())).thenReturn(List.of(
-            currentCandidate(2001L, 1),
-            currentCandidate(2002L, 1)
-        ));
-
-        assertInvalidRecommendation(() -> service.recommend(request()));
-
-        verify(pricingService, never()).evaluate(any());
-    }
-
-    @Test
-    void shouldNormalizeAnyPostModelAuthorityFailureWithoutPartialData() {
-        prepareConfiguredCandidates();
-        when(gateway.recommend(any(), any(), any())).thenReturn(modelResult());
-        when(candidateMapper.selectCurrentSellableByIds(any()))
-            .thenThrow(new IllegalStateException("sensitive database detail"));
-
-        assertThatThrownBy(() -> service.recommend(request()))
-            .isInstanceOf(BusinessException.class)
-            .satisfies(error -> assertThat(((BusinessException) error).errorCode())
-                .isEqualTo(ErrorCode.AI_INVALID_RECOMMENDATION))
-            .hasMessageNotContaining("sensitive database detail");
-    }
-
-    @Test
-    void shouldRejectEmptySequenceInsteadOfProducingNonPositiveQuantities() {
-        prepareConfiguredCandidates();
-        when(gateway.recommend(any(), any(), any())).thenReturn(new ModelRecommendation(
-            "空方案",
-            List.of(),
-            List.of(),
-            "不应返回"
-        ));
-
-        assertInvalidRecommendation(() -> service.recommend(request()));
-
-        verify(candidateMapper, never()).selectCurrentSellableByIds(any());
-        verify(pricingService, never()).evaluate(any());
-    }
-
-    @Test
-    void shouldRejectReasonsThatDoNotCoverExactlyTheSelectedCandidates() {
-        prepareConfiguredCandidates();
-        when(gateway.recommend(any(), any(), any())).thenReturn(new ModelRecommendation(
-            "理由缺失",
-            List.of(2001L, 2002L),
-            List.of(new ModelRecommendation.Reason(2001L, "只有一条")),
-            "不应返回"
-        ));
-
-        assertInvalidRecommendation(() -> service.recommend(request()));
-    }
-
-    @Test
-    void shouldRejectNonQuotableSizingAndNeverReturnThePartialEvaluation() {
-        prepareValidationThroughPricing();
-        when(pricingService.evaluate(any())).thenReturn(nonQuotable());
-
-        assertInvalidRecommendation(() -> service.recommend(request()));
-    }
-
-    @Test
-    void shouldRejectServerTotalOverBudget() {
-        prepareValidationThroughPricing();
-        when(pricingService.evaluate(any())).thenReturn(quotable("500.01"));
-
-        assertInvalidRecommendation(() -> service.recommend(request()));
-    }
-
-    @Test
-    void shouldRejectInventoryThatChangesDuringAuthoritativePricing() {
-        prepareConfiguredCandidates();
-        when(gateway.recommend(any(), any(), any())).thenReturn(modelResult());
-        when(candidateMapper.selectCurrentSellableByIds(any())).thenReturn(
-            List.of(currentCandidate(2001L, 2), currentCandidate(2002L, 1)),
-            List.of(currentCandidate(2001L, 1), currentCandidate(2002L, 1))
-        );
-        when(cordOptionMapper.selectList(any(Wrapper.class))).thenReturn(List.of(cord()));
-        when(pricingService.evaluate(any())).thenReturn(quotable("314.80"));
-
-        assertInvalidRecommendation(() -> service.recommend(request()));
-    }
-
-    @ParameterizedTest(name = "unsafe copy: {0}")
-    @MethodSource("unsafeModelCopy")
-    void shouldRejectDeterministicCulturalOrHealthPromisesFromEveryModelTextField(
-            String scenario,
-            String schemeName,
-            String summary,
-            String reason
+    @ParameterizedTest(name = "repairable gateway error: {0}")
+    @MethodSource("repairableErrors")
+    void shouldRepairOnceWithOnlyTheAllowListedErrorCode(
+            ErrorCode firstError
     ) {
-        prepareConfiguredCandidates();
-        when(gateway.recommend(any(), any(), any())).thenReturn(new ModelRecommendation(
-            schemeName,
-            List.of(2001L),
-            List.of(new ModelRecommendation.Reason(2001L, reason)),
-            summary
-        ));
-
-        assertInvalidRecommendation(() -> service.recommend(request()));
-        verify(candidateMapper, never()).selectCurrentSellableByIds(any());
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
-    void shouldAllowNeutralCulturalReferencesAndSymbolicMeanings() {
-        prepareConfiguredCandidates();
-        when(gateway.recommend(any(), any(), any())).thenReturn(new ModelRecommendation(
-            "传统寓意配色",
-            List.of(2001L, 2002L, 2001L),
-            List.of(
-                new ModelRecommendation.Reason(
-                    2001L,
-                    "蓝色常被用作宁静的色彩象征。"
-                ),
-                new ModelRecommendation.Reason(
-                    2002L,
-                    "紫色的传统寓意可作搭配参考。"
-                )
-            ),
-            "色彩象征与传统寓意内容仅供文化娱乐参考，不构成效果承诺。"
-        ));
-        when(candidateMapper.selectCurrentSellableByIds(List.of(2001L, 2002L)))
-            .thenReturn(List.of(currentCandidate(2001L, 2), currentCandidate(2002L, 1)));
-        when(cordOptionMapper.selectList(any(Wrapper.class))).thenReturn(List.of(cord()));
-        when(pricingService.evaluate(any())).thenReturn(quotable("314.80"));
+        when(configMapper.selectById(1L)).thenReturn(configured());
+        when(candidateMapper.selectSellableCandidates()).thenReturn(candidates());
+        when(gateway.recommend(
+            any(), any(), any(), nullable(RecommendationRepairFeedback.class)
+        )).thenThrow(new BusinessException(firstError, "sensitive prior output"))
+            .thenReturn(validModel());
+        when(candidateMapper.selectCurrentSellableByIds(any()))
+            .thenReturn(currentCandidates());
 
         RecommendationResponse response = service.recommend(request());
 
-        assertThat(response.schemeName()).isEqualTo("传统寓意配色");
-        assertThat(response.summary()).contains("文化娱乐参考");
-        assertThat(response.items())
-            .extracting(RecommendationResponse.Item::reason)
-            .containsExactly(
-                "蓝色常被用作宁静的色彩象征。",
-                "紫色的传统寓意可作搭配参考。"
-            );
+        assertThat(response.plans()).hasSize(2);
+        ArgumentCaptor<RecommendationRepairFeedback> feedbackCaptor =
+            ArgumentCaptor.forClass(RecommendationRepairFeedback.class);
+        verify(gateway, times(2)).recommend(
+            any(), any(), any(), feedbackCaptor.capture()
+        );
+        assertThat(feedbackCaptor.getAllValues())
+            .containsExactly(null, new RecommendationRepairFeedback(firstError.name()));
     }
 
     @Test
-    void shouldRejectRecommendationWhenNoEnabledCordExists() {
-        prepareConfiguredCandidates();
-        when(gateway.recommend(any(), any(), any())).thenReturn(modelResult());
+    void shouldRepairAServiceDetectedPlanCountMismatchOnce() {
+        when(configMapper.selectById(1L)).thenReturn(configured());
+        when(candidateMapper.selectSellableCandidates()).thenReturn(candidates());
+        when(gateway.recommend(
+            any(), any(), any(), nullable(RecommendationRepairFeedback.class)
+        )).thenReturn(new ModelRecommendation(List.of(plan("only-one"))))
+            .thenReturn(validModel());
         when(candidateMapper.selectCurrentSellableByIds(any()))
-            .thenReturn(List.of(currentCandidate(2001L, 2), currentCandidate(2002L, 1)));
-        when(cordOptionMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+            .thenReturn(currentCandidates());
 
-        assertInvalidRecommendation(() -> service.recommend(request()));
+        assertThat(service.recommend(request()).plans()).hasSize(2);
 
-        verify(pricingService, never()).evaluate(any());
+        ArgumentCaptor<RecommendationRepairFeedback> feedbackCaptor =
+            ArgumentCaptor.forClass(RecommendationRepairFeedback.class);
+        verify(gateway, times(2)).recommend(
+            any(), any(), any(), feedbackCaptor.capture()
+        );
+        assertThat(feedbackCaptor.getAllValues().get(1).code())
+            .isEqualTo("AI_RESULT_COUNT_INVALID");
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("upstreamFailures")
-    void shouldPreserveStableUpstreamErrorMapping(
-            String scenario,
+    @Test
+    void shouldReloadCandidatesBeforeRepairingAnInvalidSkuResult() {
+        List<RecommendationCandidate> fresh = List.of(
+            candidate(2001L, "/fresh/2001.png"),
+            candidate(2002L, "/fresh/2002.png"),
+            candidate(2003L, "/fresh/2003.png")
+        );
+        when(configMapper.selectById(1L)).thenReturn(configured());
+        when(candidateMapper.selectSellableCandidates())
+            .thenReturn(candidates(), fresh);
+        when(gateway.recommend(
+            any(), any(), any(), nullable(RecommendationRepairFeedback.class)
+        )).thenThrow(new BusinessException(
+            ErrorCode.AI_RESULT_SKU_INVALID, "invalid sku"
+        )).thenReturn(validModel());
+        when(candidateMapper.selectCurrentSellableByIds(any()))
+            .thenReturn(fresh);
+
+        service.recommend(request());
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<RecommendationCandidate>> candidateCaptor =
+            ArgumentCaptor.forClass(List.class);
+        verify(gateway, times(2)).recommend(
+            any(), any(), candidateCaptor.capture(), any()
+        );
+        assertThat(candidateCaptor.getAllValues())
+            .containsExactly(candidates(), fresh);
+        verify(candidateMapper, times(2)).selectSellableCandidates();
+    }
+
+    @ParameterizedTest(name = "non-repairable: {0}")
+    @MethodSource("nonRepairableErrors")
+    void shouldNeverRetryNonRepairableProviderOrConfigurationErrors(
             ErrorCode errorCode
     ) {
-        prepareConfiguredCandidates();
-        when(gateway.recommend(any(), any(), any())).thenThrow(
-            new BusinessException(errorCode, "AI 服务请求失败")
+        when(configMapper.selectById(1L)).thenReturn(configured());
+        when(candidateMapper.selectSellableCandidates()).thenReturn(candidates());
+        when(gateway.recommend(any(), any(), any(), any())).thenThrow(
+            new BusinessException(errorCode, "provider failure")
         );
 
         assertThatThrownBy(() -> service.recommend(request()))
             .isInstanceOf(BusinessException.class)
-            .satisfies(error -> assertThat(((BusinessException) error).errorCode())
-                .isEqualTo(errorCode));
+            .extracting(error -> ((BusinessException) error).errorCode())
+            .isEqualTo(errorCode);
+
+        verify(gateway).recommend(any(), any(), any(), any());
     }
 
     @Test
-    void candidateSqlMustJoinCurrentOnSaleSkuAndPositiveInventoryWithoutCost() {
-        Select initial = methodSelect("selectSellableCandidates");
-        Select current = methodSelect("selectCurrentSellableByIds", List.class);
-        String sql = String.join(" ", initial.value()) + " "
-            + String.join(" ", current.value());
-
-        assertThat(sql)
-            .containsIgnoringCase("join inventory_balance")
-            .containsIgnoringCase("status = 'ON_SALE'")
-            .containsIgnoringCase("available_qty > 0")
-            .containsIgnoringCase("join asset_file")
-            .doesNotContainIgnoringCase("left join asset_file")
-            .containsIgnoringCase("asset.status = 'ACTIVE'")
-            .containsIgnoringCase("asset.public_url is not null")
-            .containsIgnoringCase("length(trim(asset.public_url)) > 0")
-            .doesNotContainIgnoringCase("cost_price");
-    }
-
-    private void prepareConfiguredCandidates() {
-        when(configMapper.selectById(1L)).thenReturn(config(true, true));
-        when(candidateMapper.selectSellableCandidates()).thenReturn(List.of(
-            initialCandidate(2001L, 20),
-            initialCandidate(2002L, 20)
+    void shouldStopAfterOneRepairAndPreserveTheSecondDistinctError() {
+        when(configMapper.selectById(1L)).thenReturn(configured());
+        when(candidateMapper.selectSellableCandidates()).thenReturn(candidates());
+        when(gateway.recommend(
+            any(), any(), any(), nullable(RecommendationRepairFeedback.class)
+        )).thenThrow(new BusinessException(
+            ErrorCode.AI_RESPONSE_FORMAT_INVALID, "first"
+        )).thenThrow(new BusinessException(
+            ErrorCode.AI_RESPONSE_CONTENT_UNSAFE, "second"
         ));
-    }
 
-    private void prepareValidationThroughPricing() {
-        prepareConfiguredCandidates();
-        when(gateway.recommend(any(), any(), any())).thenReturn(modelResult());
-        when(candidateMapper.selectCurrentSellableByIds(any()))
-            .thenReturn(List.of(currentCandidate(2001L, 2), currentCandidate(2002L, 1)));
-        when(cordOptionMapper.selectList(any(Wrapper.class))).thenReturn(List.of(cord()));
-    }
-
-    private void assertInvalidRecommendation(org.assertj.core.api.ThrowableAssert.ThrowingCallable call) {
-        assertThatThrownBy(call)
+        assertThatThrownBy(() -> service.recommend(request()))
             .isInstanceOf(BusinessException.class)
-            .satisfies(error -> assertThat(((BusinessException) error).errorCode())
-                .isEqualTo(ErrorCode.AI_INVALID_RECOMMENDATION));
+            .extracting(error -> ((BusinessException) error).errorCode())
+            .isEqualTo(ErrorCode.AI_RESPONSE_CONTENT_UNSAFE);
+
+        verify(gateway, times(2)).recommend(any(), any(), any(), any());
     }
 
-    private Select methodSelect(String methodName, Class<?>... parameterTypes) {
-        try {
-            return RecommendationCandidateMapper.class
-                .getMethod(methodName, parameterTypes)
-                .getAnnotation(Select.class);
-        } catch (NoSuchMethodException error) {
-            throw new AssertionError(error);
-        }
+    @Test
+    void shouldRejectUnsafeCopyAndNeverReturnPartialPlans() {
+        when(configMapper.selectById(1L)).thenReturn(configured());
+        when(candidateMapper.selectSellableCandidates()).thenReturn(candidates());
+        ModelRecommendation unsafe = new ModelRecommendation(List.of(
+            new ModelRecommendation.Plan(
+                "佩戴后会发财",
+                "日常配色。",
+                validItems()
+            ),
+            plan("第二套")
+        ));
+        when(gateway.recommend(any(), any(), any(), any()))
+            .thenReturn(unsafe, unsafe);
+
+        assertThatThrownBy(() -> service.recommend(request()))
+            .isInstanceOf(BusinessException.class)
+            .extracting(error -> ((BusinessException) error).errorCode())
+            .isEqualTo(ErrorCode.AI_RESPONSE_CONTENT_UNSAFE);
+
+        verify(candidateMapper, never()).selectCurrentSellableByIds(any());
+        verify(gateway, times(2)).recommend(any(), any(), any(), any());
+    }
+
+    @Test
+    void shouldTreatDuplicateCurrentCatalogRowsAsInternalDataFailure() {
+        when(configMapper.selectById(1L)).thenReturn(configured());
+        when(candidateMapper.selectSellableCandidates()).thenReturn(candidates());
+        when(gateway.recommend(any(), any(), any(), any())).thenReturn(validModel());
+        when(candidateMapper.selectCurrentSellableByIds(any())).thenReturn(List.of(
+            candidate(2001L, "/current/a.png"),
+            candidate(2001L, "/current/b.png"),
+            candidate(2002L, "/current/2002.png"),
+            candidate(2003L, "/current/2003.png")
+        ));
+
+        assertThatThrownBy(() -> service.recommend(request()))
+            .isInstanceOf(BusinessException.class)
+            .extracting(error -> ((BusinessException) error).errorCode())
+            .isEqualTo(ErrorCode.COMMON_INTERNAL_ERROR);
+
+        verify(gateway).recommend(any(), any(), any(), any());
+    }
+
+    private void prepareSuccess() {
+        when(configMapper.selectById(1L)).thenReturn(configured());
+        when(candidateMapper.selectSellableCandidates()).thenReturn(candidates());
+        when(gateway.recommend(any(), any(), any(), any())).thenReturn(validModel());
+        when(candidateMapper.selectCurrentSellableByIds(any()))
+            .thenReturn(currentCandidates());
     }
 
     private RecommendationRequest request() {
-        return request(
-            null,
-            null,
-            null,
-            "水",
-            "专注",
-            "通勤",
-            "灰蓝",
-            new BigDecimal("500.00"),
-            new BigDecimal("160.00"),
-            FitType.STANDARD,
-            null
-        );
+        return new RecommendationRequest("1992-01-20", null, "专注");
     }
 
-    private RecommendationRequest request(
-            LocalDate birthDate,
-            String constellation,
-            String zodiac,
-            String elementPreference,
-            String wish,
-            String scene,
-            String colorPreference,
-            BigDecimal budget,
-            BigDecimal wristCircumferenceMm,
-            FitType fitType,
-            String freeText
+    private AiModelConfig configured() {
+        return config(true, true, true, 2);
+    }
+
+    private AiModelConfig config(
+            boolean hasKey,
+            boolean hasPrompt,
+            boolean enabled,
+            int planCount
     ) {
-        return new RecommendationRequest(
-            birthDate,
-            constellation,
-            zodiac,
-            elementPreference,
-            wish,
-            scene,
-            colorPreference,
-            budget,
-            wristCircumferenceMm,
-            fitType,
-            freeText
-        );
-    }
-
-    private AiModelConfig config(boolean keyConfigured, boolean enabled) {
         AiModelConfig config = new AiModelConfig();
         config.setId(1L);
         config.setProvider("DEEPSEEK");
         config.setBaseUrl("https://api.deepseek.com");
         config.setModelName("deepseek-v4-flash");
-        config.setEncryptedApiKey(keyConfigured ? "encrypted-key" : null);
+        config.setEncryptedApiKey(hasKey ? "encrypted-key" : null);
         config.setEnabled(enabled);
-        config.setTimeoutSeconds(15);
+        config.setTimeoutSeconds(30);
         config.setMaxOutputTokens(2048);
+        config.setRecommendationPrompt(hasPrompt ? "生成日常材质搭配" : null);
+        config.setPlanCount(planCount);
         config.setVersion(1L);
         return config;
     }
 
-    private RecommendationCandidate initialCandidate(Long id, int inventory) {
+    private List<RecommendationCandidate> candidates() {
+        return List.of(
+            candidate(2001L, "/initial/2001.png"),
+            candidate(2002L, "/initial/2002.png"),
+            candidate(2003L, "/initial/2003.png")
+        );
+    }
+
+    private List<RecommendationCandidate> currentCandidates() {
+        return List.of(
+            candidate(2001L, "/current/2001.png"),
+            candidate(2002L, "/current/2002.png"),
+            candidate(2003L, "/current/2003.png")
+        );
+    }
+
+    private RecommendationCandidate candidate(Long id, String imageUrl) {
         return new RecommendationCandidate(
             id,
             "珠子 " + id,
             "天然水晶",
-            id == 2001L ? "透明" : "紫色",
-            new BigDecimal("8.00"),
-            new BigDecimal("12.80"),
-            "[\"专注\"]",
-            inventory,
-            "/initial/" + id + ".png"
+            "灰蓝",
+            new java.math.BigDecimal("8.00"),
+            new java.math.BigDecimal("10.00"),
+            "[\"日常\"]",
+            200,
+            imageUrl
         );
     }
 
-    private RecommendationCandidate currentCandidate(Long id, int inventory) {
-        RecommendationCandidate candidate = initialCandidate(id, inventory);
-        return new RecommendationCandidate(
-            candidate.skuId(),
-            candidate.name(),
-            candidate.material(),
-            candidate.color(),
-            candidate.diameterMm(),
-            candidate.salePrice(),
-            candidate.tagsJson(),
-            candidate.availableQty(),
-            "/current/" + id + ".png"
-        );
-    }
-
-    private ModelRecommendation modelResult() {
-        return new ModelRecommendation(
-            "灰蓝通勤",
-            List.of(2001L, 2002L, 2001L),
-            List.of(
-                new ModelRecommendation.Reason(2001L, "清透层次"),
-                new ModelRecommendation.Reason(2002L, "紫色点缀")
+    private ModelRecommendation validModel() {
+        return new ModelRecommendation(List.of(
+            new ModelRecommendation.Plan(
+                "清透通勤",
+                "适合日常的清透材质组合。",
+                validItems()
             ),
-            "一套适合日常通勤的配色。"
+            new ModelRecommendation.Plan(
+                "沉静层次",
+                "以沉静色调形成层次。",
+                List.of(
+                    new ModelRecommendation.Item(2003L, "温和底色"),
+                    new ModelRecommendation.Item(2002L, "细腻过渡"),
+                    new ModelRecommendation.Item(2001L, "通透收束")
+                )
+            )
+        ));
+    }
+
+    private ModelRecommendation.Plan plan(String name) {
+        return new ModelRecommendation.Plan(name, "日常材质搭配。", validItems());
+    }
+
+    private List<ModelRecommendation.Item> validItems() {
+        return List.of(
+            new ModelRecommendation.Item(2001L, "清透质感"),
+            new ModelRecommendation.Item(2002L, "柔和层次"),
+            new ModelRecommendation.Item(2003L, "日常点缀")
         );
     }
 
-    private CordOption cord() {
-        CordOption cord = new CordOption();
-        cord.setId(6001L);
-        cord.setCode("ELASTIC-CLEAR");
-        cord.setName("透明弹力绳");
-        cord.setColorHex("#E8E4DC");
-        cord.setExtraFee(new BigDecimal("4.80"));
-        cord.setStatus(OptionStatus.ENABLED);
-        cord.setSortOrder(10);
-        cord.setOptionVersion(1L);
-        return cord;
-    }
-
-    private DiyEvaluation quotable(String total) {
-        return new DiyEvaluation(
-            true,
-            List.of(),
-            Map.of(2001L, 2, 2002L, 1),
-            new BigDecimal("24.00"),
-            new BigDecimal("24.00"),
-            BigDecimal.ZERO,
-            SizeStatus.FIT,
-            new BigDecimal("300.00"),
-            new BigDecimal("10.00"),
-            new BigDecimal("4.80"),
-            new BigDecimal(total),
-            "server-fingerprint"
+    private static Stream<Arguments> birthdayProfiles() {
+        return Stream.of(
+            Arguments.of("capricorn lower boundary", "2000-01-19", "摩羯座", "龙", "土象"),
+            Arguments.of("aquarius boundary", "1992-01-20", "水瓶座", "猴", "风象"),
+            Arguments.of("pisces", "2000-02-29", "双鱼座", "龙", "水象"),
+            Arguments.of("aries", "2000-03-21", "白羊座", "龙", "火象")
         );
     }
 
-    private DiyEvaluation nonQuotable() {
-        return new DiyEvaluation(
-            false,
-            List.of(),
-            Map.of(2001L, 2, 2002L, 1),
-            BigDecimal.ZERO,
-            BigDecimal.ZERO,
-            BigDecimal.ZERO,
-            SizeStatus.TOO_SHORT,
-            BigDecimal.ZERO,
-            BigDecimal.ZERO,
-            BigDecimal.ZERO,
-            BigDecimal.ZERO,
-            null
+    private static Stream<Arguments> invalidBirthdays() {
+        return Stream.of(
+            Arguments.of(null, ErrorCode.BIRTH_DATE_REQUIRED),
+            Arguments.of("   ", ErrorCode.BIRTH_DATE_REQUIRED),
+            Arguments.of("not-a-date", ErrorCode.BIRTH_DATE_INVALID),
+            Arguments.of("2023-02-29", ErrorCode.BIRTH_DATE_INVALID),
+            Arguments.of(LocalDate.now().plusDays(1).toString(), ErrorCode.BIRTH_DATE_INVALID)
         );
     }
 
@@ -604,88 +479,47 @@ class RecommendationServiceTest {
         RecommendationServiceTest fixture = new RecommendationServiceTest();
         return Stream.of(
             Arguments.of("missing singleton", null, ErrorCode.AI_NOT_CONFIGURED),
-            Arguments.of("missing key", fixture.config(false, true), ErrorCode.AI_NOT_CONFIGURED),
-            Arguments.of("disabled", fixture.config(true, false), ErrorCode.AI_DISABLED)
-        );
-    }
-
-    private static Stream<Arguments> upstreamFailures() {
-        return Stream.of(
-            Arguments.of("unauthorized", ErrorCode.AI_UNAUTHORIZED),
-            Arguments.of("model unavailable", ErrorCode.AI_MODEL_UNAVAILABLE),
-            Arguments.of("rate limited", ErrorCode.AI_RATE_LIMITED),
-            Arguments.of("timeout", ErrorCode.AI_TEMPORARILY_UNAVAILABLE)
-        );
-    }
-
-    private static Stream<Arguments> unsafeModelCopy() {
-        return Stream.of(
             Arguments.of(
-                "scheme future fortune outcome",
-                "佩戴后会发财",
-                "仅作日常配色参考。",
-                "灰蓝配色。"
+                "missing key",
+                fixture.config(false, true, true, 2),
+                ErrorCode.AI_NOT_CONFIGURED
             ),
             Arguments.of(
-                "summary cures headache",
-                "日常手串",
-                "这颗珠子能治好头痛。",
-                "灰蓝配色。"
+                "missing prompt",
+                fixture.config(true, false, true, 2),
+                ErrorCode.AI_PROMPT_NOT_CONFIGURED
             ),
             Arguments.of(
-                "disclaimer cannot sanitize fortune outcome",
-                "日常手串",
-                "佩戴后会发财，仅供文化娱乐参考。",
-                "灰蓝配色。"
+                "invalid plan count",
+                fixture.config(true, true, true, 6),
+                ErrorCode.AI_PROMPT_NOT_CONFIGURED
             ),
             Arguments.of(
-                "reason synonymous fortune outcome",
-                "日常手串",
-                "仅作日常配色参考。",
-                "戴上后就能发大财。"
-            ),
-            Arguments.of(
-                "reason synonymous medical outcome",
-                "日常手串",
-                "仅作日常配色参考。",
-                "这颗珠子可以医好偏头疼。"
-            ),
-            Arguments.of(
-                "scheme guarantee",
-                "保证发财手串",
-                "仅作日常配色参考。",
-                "灰蓝配色。"
-            ),
-            Arguments.of(
-                "summary inevitable outcome",
-                "日常手串",
-                "佩戴后必然获得财富。",
-                "灰蓝配色。"
-            ),
-            Arguments.of(
-                "summary brings luck",
-                "日常手串",
-                "佩戴后将带来好运。",
-                "灰蓝配色。"
-            ),
-            Arguments.of(
-                "summary cancer prevention",
-                "日常手串",
-                "这套搭配可预防癌症。",
-                "灰蓝配色。"
-            ),
-            Arguments.of(
-                "reason disease relief",
-                "日常手串",
-                "仅作日常配色参考。",
-                "这颗珠子能够缓解疾病。"
-            ),
-            Arguments.of(
-                "reason blood pressure",
-                "日常手串",
-                "仅作日常配色参考。",
-                "长期佩戴可降低血压。"
+                "disabled",
+                fixture.config(true, true, false, 2),
+                ErrorCode.AI_DISABLED
             )
+        );
+    }
+
+    private static Stream<ErrorCode> repairableErrors() {
+        return Stream.of(
+            ErrorCode.AI_RESPONSE_FORMAT_INVALID,
+            ErrorCode.AI_RESULT_COUNT_INVALID,
+            ErrorCode.AI_RESULT_ITEM_COUNT_INVALID,
+            ErrorCode.AI_RESULT_DUPLICATE_SKU,
+            ErrorCode.AI_RESULT_SKU_INVALID,
+            ErrorCode.AI_RESPONSE_CONTENT_UNSAFE
+        );
+    }
+
+    private static Stream<ErrorCode> nonRepairableErrors() {
+        return Stream.of(
+            ErrorCode.AI_UNAUTHORIZED,
+            ErrorCode.AI_MODEL_UNAVAILABLE,
+            ErrorCode.AI_RATE_LIMITED,
+            ErrorCode.AI_TIMEOUT,
+            ErrorCode.AI_UPSTREAM_ERROR
         );
     }
 }

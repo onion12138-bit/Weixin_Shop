@@ -20,7 +20,7 @@ class CatalogMigrationTest extends MySqlIntegrationTest {
     private JdbcTemplate jdbcTemplate;
 
     /**
-     * 空库启动后必须至少存在两个分类和四个已上架珠子。
+     * 空库启动后必须包含基础珠子、绳类和其他饰品分类。
      */
     @Test
     void shouldCreateCatalogTablesAndSeedVisibleProducts() {
@@ -33,8 +33,19 @@ class CatalogMigrationTest extends MySqlIntegrationTest {
             Integer.class
         );
 
-        assertThat(categoryCount).isGreaterThanOrEqualTo(2);
+        Integer cordCount = jdbcTemplate.queryForObject(
+            "select count(*) from category where slug = 'cord' and product_type = 'CORD'",
+            Integer.class
+        );
+        Integer accessoryCount = jdbcTemplate.queryForObject(
+            "select count(*) from category where slug = 'accessory' and product_type = 'ACCESSORY'",
+            Integer.class
+        );
+
+        assertThat(categoryCount).isGreaterThanOrEqualTo(4);
         assertThat(beadCount).isGreaterThanOrEqualTo(4);
+        assertThat(cordCount).isEqualTo(1);
+        assertThat(accessoryCount).isEqualTo(1);
     }
 
     @Test
@@ -66,5 +77,37 @@ class CatalogMigrationTest extends MySqlIntegrationTest {
         );
         assertThat(config.get("canvas_background_color")).isEqualTo("#fffdfb");
         assertThat(config.get("config_version")).isEqualTo(1L);
+    }
+
+    @Test
+    void shouldCreatePackageHomeRecommendationFlag() {
+        Integer recommendationColumns = jdbcTemplate.queryForObject("""
+            select count(*)
+              from information_schema.columns
+             where table_schema = database()
+               and table_name = 'product_package'
+               and column_name = 'recommended'
+            """, Integer.class);
+        Boolean seededRecommendation = jdbcTemplate.queryForObject(
+            "select recommended from product_package where id = 3001",
+            Boolean.class
+        );
+
+        assertThat(recommendationColumns).isEqualTo(1);
+        assertThat(seededRecommendation).isFalse();
+    }
+
+    @Test
+    void shouldCreateCustomerAccountAndCouponTables() {
+        Integer tableCount = jdbcTemplate.queryForObject("""
+            select count(*)
+              from information_schema.tables
+             where table_schema = database()
+               and table_name in (
+                 'customer_profile', 'customer_address',
+                 'coupon_template', 'customer_coupon'
+               )
+            """, Integer.class);
+        assertThat(tableCount).isEqualTo(4);
     }
 }

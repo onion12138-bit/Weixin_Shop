@@ -25,7 +25,7 @@ source ./scripts/project-env.sh
 `.env` 导出到当前 Shell，使 Docker、后端和前端读取同一份配置。本地未显式配置
 `AI_CONFIG_ENCRYPTION_KEY` 时，脚本会生成 Base64 编码的 32 字节 AES 主密钥，保存到
 Git 忽略的 `.local-secrets/ai-config-encryption-key`，并在后续启动中稳定复用。不要在保存
-DeepSeek API Key 后删除该文件，否则已有密文将无法解密。正式部署仍应在仓库外显式配置
+DeepSeek API Key 后删除该文件，否则已有密文将无法解密。后台普通配置响应不会返回 Key；管理员只有主动点击眼睛按钮时才通过受保护且禁止缓存的接口临时查看。正式部署仍应在仓库外显式配置
 并备份 `AI_CONFIG_ENCRYPTION_KEY`；加密主密钥和 Provider Key 都不得提交到仓库。
 
 ## 安装前端依赖
@@ -91,7 +91,7 @@ BACKEND_BASE_URL=http://localhost:8081 \
 ./scripts/recommendation-smoke.sh
 ```
 
-脚本会通过后台 API 保存官方 `https://api.deepseek.com`、`deepseek-v4-flash`、启用状态和超时配置，再调用连接测试与一套推荐。不得在共享终端历史或日志中粘贴真实密钥；更推荐先在安全 Shell 环境中导出变量。当前里程碑尚未执行这条有效 Key live 验证。
+脚本会通过后台 API 保存官方 `https://api.deepseek.com`、`deepseek-v4-flash`、推荐提示词、推荐套数、启用状态和超时配置，再调用连接测试与多套库存材质推荐。可用 `RECOMMENDATION_PLAN_COUNT=1..5` 覆盖默认 3 套。正式推荐显式使用非思考 JSON Output，并按配置套数提供完整结构示例。不得在共享终端历史或日志中粘贴真实密钥；更推荐先在安全 Shell 环境中导出变量。当前已完成 Key 保存、连接测试和真实多套调用；最近一次 Provider 输出未通过每套种类数校验，成功结果仍待验收。
 
 ## 3 款图片演示散珠
 

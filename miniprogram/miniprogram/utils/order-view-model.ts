@@ -4,21 +4,25 @@ import type {
 } from '../services/orders'
 
 const STATUS_TEXT: Record<OrderStatus, string> = {
-  PENDING_PAYMENT: '待支付',
-  PAID: '已支付',
+  PENDING_PAYMENT: '待付款',
   IN_PRODUCTION: '制作中',
-  SHIPPED: '已发货',
+  PENDING_SHIPMENT: '待发货',
+  SHIPPED: '待收货',
   COMPLETED: '已完成',
   CANCELLED: '已取消',
+  AFTER_SALE: '售后中',
+  REFUNDED: '退款成功',
 }
 
 const PROGRESS_INDEX: Record<OrderStatus, number> = {
   PENDING_PAYMENT: 0,
-  PAID: 1,
-  IN_PRODUCTION: 2,
+  IN_PRODUCTION: 1,
+  PENDING_SHIPMENT: 2,
   SHIPPED: 3,
   COMPLETED: 4,
   CANCELLED: 0,
+  AFTER_SALE: 0,
+  REFUNDED: 0,
 }
 
 /**
@@ -52,6 +56,7 @@ export function toOrderDetail(order: OrderResponse) {
     ...toOrderCard(order),
     canMockPay: order.status === 'PENDING_PAYMENT',
     canCancel: order.status === 'PENDING_PAYMENT',
+    canConfirmReceipt: order.status === 'SHIPPED',
     progressIndex: PROGRESS_INDEX[order.status],
     items: order.items.map((item) => ({
       ...item,
@@ -62,6 +67,7 @@ export function toOrderDetail(order: OrderResponse) {
     beadAmountText: money(order.beadAmount),
     craftFeeText: money(order.craftFee),
     cordFeeText: money(order.cordFee),
+    discountAmountText: `-${money(order.discountAmount)}`,
   }
 }
 

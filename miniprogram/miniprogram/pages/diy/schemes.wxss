@@ -186,3 +186,7 @@
   color: #fff;
   background: #754657;
 }
+
+.scheme-actions button.delete {
+  flex-basis: 100%;
+}

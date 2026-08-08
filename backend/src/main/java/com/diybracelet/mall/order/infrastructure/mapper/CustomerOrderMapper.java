@@ -69,18 +69,16 @@ public interface CustomerOrderMapper extends BaseMapper<CustomerOrder> {
             """)
     CustomerOrder selectByIdForUpdate(@Param("orderId") Long orderId);
 
-    /**
-     * 把待支付订单标记为已支付。
-     */
+    /** 支付成功后订单直接进入制作中。 */
     @Update("""
             update customer_order
-            set status = 'PAID',
+            set status = 'IN_PRODUCTION',
                 paid_at = #{paidAt},
                 version = version + 1
             where id = #{orderId}
               and status = 'PENDING_PAYMENT'
             """)
-    int markPaid(
+    int markPaidAndStartProduction(
             @Param("orderId") Long orderId,
             @Param("paidAt") LocalDateTime paidAt
     );
@@ -101,17 +99,15 @@ public interface CustomerOrderMapper extends BaseMapper<CustomerOrder> {
             @Param("cancelledAt") LocalDateTime cancelledAt
     );
 
-    /**
-     * 已支付订单进入制作中。
-     */
+    /** 制作完成后进入待发货。 */
     @Update("""
             update customer_order
-            set status = 'IN_PRODUCTION',
+            set status = 'PENDING_SHIPMENT',
                 version = version + 1
             where id = #{orderId}
-              and status = 'PAID'
+              and status = 'IN_PRODUCTION'
             """)
-    int markInProduction(@Param("orderId") Long orderId);
+    int markPendingShipment(@Param("orderId") Long orderId);
 
     /**
      * 制作中订单完成发货。
@@ -122,7 +118,7 @@ public interface CustomerOrderMapper extends BaseMapper<CustomerOrder> {
                 shipped_at = #{shippedAt},
                 version = version + 1
             where id = #{orderId}
-              and status = 'IN_PRODUCTION'
+              and status = 'PENDING_SHIPMENT'
             """)
     int markShipped(
             @Param("orderId") Long orderId,
@@ -143,5 +139,26 @@ public interface CustomerOrderMapper extends BaseMapper<CustomerOrder> {
     int markCompleted(
             @Param("orderId") Long orderId,
             @Param("completedAt") LocalDateTime completedAt
+    );
+
+    /** 后台修改尚未发货订单的收货信息。 */
+    @Update("""
+            update customer_order
+            set contact_name = #{contactName},
+                contact_phone = #{contactPhone},
+                address_detail = #{addressDetail},
+                order_note = #{orderNote},
+                version = version + 1
+            where id = #{orderId}
+              and status in (
+                  'PENDING_PAYMENT', 'IN_PRODUCTION', 'PENDING_SHIPMENT'
+              )
+            """)
+    int updateAddress(
+            @Param("orderId") Long orderId,
+            @Param("contactName") String contactName,
+            @Param("contactPhone") String contactPhone,
+            @Param("addressDetail") String addressDetail,
+            @Param("orderNote") String orderNote
     );
 }

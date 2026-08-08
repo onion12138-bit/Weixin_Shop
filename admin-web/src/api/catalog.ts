@@ -1,11 +1,14 @@
 import { request, requestBlob } from './http'
 
 export type CatalogStatus = 'DRAFT' | 'ON_SALE' | 'OFF_SALE'
+export type ProductType = 'BEAD' | 'CORD' | 'ACCESSORY'
+export type StockWarningStatus = 'NORMAL' | 'RESTOCK'
 
 export interface Category {
   id: number
   name: string
   slug: string
+  productType: ProductType
   sortOrder: number
   status: CatalogStatus
 }
@@ -13,14 +16,19 @@ export interface Category {
 export interface BeadSku {
   id: number
   categoryId: number
+  productType: ProductType
   skuCode: string
   name: string
   material: string
   color: string
-  diameterMm: number
+  diameterMm: number | null
   salePrice: number
   costPrice: number
   stockAlertThreshold: number
+  availableQty: number
+  reservedQty: number
+  soldQty: number
+  stockWarningStatus: StockWarningStatus
   coverAssetId: number | null
   coverUrl: string | null
   tagsJson: string
@@ -46,6 +54,7 @@ export interface BeadQuery {
 export interface SaveCategoryRequest {
   name: string
   slug: string
+  productType: ProductType
   sortOrder: number
   status: CatalogStatus
 }
@@ -56,7 +65,7 @@ export interface SaveBeadSkuRequest {
   name: string
   material: string
   color: string
-  diameterMm: number
+  diameterMm: number | null
   salePrice: number
   costPrice: number
   stockAlertThreshold: number
@@ -77,6 +86,7 @@ export interface ProductPackage {
   salePrice: number
   coverAssetId: number | null
   status: CatalogStatus
+  recommended: boolean
 }
 
 export interface AdminPackageItem {
@@ -86,6 +96,7 @@ export interface AdminPackageItem {
 }
 
 export interface AdminPackageDetail extends ProductPackage {
+  coverUrl: string | null
   items: AdminPackageItem[]
 }
 
@@ -282,6 +293,19 @@ export function changePackageStatus(
     method: 'PATCH',
     body: JSON.stringify({ status }),
   })
+}
+
+export function changePackageRecommendation(
+  id: number,
+  recommended: boolean,
+): Promise<ProductPackage> {
+  return request<ProductPackage>(
+    `/admin/catalog/packages/${id}/recommendation`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ recommended }),
+    },
+  )
 }
 
 /**

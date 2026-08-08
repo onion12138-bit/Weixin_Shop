@@ -1,31 +1,28 @@
 export type RecommendationFitType = 'SNUG' | 'STANDARD' | 'LOOSE'
 
+export const WISH_INSPIRATION_OPTIONS = [
+  '财运',
+  '姻缘',
+  '事业',
+  '平安',
+  '学业',
+  '相守',
+  '家庭',
+  '活力',
+] as const
+
+export type WishInspiration = typeof WISH_INSPIRATION_OPTIONS[number]
+
 export interface RecommendationForm {
   birthDate: string
-  manualConstellation: string
-  manualZodiac: string
-  elementPreference: string
+  wishInspiration: string
   wish: string
-  scene: string
-  colorPreference: string
-  budget: string
-  wristCircumferenceMm: string
-  fitType: RecommendationFitType
-  freeText: string
 }
 
 export interface RecommendationRequest {
-  birthDate?: string
-  constellation?: string
-  zodiac?: string
-  elementPreference?: string
+  birthDate: string
+  wishInspiration?: WishInspiration
   wish?: string
-  scene?: string
-  colorPreference?: string
-  budget: number
-  wristCircumferenceMm: number
-  fitType: RecommendationFitType
-  freeText?: string
 }
 
 export interface RecommendationStatusResponse {
@@ -33,61 +30,52 @@ export interface RecommendationStatusResponse {
   available: boolean
 }
 
+export interface RecommendationProfileResponse {
+  birthDate: string
+  constellation: string
+  zodiac: string
+  constellationElement: string
+}
+
 export interface RecommendationItem {
   skuId: number
   name: string
   imageUrl: string
-  quantity: number
   reason: string
 }
 
-export interface RecommendationResponse {
+export interface RecommendationPlan {
   schemeName: string
-  sequence: number[]
-  quantities: Record<number, number>
   items: RecommendationItem[]
   summary: string
-  cordOption: {
-    id: number
-    code: string
-    name: string
-    colorHex: string
-  }
-  beadAmount: number
-  craftFee: number
-  cordFee: number
-  totalAmount: number
-  quoteFingerprint: string
+}
+
+export interface RecommendationResponse {
+  profile: RecommendationProfileResponse
+  plans: RecommendationPlan[]
   culturalDisclaimer: string
 }
 
 export interface RecommendationViewModel {
-  schemeName: string
-  summary: string
-  items: Array<RecommendationItem & { quantityText: string }>
-  orderedBeads: Array<{
-    order: number
-    skuId: number
-    name: string
-    imageUrl: string
+  plans: Array<RecommendationPlan & {
+    key: string
+    numberLabel: string
   }>
-  cordOptionName: string
-  amountDetails: Array<{ label: string; amountText: string }>
-  totalAmountText: string
   culturalDisclaimer: string
 }
 
 export interface PendingAiRecommendation {
   sequence: number[]
-  wristCircumferenceMm: number
-  fitType: RecommendationFitType
-  cordOptionId: number
 }
 
-export interface AiRecommendationEditorDraft extends PendingAiRecommendation {
+export interface AiRecommendationEditorDraft {
   schemeId: 0
   schemeVersion: 0
   name: 'AI 推荐手串'
+  sequence: number[]
+  wristCircumferenceMm: number
+  fitType: RecommendationFitType
+  cordOptionId: number
   selectedIndex: -1
 }
 
@@ -106,105 +94,44 @@ export interface AiHandoffValidation {
 
 export const PENDING_AI_RECOMMENDATION_KEY = 'pending_ai_recommendation'
 
-const CONSTELLATION_LIMITS: Array<[number, string]> = [
-  [119, '摩羯座'],
-  [218, '水瓶座'],
-  [320, '双鱼座'],
-  [419, '白羊座'],
-  [520, '金牛座'],
-  [621, '双子座'],
-  [722, '巨蟹座'],
-  [822, '狮子座'],
-  [922, '处女座'],
-  [1023, '天秤座'],
-  [1122, '天蝎座'],
-  [1221, '射手座'],
-]
-
-const CHINESE_ZODIAC = [
-  '鼠', '牛', '虎', '兔', '龙', '蛇',
-  '马', '羊', '猴', '鸡', '狗', '猪',
-]
-
-const FIT_TYPES: RecommendationFitType[] = ['SNUG', 'STANDARD', 'LOOSE']
 const GENERIC_UNAVAILABLE = 'AI 推荐服务暂时不可用，请稍后重试'
-
-/** Matches Task 8: ordinary Gregorian-year mapping, not lunar-new-year or 立春. */
-export function deriveChineseZodiac(date: string): string {
-  const parsed = parseDate(date)
-  if (!parsed) return ''
-  const index = positiveModulo(parsed.year - 4, CHINESE_ZODIAC.length)
-  return CHINESE_ZODIAC[index]
-}
-
-export function deriveConstellation(date: string): string {
-  const parsed = parseDate(date)
-  if (!parsed) return ''
-  const marker = parsed.month * 100 + parsed.day
-  if (marker >= 1222) return '摩羯座'
-  return CONSTELLATION_LIMITS.find(([limit]) => marker <= limit)?.[1]
-    || '摩羯座'
-}
 
 export function validateRecommendationForm(
   form: RecommendationForm,
   today: string,
 ): string | null {
-  if (form.birthDate) {
-    const birthDate = parseDate(form.birthDate)
-    if (!birthDate) return '请输入有效生日'
-    const todayDate = parseDate(today)
-    if (todayDate && dateMarker(birthDate) > dateMarker(todayDate)) {
-      return '生日不能晚于今天'
-    }
+  if (!form.birthDate.trim()) return '请选择生日'
+  const birthDate = parseDate(form.birthDate)
+  if (!birthDate) return '请选择有效生日'
+  const todayDate = parseDate(today)
+  if (todayDate && dateMarker(birthDate) > dateMarker(todayDate)) {
+    return '生日不能晚于今天'
   }
-
-  const textLimits: Array<[string, number, string]> = [
-    [form.manualConstellation, 16, '星座最多 16 个字'],
-    [form.manualZodiac, 16, '生肖最多 16 个字'],
-    [form.elementPreference, 16, '五行偏好最多 16 个字'],
-    [form.wish, 80, '期望最多 80 个字'],
-    [form.scene, 80, '场景最多 80 个字'],
-    [form.colorPreference, 80, '偏好颜色最多 80 个字'],
-    [form.freeText, 500, '自由描述最多 500 个字'],
-  ]
-  for (const [value, max, message] of textLimits) {
-    if (value.trim().length > max) return message
+  if (form.wishInspiration.trim() && !normalizeWishInspiration(form.wishInspiration)) {
+    return '请选择有效的心愿灵感'
   }
-
-  const budget = strictNumber(form.budget)
-  if (budget === null || budget < 0.01 || budget > 999999.99) {
-    return '请输入 0.01 至 999999.99 元预算'
-  }
-  const wrist = strictNumber(form.wristCircumferenceMm)
-  if (wrist === null || wrist < 1 || wrist > 1000) {
-    return '请输入 1 至 1000 毫米手围'
-  }
-  if (!FIT_TYPES.includes(form.fitType)) return '请选择松紧偏好'
+  if (form.wish.trim().length > 80) return '期望最多 80 个字'
   return null
 }
 
 export function buildRecommendationRequest(
   form: RecommendationForm,
 ): RecommendationRequest {
-  const birthDate = optionalText(form.birthDate)
-  const manualConstellation = optionalText(form.manualConstellation)
-  const manualZodiac = optionalText(form.manualZodiac)
   return {
-    birthDate,
-    constellation: manualConstellation
-      || (birthDate ? deriveConstellation(birthDate) : undefined),
-    zodiac: manualZodiac
-      || (birthDate ? deriveChineseZodiac(birthDate) : undefined),
-    elementPreference: optionalText(form.elementPreference),
+    birthDate: form.birthDate.trim(),
+    wishInspiration: normalizeWishInspiration(form.wishInspiration) || undefined,
     wish: optionalText(form.wish),
-    scene: optionalText(form.scene),
-    colorPreference: optionalText(form.colorPreference),
-    budget: Number(form.budget.trim()),
-    wristCircumferenceMm: Number(form.wristCircumferenceMm.trim()),
-    fitType: form.fitType,
-    freeText: optionalText(form.freeText),
   }
+}
+
+export function normalizeWishInspiration(
+  value: unknown,
+): WishInspiration | '' {
+  if (typeof value !== 'string') return ''
+  const normalized = value.trim()
+  return (WISH_INSPIRATION_OPTIONS as readonly string[]).includes(normalized)
+    ? normalized as WishInspiration
+    : ''
 }
 
 export function recommendationStatusMessage(
@@ -217,54 +144,86 @@ export function recommendationStatusMessage(
   return GENERIC_UNAVAILABLE
 }
 
-export function recommendationFailureMessage(code: unknown): string {
+export function recommendationFailureMessage(
+  code: unknown,
+  fallbackMessage?: string,
+  traceId?: string,
+): string {
   if (code === 'AI_NOT_CONFIGURED') return 'AI 推荐暂未开放'
   if (code === 'AI_DISABLED') return 'AI 推荐暂停使用'
-  return GENERIC_UNAVAILABLE
+  if (code === 'AI_PROMPT_NOT_CONFIGURED') {
+    return 'AI 推荐规则尚未配置，请联系管理员'
+  }
+  if (code === 'AI_UNAUTHORIZED') {
+    return 'AI 服务鉴权失败，请联系管理员检查 API Key'
+  }
+  if (code === 'AI_MODEL_UNAVAILABLE') {
+    return '当前 AI 模型不可用，请联系管理员检查模型配置'
+  }
+  if (code === 'AI_RATE_LIMITED') return 'AI 请求较多，请稍后重试'
+  if (code === 'AI_TEMPORARILY_UNAVAILABLE') {
+    return 'AI 服务响应超时或暂时异常，请稍后重试'
+  }
+  if (code === 'AI_TIMEOUT') return 'AI 服务响应超时，请稍后重试'
+  if (code === 'AI_UPSTREAM_ERROR') {
+    return 'AI 服务暂时异常，请稍后重试'
+  }
+  if (code === 'AI_INVALID_RECOMMENDATION') {
+    return '本次推荐未通过校验，请重试或调整期望'
+  }
+  if (code === 'AI_RESPONSE_FORMAT_INVALID') {
+    return 'AI 返回的方案格式不完整，请重试'
+  }
+  if (code === 'AI_RESULT_COUNT_INVALID') {
+    return 'AI 返回的方案数量不正确，请重试'
+  }
+  if (code === 'AI_RESULT_ITEM_COUNT_INVALID') {
+    return 'AI 返回的单套珠子种类数量不正确，请重试'
+  }
+  if (code === 'AI_RESULT_DUPLICATE_SKU') {
+    return 'AI 在同一套方案中重复选择了珠子，请重试'
+  }
+  if (code === 'AI_RESULT_SKU_INVALID') {
+    return 'AI 选择的珠子已不可用，请重试'
+  }
+  if (code === 'AI_RESPONSE_CONTENT_UNSAFE') {
+    return 'AI 返回的文案未通过安全校验，请重试'
+  }
+  if (code === 'AI_SERVER_MISCONFIGURED') {
+    return 'AI 服务配置异常，请联系管理员'
+  }
+  if (code === 'BIRTH_DATE_REQUIRED') return '请选择生日'
+  if (code === 'BIRTH_DATE_INVALID') return '生日信息无效，请重新选择'
+  if (code === 'CATALOG_EMPTY') return '暂无可推荐的在售珠子，请稍后重试'
+  if (code === 'NETWORK_ERROR') return '网络连接失败，请检查网络后重试'
+  const message = safeServerMessage(fallbackMessage)
+    || '生成推荐失败，请稍后重试'
+  const safeTraceId = safeTrace(traceId)
+  return safeTraceId ? `${message}（追踪号：${safeTraceId}）` : message
+}
+
+export function isRecommendationUnavailableCode(code: unknown): boolean {
+  return code === 'AI_NOT_CONFIGURED' || code === 'AI_DISABLED'
 }
 
 export function toRecommendationViewModel(
   response: RecommendationResponse,
 ): RecommendationViewModel {
-  const itemBySkuId = new Map(
-    response.items.map((item) => [item.skuId, item]),
-  )
   return {
-    schemeName: response.schemeName,
-    summary: response.summary,
-    items: response.items.map((item) => ({
-      ...item,
-      quantityText: `${item.quantity} 颗`,
+    plans: response.plans.map((plan, index) => ({
+      ...plan,
+      key: `${index + 1}-${plan.schemeName}`,
+      numberLabel: `方案 ${index + 1}`,
     })),
-    orderedBeads: response.sequence.flatMap((skuId, index) => {
-      const item = itemBySkuId.get(skuId)
-      return item ? [{
-        order: index + 1,
-        skuId,
-        name: item.name,
-        imageUrl: item.imageUrl,
-      }] : []
-    }),
-    cordOptionName: response.cordOption.name,
-    amountDetails: [
-      { label: '珠子金额', amountText: formatAmount(response.beadAmount) },
-      { label: '制作费', amountText: formatAmount(response.craftFee) },
-      { label: '绳材费', amountText: formatAmount(response.cordFee) },
-    ],
-    totalAmountText: formatAmount(response.totalAmount),
     culturalDisclaimer: response.culturalDisclaimer,
   }
 }
 
 export function createPendingAiRecommendation(
-  response: RecommendationResponse,
-  form: RecommendationForm,
+  plan: RecommendationPlan,
 ): PendingAiRecommendation {
   return {
-    sequence: response.sequence.slice(),
-    wristCircumferenceMm: Number(form.wristCircumferenceMm.trim()),
-    fitType: form.fitType,
-    cordOptionId: response.cordOption.id,
+    sequence: Array.from(new Set(plan.items.map((item) => item.skuId))),
   }
 }
 
@@ -297,7 +256,13 @@ export function consumePendingAiRecommendation(
     schemeId: 0,
     schemeVersion: 0,
     name: 'AI 推荐手串',
-    ...handoff,
+    sequence: handoff.sequence,
+    wristCircumferenceMm: Math.min(
+      validation.maxWristCircumferenceMm,
+      Math.max(validation.minWristCircumferenceMm, 160),
+    ),
+    fitType: 'STANDARD',
+    cordOptionId: validation.allowedCordOptionIds[0],
     selectedIndex: -1,
   }
 }
@@ -310,9 +275,6 @@ function validatePendingAiRecommendation(
   if (!isRecord(value)) return null
   const allowedKeys = [
     'sequence',
-    'wristCircumferenceMm',
-    'fitType',
-    'cordOptionId',
   ]
   const keys = Object.keys(value)
   if (
@@ -331,28 +293,13 @@ function validatePendingAiRecommendation(
     !Number.isInteger(id) || Number(id) <= 0 || !allowedSkuIds.has(Number(id))
   ))) return null
 
-  const wrist = value.wristCircumferenceMm
   if (
-    typeof wrist !== 'number'
-    || !Number.isFinite(wrist)
-    || wrist < validation.minWristCircumferenceMm
-    || wrist > validation.maxWristCircumferenceMm
-  ) return null
-  if (
-    typeof value.fitType !== 'string'
-    || !FIT_TYPES.includes(value.fitType as RecommendationFitType)
-  ) return null
-  const cordOptionId = value.cordOptionId
-  if (
-    !Number.isInteger(cordOptionId)
-    || !validation.allowedCordOptionIds.includes(Number(cordOptionId))
+    validation.allowedCordOptionIds.length === 0
+    || validation.minWristCircumferenceMm > validation.maxWristCircumferenceMm
   ) return null
 
   return {
     sequence: sequence.map(Number),
-    wristCircumferenceMm: wrist,
-    fitType: value.fitType as RecommendationFitType,
-    cordOptionId: Number(cordOptionId),
   }
 }
 
@@ -374,19 +321,18 @@ function optionalText(value: string): string | undefined {
   return trimmed || undefined
 }
 
-function strictNumber(value: string): number | null {
-  const trimmed = value.trim()
-  if (!trimmed) return null
-  const parsed = Number(trimmed)
-  return Number.isFinite(parsed) ? parsed : null
+function safeServerMessage(value: string | undefined): string {
+  if (!value) return ''
+  const normalized = value.replace(/[\r\n\t]+/g, ' ').trim().slice(0, 120)
+  if (/authorization|bearer|api[ _-]?key|sk-[a-z0-9]/i.test(normalized)) {
+    return ''
+  }
+  return normalized
 }
 
-function formatAmount(value: number): string {
-  return `¥${Number(value).toFixed(2)}`
-}
-
-function positiveModulo(value: number, divisor: number): number {
-  return ((value % divisor) + divisor) % divisor
+function safeTrace(value: string | undefined): string {
+  if (!value) return ''
+  return /^[a-zA-Z0-9-]{6,80}$/.test(value) ? value : ''
 }
 
 interface DateParts {

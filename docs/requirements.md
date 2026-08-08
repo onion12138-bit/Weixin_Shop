@@ -1,6 +1,6 @@
 # 需求规格说明
 
-最后更新：2026-07-14
+最后更新：2026-07-20
 
 ## 1. 产品目标
 
@@ -18,13 +18,16 @@
 
 ### 3.1 商品目录与素材
 
-- 管理分类、散珠 SKU、套餐、有序套餐明细和封面。
+- 管理珠子、绳类、其他饰品 SKU、套餐、有序套餐明细和封面；只有珠子要求珠径并进入 DIY/AI 链路。
 - 公共目录仅返回已上架数据，不暴露成本价。
 - 支持关键字、分类、状态和分页查询。
-- 商品图片限制为 PNG、JPEG、WebP，默认最大 5 MiB。
+- 商品图片限制为 PNG、JPEG、WebP，最大 5 MB（5,000,000 字节）。
+- 散珠商品支持下载 `.xlsx` 模板并批量导入；单次最多 1000 行、10 MB，逐行返回成功或失败原因，图片允许导入后补充。
+- 散珠与成品搭配的封面均支持点击选择或拖拽图片直接上传。
 - 套餐按 SKU 与数量保存，进入 DIY 时前端临时展开为有序序列。
 - 素材当前保存在本地目录，业务只依赖可替换的 `FileStorage`。
 - 新增散珠接收 `initialStock`，在同一事务创建库存余额和 `INIT` 流水；3 款图片演示散珠导入会分页查重并按 SKU 幂等跳过。
+- 后台列表显示可用、预占、已售库存及预警值；可用库存达到或低于预警值时显示“补货”。
 
 ### 3.2 DIY 设计、计价与方案
 
@@ -47,11 +50,11 @@
 
 ### 3.4 模拟支付与履约
 
-- `MOCK` 支付把订单从 `PENDING_PAYMENT` 切换为 `PAID`，库存从 `reserved` 转为 `sold`。
+- `MOCK` 支付把订单从 `PENDING_PAYMENT` 直接切换为 `IN_PRODUCTION`，库存从 `reserved` 转为 `sold`。
 - 重复模拟支付幂等，不重复扣库存、不重复写支付记录和履约任务。
 - 支付成功后生成包含订单 SKU 数量的制作任务。
-- 后台状态机严格为 `PAID → IN_PRODUCTION → SHIPPED → COMPLETED`，不能跳步。
-- 发货保存模拟物流公司和运单号；小程序可查看订单最新状态。
+- 正常履约状态机严格为 `PENDING_PAYMENT → IN_PRODUCTION → PENDING_SHIPMENT → SHIPPED → COMPLETED`，不能跳步；异常状态为 `CANCELLED`、`AFTER_SALE`、`REFUNDED`。
+- 后台完成制作后进入待发货，发货保存物流公司和运单号；小程序把 `SHIPPED` 展示为“待收货”，顾客确认收货后进入已完成。
 
 ### 3.5 三端界面
 
@@ -59,24 +62,25 @@
 - 小程序包含首页、目录、详情、DIY 编辑器、我的方案、确认订单、我的订单和订单详情。
 - 订单详情明确标注模拟支付，不调用微信支付。
 
-### 3.6 DeepSeek 单套推荐
+### 3.6 DeepSeek 多套库存材质推荐
 
-- 后台只维护 `id=1/provider=DEEPSEEK` 的单例配置，Base URL 固定官方 `https://api.deepseek.com`，默认模型 `deepseek-v4-flash`。
-- API Key 使用 AES-256-GCM 密文存库，主密钥只来自 `AI_CONFIG_ENCRYPTION_KEY`；读取、日志和错误不回显 Key、Authorization 或上游完整响应。
+- 后台只维护 `id=1/provider=DEEPSEEK` 的单例配置，Base URL 固定官方 `https://api.deepseek.com`，模型固定 `deepseek-v4-flash`；管理员可配置推荐业务提示词和 1～5 套返回数量，默认 3 套。
+- API Key 使用 AES-256-GCM 密文存库，主密钥只来自 `AI_CONFIG_ENCRYPTION_KEY`；普通读取、日志和错误不回显 Key、Authorization 或上游完整响应，管理员只有显式点击眼睛按钮才能通过 no-store 接口临时查看。
 - 未配置 Key 时状态为 `NOT_CONFIGURED`、POST 为 `AI_NOT_CONFIGURED`、文案为“AI 推荐暂未开放”；停用时对应 `DISABLED`、`AI_DISABLED`、“AI 推荐暂停使用”。
 - 系统没有规则、静态或本地降级，暂停和 Provider 故障不能返回伪成功。
-- 推荐请求需要 guest JWT；生日、自由文本和原始模型响应不持久化、不写日志、不回显。
-- DeepSeek 每次只调用一次、不自动重试，只可选择服务端提供的当前已上架且有库存 SKU。
-- 后端严格解析单套 JSON，并重新校验 SKU、库存、预算、腕围、绳材、文案和价格；响应包含当前图片、服务端金额、`quoteFingerprint` 和文化娱乐免责声明。
-- 小程序只把 `sequence/wristCircumferenceMm/fitType/cordOptionId` 一次性交给 DIY；读取即删除，且 DIY 后续仍使用权威报价。
+- 小程序 AI 表单只保留必填生日和选填期望；生日选定后由公开 Spring Boot 接口计算并展示星座、生肖和星座元素。正式推荐需要 guest JWT，生日、期望和原始模型响应不持久化、不写日志。
+- DeepSeek 只可选择服务端提供的当前已上架且有库存 SKU；输入候选只包含 `skuId/name/material`，不传成本、售价、手围、松紧、数量、排列或绳材。
+- 后端严格解析后台配置套数的 JSON，每套限制 3～5 种不同珠子，并重新校验结构、SKU、当前库存和文案；响应包含当前名称、图片、选择理由和文化娱乐免责声明。
+- 格式、套数、SKU 或文案校验失败时，同一 DeepSeek 模型最多纠正一次；鉴权、限流、超时和上游故障不重试，不切换其他模型。
+- 小程序选择某套进入 DIY 时只一次性交给去重后的 SKU 类型，读取即删除；手围、松紧、绳材、数量、排列和价格继续使用 DIY 自己的默认值与权威规则。
 
 ## 4. 尚未实现范围
 
 - 未接微信授权；当前使用本地安装 UUID + 顾客 JWT，换设备或清缓存后不能自动找回。
 - 未接真实对象存储；当前使用本地 `FileStorage`。
 - 未接微信支付、退款、优惠券、发票、售后和真实物流查询。
-- 尚未用用户提供的有效 DeepSeek Key 和生产式主密钥完成真实外部 live 验证；当前完成的是模拟网关自动化和无 Key 暂停 HTTP smoke。
-- 未实现库存后台调整、低库存告警和待支付订单超时自动取消。
+- 已完成有效 DeepSeek Key 的保存与 `/models` 连接测试；新版多套推荐的真实 `/chat/completions` live 验证仍待执行。
+- 未实现独立库存调整入口、主动低库存通知和待支付订单超时自动取消；当前已实现新增初始库存和列表“补货”预警。
 
 ## 5. 非功能需求
 
@@ -101,9 +105,9 @@
 - 模拟支付幂等；订单和履约状态不能跳步。
 - 方案和订单均按顾客身份隔离。
 - `scripts/catalog-smoke.sh`、`scripts/diy-smoke.sh`、`scripts/order-smoke.sh` 已通过真实 HTTP 验证。
-- `scripts/recommendation-smoke.sh` 已以 `NOT_CONFIGURED → AI_NOT_CONFIGURED` 通过真实 HTTP 暂停路径验证，并确认无 DeepSeek 调用和无本地降级。
+- `scripts/recommendation-smoke.sh` 支持暂停与显式 live 双路径；新版 live 契约会校验生日画像、后台套数、每套 3～5 种当前目录 SKU、图片和免责声明。
 - 3 款图片演示散珠首次创建、第二次全部幂等跳过已经真实 HTTP 验证。
-- 后端 176 项、管理后台 37 项、小程序 85 项自动化测试已通过；有效 Key live test 尚未执行。
+- 当前准确测试数量和新版 live 结果以 `docs/progress.md` 最新阶段记录为准。
 
 ### 完整规划范围
 

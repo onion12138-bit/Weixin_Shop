@@ -1,0 +1,7 @@
+@import "./common.wxss";
+.edit-card { margin-top: 34rpx; padding: 40rpx 32rpx; }
+.avatar-button { display: flex; width: 220rpx; flex-direction: column; align-items: center; margin: 0 auto 42rpx; padding: 0; color: #d05b8b; font-size: 22rpx; background: transparent; }
+.avatar-button image { width: 168rpx; height: 168rpx; margin-bottom: 14rpx; border: 7rpx solid #fff; border-radius: 50%; box-shadow: 0 16rpx 36rpx rgba(184,82,123,.16); }
+.edit-card label > text { display: block; margin-bottom: 12rpx; color: #5a3e4a; font-size: 24rpx; font-weight: 600; }
+.edit-card input { box-sizing: border-box; height: 82rpx; padding: 0 24rpx; border: 1rpx solid #ead7de; border-radius: 20rpx; font-size: 26rpx; background: #fffdfd; }
+.save-button { margin-top: 34rpx; }

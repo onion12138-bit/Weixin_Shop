@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import {
   clearAiApiKey,
   getAiConfiguration,
+  revealAiApiKey,
   saveAiConfiguration,
   testAiConfiguration,
   type AiConfiguration,
@@ -11,13 +12,18 @@ import {
 import { ApiError } from '../api/http'
 
 const OFFICIAL_BASE_URL = 'https://api.deepseek.com'
+const MASKED_API_KEY = '••••••••••••••••'
 
 const loading = ref(true)
 const loaded = ref(false)
 const saving = ref(false)
 const testing = ref(false)
 const clearing = ref(false)
+const revealing = ref(false)
 const apiKey = ref('')
+const apiKeyVisible = ref(false)
+const revealedStoredKey = ref(false)
+const maskedStoredKey = ref(false)
 const errorMessage = ref('')
 const successMessage = ref('')
 const connectionMessage = ref('')
@@ -32,24 +38,33 @@ const configuration = reactive<AiConfiguration>({
   enabled: false,
   timeoutSeconds: 30,
   maxOutputTokens: 2048,
+  recommendationPrompt: '',
+  planCount: 3,
   version: 0,
 })
 
 const hasUnsavedChanges = computed(() => {
   const saved = lastSavedConfiguration.value
   if (!saved) return true
-  return apiKey.value !== ''
+  return (apiKey.value !== ''
+      && !revealedStoredKey.value
+      && !maskedStoredKey.value)
     || configuration.baseUrl !== saved.baseUrl
     || configuration.modelName !== saved.modelName
     || configuration.enabled !== saved.enabled
     || Number(configuration.timeoutSeconds) !== saved.timeoutSeconds
     || Number(configuration.maxOutputTokens) !== saved.maxOutputTokens
+    || configuration.recommendationPrompt !== saved.recommendationPrompt
+    || Number(configuration.planCount) !== saved.planCount
 })
 
 function applyConfiguration(next: AiConfiguration): void {
   Object.assign(configuration, next)
   lastSavedConfiguration.value = { ...next }
-  apiKey.value = ''
+  apiKey.value = next.apiKeyConfigured ? MASKED_API_KEY : ''
+  apiKeyVisible.value = false
+  revealedStoredKey.value = false
+  maskedStoredKey.value = next.apiKeyConfigured
 }
 
 function withTrace(message: string, error: ApiError): string {
@@ -105,13 +120,17 @@ function integerInRange(
 function savePayload(): SaveAiConfigurationPayload {
   const baseUrl = configuration.baseUrl.trim()
   const modelName = configuration.modelName.trim()
+  const recommendationPrompt = configuration.recommendationPrompt.trim()
   if (!baseUrl) throw new Error('Base URL 不能为空')
   if (!modelName) throw new Error('模型名称不能为空')
+  if (!recommendationPrompt) throw new Error('推荐提示词不能为空')
 
   return {
     baseUrl,
     modelName,
-    apiKey: apiKey.value,
+    apiKey: revealedStoredKey.value || maskedStoredKey.value
+      ? ''
+      : apiKey.value,
     enabled: configuration.enabled,
     timeoutSeconds: integerInRange(
       configuration.timeoutSeconds,
@@ -124,6 +143,13 @@ function savePayload(): SaveAiConfigurationPayload {
       256,
       16384,
       '最大输出 Token',
+    ),
+    recommendationPrompt,
+    planCount: integerInRange(
+      configuration.planCount,
+      1,
+      5,
+      '推荐套数',
     ),
     version: configuration.version,
   }
@@ -144,7 +170,7 @@ async function loadConfiguration(): Promise<void> {
 }
 
 async function saveConfiguration(): Promise<void> {
-  if (saving.value || testing.value || clearing.value) return
+  if (saving.value || testing.value || clearing.value || revealing.value) return
   saving.value = true
   clearMessages()
 
@@ -170,7 +196,7 @@ async function saveConfiguration(): Promise<void> {
 }
 
 async function testConnection(): Promise<void> {
-  if (testing.value || saving.value || clearing.value) return
+  if (testing.value || saving.value || clearing.value || revealing.value) return
   if (hasUnsavedChanges.value) {
     connectionSucceeded.value = false
     connectionMessage.value = '请先保存配置'
@@ -194,6 +220,7 @@ async function clearApiKey(): Promise<void> {
     saving.value
     || testing.value
     || clearing.value
+    || revealing.value
     || !configuration.apiKeyConfigured
   ) return
   const confirmed = window.confirm(
@@ -213,6 +240,50 @@ async function clearApiKey(): Promise<void> {
   }
 }
 
+function markApiKeyEdited(): void {
+  revealedStoredKey.value = false
+  maskedStoredKey.value = false
+}
+
+function beginApiKeyReplacement(): void {
+  if (maskedStoredKey.value) {
+    apiKey.value = ''
+  }
+}
+
+function restoreMaskedApiKey(): void {
+  if (maskedStoredKey.value && apiKey.value === '') {
+    apiKey.value = MASKED_API_KEY
+  }
+}
+
+async function toggleApiKeyVisibility(): Promise<void> {
+  if (saving.value || testing.value || clearing.value || revealing.value) return
+  if (apiKeyVisible.value) {
+    apiKeyVisible.value = false
+    return
+  }
+  if (!maskedStoredKey.value
+      && (apiKey.value || !configuration.apiKeyConfigured)) {
+    apiKeyVisible.value = true
+    return
+  }
+
+  revealing.value = true
+  clearMessages()
+  try {
+    const revealed = await revealAiApiKey()
+    apiKey.value = revealed.apiKey
+    revealedStoredKey.value = true
+    maskedStoredKey.value = false
+    apiKeyVisible.value = true
+  } catch (error) {
+    errorMessage.value = readableOperationError(error, 'API Key 读取失败')
+  } finally {
+    revealing.value = false
+  }
+}
+
 onMounted(loadConfiguration)
 </script>
 
@@ -223,7 +294,7 @@ onMounted(loadConfiguration)
         <p class="section-kicker">PLATFORM / AI MODEL</p>
         <h1>AI 模型配置</h1>
         <p class="muted">
-          维护唯一一套 DeepSeek 连接参数。API Key 只在保存时提交，页面不会回显已有密钥。
+          维护唯一一套 DeepSeek 连接参数。已保存的 API Key 仅在管理员点击眼睛按钮后临时显示。
         </p>
       </div>
     </header>
@@ -269,7 +340,7 @@ onMounted(loadConfiguration)
       <fieldset
         class="ai-configuration-fields"
         data-test="configuration-fields"
-        :disabled="saving || clearing"
+        :disabled="saving || clearing || revealing"
       >
         <div class="form-grid ai-configuration-grid">
           <label>
@@ -333,11 +404,47 @@ onMounted(loadConfiguration)
           </label>
         </div>
 
+        <section class="ai-recommendation-panel">
+          <header>
+            <div>
+              <strong>推荐生成设置</strong>
+              <small>配置小程序每次请求使用的提示词，以及返回的推荐方案数量。</small>
+            </div>
+          </header>
+          <div class="ai-recommendation-fields">
+            <label class="ai-plan-count-field">
+              <span>推荐套数</span>
+              <input
+                v-model.number="configuration.planCount"
+                data-test="plan-count"
+                type="number"
+                min="1"
+                max="5"
+                step="1"
+                required
+              />
+              <small>每次生成 1–5 套推荐，实际默认值由后端配置返回。</small>
+            </label>
+            <label class="ai-prompt-field">
+              <span>推荐提示词</span>
+              <textarea
+                v-model="configuration.recommendationPrompt"
+                data-test="recommendation-prompt"
+                rows="8"
+                maxlength="4000"
+                required
+                placeholder="请输入用于生成手串推荐方案的提示词"
+              ></textarea>
+              <small>保存后会与顾客生日画像、当前库存珠子名称及材质一起提交给模型；输出格式和安全边界由后端统一控制。</small>
+            </label>
+          </div>
+        </section>
+
         <section class="ai-key-panel">
           <header>
             <label for="ai-api-key">
               <strong>DeepSeek API Key</strong>
-              <small>留空保存会保留当前 Key；密钥不会回显。</small>
+              <small>留空保存会保留当前 Key；点击眼睛按钮可临时查看。</small>
             </label>
             <span
               class="status-pill"
@@ -345,15 +452,36 @@ onMounted(loadConfiguration)
               data-test="api-key-status"
             >{{ configuration.apiKeyConfigured ? '已配置' : '未配置' }}</span>
           </header>
-          <input
-            v-model="apiKey"
-            id="ai-api-key"
-            data-test="api-key"
-            type="password"
-            autocomplete="new-password"
-            spellcheck="false"
-            placeholder="输入新的 API Key；留空则保留现有配置"
-          />
+          <div class="ai-key-input-wrap">
+            <input
+              v-model="apiKey"
+              id="ai-api-key"
+              data-test="api-key"
+              :type="apiKeyVisible ? 'text' : 'password'"
+              autocomplete="new-password"
+              spellcheck="false"
+              placeholder="输入新的 API Key；留空则保留现有配置"
+              @focus="beginApiKeyReplacement"
+              @input="markApiKeyEdited"
+              @blur="restoreMaskedApiKey"
+            />
+            <button
+              class="ai-key-visibility-button"
+              data-test="toggle-api-key-visibility"
+              type="button"
+              :aria-label="apiKeyVisible ? '隐藏 API Key' : '显示 API Key'"
+              :title="apiKeyVisible ? '隐藏 API Key' : '显示 API Key'"
+              :disabled="saving || testing || clearing || revealing"
+              @click="toggleApiKeyVisibility"
+            >
+              <span v-if="revealing" aria-hidden="true">…</span>
+              <svg v-else viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+                <circle cx="12" cy="12" r="2.7" />
+                <path v-if="apiKeyVisible" d="m4 4 16 16" />
+              </svg>
+            </button>
+          </div>
         </section>
       </fieldset>
 
@@ -372,7 +500,7 @@ onMounted(loadConfiguration)
           class="danger-button"
           data-test="clear-api-key"
           type="button"
-          :disabled="saving || testing || clearing || !configuration.apiKeyConfigured"
+          :disabled="saving || testing || clearing || revealing || !configuration.apiKeyConfigured"
           @click="clearApiKey"
         >
           {{ clearing ? '清除中…' : '清除 API Key' }}
@@ -388,7 +516,7 @@ onMounted(loadConfiguration)
               class="secondary-button"
               data-test="test-connection"
               type="button"
-              :disabled="testing || saving || clearing || hasUnsavedChanges"
+              :disabled="testing || saving || clearing || revealing || hasUnsavedChanges"
               @click="testConnection"
             >
               {{ testing ? '测试中…' : '测试连接' }}
@@ -396,7 +524,7 @@ onMounted(loadConfiguration)
             <button
               class="primary-button"
               type="submit"
-              :disabled="saving || testing || clearing"
+              :disabled="saving || testing || clearing || revealing"
             >
               {{ saving ? '保存中…' : '保存配置' }}
             </button>

@@ -24,6 +24,7 @@ public interface RecommendationCandidateMapper {
         join category category
           on category.id = bead.category_id
          and category.status = 'ON_SALE'
+         and category.product_type = 'BEAD'
         join inventory_balance inventory
           on inventory.bead_sku_id = bead.id
          and inventory.available_qty > 0
@@ -52,6 +53,7 @@ public interface RecommendationCandidateMapper {
         join category category
           on category.id = bead.category_id
          and category.status = 'ON_SALE'
+         and category.product_type = 'BEAD'
         join inventory_balance inventory
           on inventory.bead_sku_id = bead.id
          and inventory.available_qty > 0

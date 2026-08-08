@@ -31,6 +31,12 @@ declare namespace WechatMiniprogram {
     }
   }
 
+  interface ChooseAvatarEvent {
+    detail: {
+      avatarUrl: string
+    }
+  }
+
   interface SelectorQuery {
     select(selector: string): SelectorQueryNode
     exec(callback?: () => void): void
@@ -57,7 +63,7 @@ declare function Page<T extends { data: Record<string, unknown> }>(
     ThisType<
       T & {
         data: T['data']
-        setData(data: Partial<T['data']>): void
+        setData(data: Partial<T['data']>, callback?: () => void): void
       }
     >,
 ): void
@@ -91,6 +97,12 @@ declare const wx: {
   getRandomValues?(array: Uint8Array): Uint8Array
 
   navigateTo(options: {
+    url: string
+    success?(): void
+    fail?(error: { errMsg: string }): void
+  }): void
+
+  redirectTo(options: {
     url: string
     success?(): void
     fail?(error: { errMsg: string }): void

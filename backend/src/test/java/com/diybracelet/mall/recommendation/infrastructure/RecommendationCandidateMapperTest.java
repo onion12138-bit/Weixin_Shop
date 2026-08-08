@@ -15,6 +15,12 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 @Sql(config = @SqlConfig(separator = "^^^"), statements = {
     """
+    insert into category (
+        id, name, slug, product_type, sort_order, status
+    ) values (29100, '测试饰品', 'test-accessory', 'ACCESSORY', 999, 'ON_SALE')
+    ^^^
+    """,
+    """
     insert into asset_file (
         id, storage_key, original_name, content_type, size_bytes, public_url, status
     ) values
@@ -34,7 +40,8 @@ import org.springframework.transaction.annotation.Transactional;
         (29202, 1001, 'RECOMMEND-INACTIVE-COVER', '停用封面', '天然水晶', '透明', 8, 10, 1, 1, 29102, json_array('测试'), 'ON_SALE'),
         (29203, 1001, 'RECOMMEND-EMPTY-COVER', '空地址封面', '天然水晶', '透明', 8, 10, 1, 1, 29103, json_array('测试'), 'ON_SALE'),
         (29204, 1001, 'RECOMMEND-BLANK-COVER', '空白地址封面', '天然水晶', '透明', 8, 10, 1, 1, 29104, json_array('测试'), 'ON_SALE'),
-        (29205, 1001, 'RECOMMEND-ACTIVE-COVER', '有效封面', '天然水晶', '透明', 8, 10, 1, 1, 29101, json_array('测试'), 'ON_SALE')
+        (29205, 1001, 'RECOMMEND-ACTIVE-COVER', '有效封面', '天然水晶', '透明', 8, 10, 1, 1, 29101, json_array('测试'), 'ON_SALE'),
+        (29206, 29100, 'RECOMMEND-ACCESSORY', '测试配件', '合金', '金色', null, 10, 1, 1, 29101, json_array('测试'), 'ON_SALE')
     ^^^
     """,
     """
@@ -45,14 +52,15 @@ import org.springframework.transaction.annotation.Transactional;
         (29302, 29202, 5, 0, 0, 0),
         (29303, 29203, 5, 0, 0, 0),
         (29304, 29204, 5, 0, 0, 0),
-        (29305, 29205, 5, 0, 0, 0)
+        (29305, 29205, 5, 0, 0, 0),
+        (29306, 29206, 5, 0, 0, 0)
     ^^^
     """
 })
 class RecommendationCandidateMapperTest extends MySqlIntegrationTest {
 
     private static final List<Long> TEST_IDS = List.of(
-        29201L, 29202L, 29203L, 29204L, 29205L
+        29201L, 29202L, 29203L, 29204L, 29205L, 29206L
     );
 
     @Autowired

@@ -10,10 +10,12 @@ import com.diybracelet.mall.catalog.api.dto.SaveBeadSkuRequest;
 import com.diybracelet.mall.catalog.api.dto.SaveCategoryRequest;
 import com.diybracelet.mall.catalog.api.dto.SavePackageItemRequest;
 import com.diybracelet.mall.catalog.api.dto.SavePackageRequest;
+import com.diybracelet.mall.catalog.api.dto.StockWarningStatus;
 import com.diybracelet.mall.catalog.domain.BeadSku;
 import com.diybracelet.mall.catalog.domain.CatalogStatus;
 import com.diybracelet.mall.catalog.domain.Category;
 import com.diybracelet.mall.catalog.domain.PackageItem;
+import com.diybracelet.mall.catalog.domain.ProductType;
 import com.diybracelet.mall.catalog.domain.ProductPackage;
 import com.diybracelet.mall.catalog.infrastructure.mapper.BeadSkuMapper;
 import com.diybracelet.mall.catalog.infrastructure.mapper.CategoryMapper;
@@ -39,6 +41,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -107,6 +110,17 @@ public class AdminCatalogService {
             SaveCategoryRequest request
     ) {
         Category category = requireCategory(id);
+        ProductType nextProductType = requestedProductType(request);
+        if (categoryProductType(category) != nextProductType
+                && beadSkuMapper.selectCount(
+                        new LambdaQueryWrapper<BeadSku>()
+                                .eq(BeadSku::getCategoryId, id)
+                ) > 0) {
+            throw new BusinessException(
+                    ErrorCode.COMMON_CONFLICT,
+                    "已有商品的分类不能修改商品类型"
+            );
+        }
         ensureUniqueCategorySlug(request.slug(), id);
         applyCategory(category, request);
         categoryMapper.updateById(category);
@@ -149,9 +163,17 @@ public class AdminCatalogService {
         Map<Long, String> coverUrls = loadCoverUrls(
                 beads.stream().map(BeadSku::getCoverAssetId).toList()
         );
+        Map<Long, Category> categoriesById = loadCategoriesById(beads);
+        Map<Long, InventoryBalance> balancesBySkuId =
+                loadInventoryBalancesBySkuId(beads);
         return new PageResponse<>(
                 beads.stream()
-                        .map(bead -> toAdminView(bead, coverUrls))
+                        .map(bead -> toAdminView(
+                                bead,
+                                categoriesById.get(bead.getCategoryId()),
+                                balancesBySkuId.get(bead.getId()),
+                                coverUrls
+                        ))
                         .toList(),
                 total,
                 page,
@@ -167,11 +189,12 @@ public class AdminCatalogService {
     @Transactional
     public BeadSku createBead(CreateBeadSkuRequest request) {
         SaveBeadSkuRequest beadRequest = request.bead();
-        requireCategory(beadRequest.categoryId());
+        Category category = requireCategory(beadRequest.categoryId());
+        validateProductFields(category, beadRequest);
         validateAsset(beadRequest.coverAssetId());
         ensureUniqueSkuCode(beadRequest.skuCode(), null);
         BeadSku bead = new BeadSku();
-        applyBead(bead, beadRequest);
+        applyBead(bead, beadRequest, category);
         beadSkuMapper.insert(bead);
         initializeInventory(bead.getId(), request.initialStock());
         return bead;
@@ -183,10 +206,11 @@ public class AdminCatalogService {
             SaveBeadSkuRequest request
     ) {
         BeadSku bead = requireBead(id);
-        requireCategory(request.categoryId());
+        Category category = requireCategory(request.categoryId());
+        validateProductFields(category, request);
         validateAsset(request.coverAssetId());
         ensureUniqueSkuCode(request.skuCode(), id);
-        applyBead(bead, request);
+        applyBead(bead, request, category);
         beadSkuMapper.updateById(bead);
         return bead;
     }
@@ -246,7 +270,9 @@ public class AdminCatalogService {
                 productPackage.getDescription(),
                 productPackage.getSalePrice(),
                 productPackage.getCoverAssetId(),
+                coverUrl(productPackage.getCoverAssetId()),
                 productPackage.getStatus(),
+                productPackage.getRecommended(),
                 items
         );
     }
@@ -304,26 +330,43 @@ public class AdminCatalogService {
         return productPackage;
     }
 
+    @Transactional
+    public ProductPackage changePackageRecommendation(
+            Long id,
+            boolean recommended
+    ) {
+        ProductPackage productPackage = requirePackage(id);
+        productPackage.setRecommended(recommended);
+        productPackageMapper.updateById(productPackage);
+        return productPackage;
+    }
+
     private void applyCategory(
             Category category,
             SaveCategoryRequest request
     ) {
         category.setName(request.name().trim());
         category.setSlug(request.slug().trim());
+        category.setProductType(requestedProductType(request));
         category.setSortOrder(request.sortOrder());
         category.setStatus(request.status());
     }
 
     private void applyBead(
             BeadSku bead,
-            SaveBeadSkuRequest request
+            SaveBeadSkuRequest request,
+            Category category
     ) {
         bead.setCategoryId(request.categoryId());
         bead.setSkuCode(request.skuCode().trim().toUpperCase(Locale.ROOT));
         bead.setName(request.name().trim());
         bead.setMaterial(request.material().trim());
         bead.setColor(request.color().trim());
-        bead.setDiameterMm(request.diameterMm());
+        bead.setDiameterMm(
+                categoryProductType(category) == ProductType.BEAD
+                        ? request.diameterMm()
+                        : null
+        );
         bead.setSalePrice(request.salePrice());
         bead.setCostPrice(request.costPrice());
         bead.setStockAlertThreshold(request.stockAlertThreshold());
@@ -403,6 +446,15 @@ public class AdminCatalogService {
             throw new BusinessException(
                     ErrorCode.COMMON_NOT_FOUND,
                     "套餐引用的散珠不存在"
+            );
+        }
+        Map<Long, Category> categoriesById = loadCategoriesById(beads);
+        if (beads.stream().anyMatch(bead -> categoryProductType(
+                categoriesById.get(bead.getCategoryId())
+        ) != ProductType.BEAD)) {
+            throw new BusinessException(
+                    ErrorCode.COMMON_CONFLICT,
+                    "成品手串只能包含珠子商品"
             );
         }
         if (packageStatus == CatalogStatus.ON_SALE
@@ -556,11 +608,21 @@ public class AdminCatalogService {
 
     private AdminBeadSkuView toAdminView(
             BeadSku bead,
+            Category category,
+            InventoryBalance balance,
             Map<Long, String> coverUrls
     ) {
+        int availableQty = balance == null ? 0 : balance.getAvailableQty();
+        int reservedQty = balance == null ? 0 : balance.getReservedQty();
+        int soldQty = balance == null ? 0 : balance.getSoldQty();
+        StockWarningStatus warningStatus =
+                availableQty <= bead.getStockAlertThreshold()
+                        ? StockWarningStatus.RESTOCK
+                        : StockWarningStatus.NORMAL;
         return new AdminBeadSkuView(
                 bead.getId(),
                 bead.getCategoryId(),
+                categoryProductType(category),
                 bead.getSkuCode(),
                 bead.getName(),
                 bead.getMaterial(),
@@ -569,6 +631,10 @@ public class AdminCatalogService {
                 bead.getSalePrice(),
                 bead.getCostPrice(),
                 bead.getStockAlertThreshold(),
+                availableQty,
+                reservedQty,
+                soldQty,
+                warningStatus,
                 bead.getCoverAssetId(),
                 coverUrls.get(bead.getCoverAssetId()),
                 bead.getTagsJson(),
@@ -576,7 +642,73 @@ public class AdminCatalogService {
         );
     }
 
+    private Map<Long, Category> loadCategoriesById(List<BeadSku> beads) {
+        List<Long> categoryIds = beads.stream()
+                .map(BeadSku::getCategoryId)
+                .distinct()
+                .toList();
+        if (categoryIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        return categoryMapper.selectBatchIds(categoryIds).stream()
+                .collect(Collectors.toMap(
+                        Category::getId,
+                        Function.identity()
+                ));
+    }
+
+    private Map<Long, InventoryBalance> loadInventoryBalancesBySkuId(
+            List<BeadSku> beads
+    ) {
+        List<Long> skuIds = beads.stream()
+                .map(BeadSku::getId)
+                .toList();
+        if (skuIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        return inventoryBalanceMapper.selectList(
+                        new LambdaQueryWrapper<InventoryBalance>()
+                                .in(InventoryBalance::getBeadSkuId, skuIds)
+                ).stream()
+                .collect(Collectors.toMap(
+                        InventoryBalance::getBeadSkuId,
+                        Function.identity()
+                ));
+    }
+
+    private void validateProductFields(
+            Category category,
+            SaveBeadSkuRequest request
+    ) {
+        if (categoryProductType(category) == ProductType.BEAD
+                && request.diameterMm() == null) {
+            throw new BusinessException(
+                    ErrorCode.COMMON_BAD_REQUEST,
+                    "珠子商品必须填写珠径"
+            );
+        }
+    }
+
+    private ProductType requestedProductType(SaveCategoryRequest request) {
+        return request.productType() == null
+                ? ProductType.BEAD
+                : request.productType();
+    }
+
+    private ProductType categoryProductType(Category category) {
+        return category == null || category.getProductType() == null
+                ? ProductType.BEAD
+                : category.getProductType();
+    }
+
     /** 批量解析当前页封面，避免列表按行访问素材表。 */
+    private String coverUrl(Long assetId) {
+        if (assetId == null) {
+            return null;
+        }
+        return loadCoverUrls(List.of(assetId)).get(assetId);
+    }
+
     private Map<Long, String> loadCoverUrls(List<Long> assetIds) {
         List<Long> distinctIds = assetIds.stream()
                 .filter(id -> id != null)

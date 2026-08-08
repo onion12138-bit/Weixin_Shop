@@ -17,18 +17,17 @@ import com.diybracelet.mall.auth.infrastructure.JwtService;
 import com.diybracelet.mall.auth.infrastructure.SecurityConfiguration;
 import com.diybracelet.mall.identity.infrastructure.CustomerJwtAuthenticationFilter;
 import com.diybracelet.mall.identity.infrastructure.CustomerJwtService;
+import com.diybracelet.mall.recommendation.api.dto.BirthProfileResponse;
 import com.diybracelet.mall.recommendation.api.dto.RecommendationResponse;
 import com.diybracelet.mall.recommendation.api.dto.RecommendationStatusResponse;
 import com.diybracelet.mall.recommendation.application.RecommendationService;
 import com.diybracelet.mall.shared.error.BusinessException;
 import com.diybracelet.mall.shared.error.ErrorCode;
 import com.diybracelet.mall.shared.error.GlobalExceptionHandler;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.math.BigDecimal;
-import java.util.LinkedHashMap;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -38,8 +37,11 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
-/** Customer JWT, validation, status and stable error HTTP contract tests. */
-@WebMvcTest(AppRecommendationController.class)
+/** Public birthday profile and customer-only recommendation HTTP contracts. */
+@WebMvcTest({
+    AppRecommendationController.class,
+    PublicRecommendationController.class
+})
 @Import({
     GlobalExceptionHandler.class,
     JwtService.class,
@@ -63,9 +65,6 @@ class AppRecommendationControllerTest {
     private MockMvc mockMvc;
 
     @Autowired
-    private ObjectMapper objectMapper;
-
-    @Autowired
     private CustomerJwtService customerJwtService;
 
     @Autowired
@@ -75,7 +74,7 @@ class AppRecommendationControllerTest {
     private RecommendationService service;
 
     @Test
-    void shouldRequireCustomerJwtForBothStatusAndGeneration() throws Exception {
+    void shouldRequireCustomerJwtForAppStatusAndGeneration() throws Exception {
         mockMvc.perform(get("/api/app/recommendations/status"))
             .andExpect(status().isUnauthorized())
             .andExpect(jsonPath("$.code").value("COMMON_UNAUTHORIZED"));
@@ -88,6 +87,49 @@ class AppRecommendationControllerTest {
 
         verify(service, never()).status();
         verify(service, never()).recommend(any());
+    }
+
+    @Test
+    void shouldExposePublicAvailabilityWithoutCreatingACustomerSession()
+            throws Exception {
+        when(service.status()).thenReturn(
+            new RecommendationStatusResponse("AVAILABLE", true)
+        );
+
+        mockMvc.perform(get("/api/public/recommendations/status"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.status").value("AVAILABLE"))
+            .andExpect(jsonPath("$.data.available").value(true));
+    }
+
+    @Test
+    void shouldExposeTheServerDerivedBirthdayProfileWithoutAuthentication()
+            throws Exception {
+        when(service.birthProfile("1992-01-20")).thenReturn(profile());
+
+        mockMvc.perform(get("/api/public/recommendations/profile")
+                .queryParam("birthDate", "1992-01-20"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.birthDate").value("1992-01-20"))
+            .andExpect(jsonPath("$.data.constellation").value("水瓶座"))
+            .andExpect(jsonPath("$.data.zodiac").value("猴"))
+            .andExpect(jsonPath("$.data.constellationElement").value("风象"));
+    }
+
+    @ParameterizedTest(name = "public birthday error {0}")
+    @MethodSource("birthdayErrors")
+    void shouldExposePrecisePublicBirthdayErrors(
+            ErrorCode errorCode,
+            String birthDate
+    ) throws Exception {
+        when(service.birthProfile(birthDate)).thenThrow(
+            new BusinessException(errorCode, "生日无效")
+        );
+
+        mockMvc.perform(get("/api/public/recommendations/profile")
+                .queryParam("birthDate", birthDate))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value(errorCode.name()));
     }
 
     @Test
@@ -116,7 +158,8 @@ class AppRecommendationControllerTest {
     }
 
     @Test
-    void shouldReturnOneValidatedRecommendationWithoutSensitiveInputEcho() throws Exception {
+    void shouldReturnBirthdayProfileAndMultipleMaterialPlansWithoutPricing()
+            throws Exception {
         when(service.recommend(any())).thenReturn(response());
 
         String body = mockMvc.perform(post("/api/app/recommendations")
@@ -124,52 +167,29 @@ class AppRecommendationControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(validRequest()))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.schemeName").value("灰蓝通勤"))
-            .andExpect(jsonPath("$.data.sequence[0]").value(2001))
-            .andExpect(jsonPath("$.data.quantities['2001']").value(2))
-            .andExpect(jsonPath("$.data.items[0].imageUrl")
+            .andExpect(jsonPath("$.data.profile.birthDate").value("1992-01-20"))
+            .andExpect(jsonPath("$.data.profile.constellation").value("水瓶座"))
+            .andExpect(jsonPath("$.data.plans.length()").value(2))
+            .andExpect(jsonPath("$.data.plans[0].schemeName").value("清透通勤"))
+            .andExpect(jsonPath("$.data.plans[0].items.length()").value(3))
+            .andExpect(jsonPath("$.data.plans[0].items[0].skuId").value(2001))
+            .andExpect(jsonPath("$.data.plans[0].items[0].imageUrl")
                 .value("/api/public/files/a.png"))
-            .andExpect(jsonPath("$.data.cordOption.id").value(6001))
-            .andExpect(jsonPath("$.data.totalAmount").value(314.80))
-            .andExpect(jsonPath("$.data.quoteFingerprint").value("server-fingerprint"))
-            .andExpect(jsonPath("$.data.culturalDisclaimer", containsString("文化娱乐参考")))
+            .andExpect(jsonPath("$.data.culturalDisclaimer", containsString("文化娱乐")))
+            .andExpect(jsonPath("$.data.totalAmount").doesNotExist())
+            .andExpect(jsonPath("$.data.sequence").doesNotExist())
+            .andExpect(jsonPath("$.data.cordOption").doesNotExist())
             .andReturn().getResponse().getContentAsString();
 
         org.assertj.core.api.Assertions.assertThat(body)
-            .doesNotContain("1992-01-20", "private complete consultation text");
-    }
-
-    @ParameterizedTest
-    @ValueSource(strings = {
-        "{\"budget\":0,\"wristCircumferenceMm\":160,\"fitType\":\"STANDARD\"}",
-        "{\"budget\":100,\"wristCircumferenceMm\":0,\"fitType\":\"STANDARD\"}",
-        "{\"budget\":100,\"wristCircumferenceMm\":160}",
-        "{\"birthDate\":\"2999-01-01\",\"budget\":100,\"wristCircumferenceMm\":160,\"fitType\":\"STANDARD\"}"
-    })
-    void shouldRejectOutOfRangeRequiredFields(String requestBody) throws Exception {
-        mockMvc.perform(post("/api/app/recommendations")
-                .header("Authorization", customerAuthorization())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(requestBody))
-            .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.code").value("COMMON_BAD_REQUEST"));
-
-        verify(service, never()).recommend(any());
+            .doesNotContain("private wish");
     }
 
     @Test
-    void shouldRejectOverlongStructuredAndFreeTextFieldsWithoutEchoingThem() throws Exception {
-        String longConstellation = "星".repeat(17);
-        String longWish = "愿".repeat(81);
-        String longFreeText = "私".repeat(501);
-        String requestBody = objectMapper.writeValueAsString(java.util.Map.of(
-            "constellation", longConstellation,
-            "wish", longWish,
-            "freeText", longFreeText,
-            "budget", 100,
-            "wristCircumferenceMm", 160,
-            "fitType", "STANDARD"
-        ));
+    void shouldRejectAnOverlongWishWithoutEchoingIt() throws Exception {
+        String sensitiveWish = "愿".repeat(81);
+        String requestBody = "{\"birthDate\":\"1992-01-20\",\"wish\":\""
+            + sensitiveWish + "\"}";
 
         mockMvc.perform(post("/api/app/recommendations")
                 .header("Authorization", customerAuthorization())
@@ -177,23 +197,16 @@ class AppRecommendationControllerTest {
                 .content(requestBody))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.code").value("COMMON_BAD_REQUEST"))
-            .andExpect(content().string(not(containsString(longFreeText))));
+            .andExpect(content().string(not(containsString(sensitiveWish))));
 
         verify(service, never()).recommend(any());
     }
 
-    @ParameterizedTest(name = "{0}")
-    @ValueSource(strings = {
-        "AI_NOT_CONFIGURED",
-        "AI_DISABLED",
-        "AI_UNAUTHORIZED",
-        "AI_MODEL_UNAVAILABLE",
-        "AI_RATE_LIMITED",
-        "AI_TEMPORARILY_UNAVAILABLE",
-        "AI_INVALID_RECOMMENDATION"
-    })
-    void shouldReturnStableRecommendationErrorsWithoutPartialData(String code) throws Exception {
-        ErrorCode errorCode = ErrorCode.valueOf(code);
+    @ParameterizedTest(name = "recommendation error {0}")
+    @MethodSource("recommendationErrors")
+    void shouldReturnDistinctRecommendationErrorsWithoutPartialData(
+            ErrorCode errorCode
+    ) throws Exception {
         when(service.recommend(any())).thenThrow(
             new BusinessException(errorCode, "AI 推荐不可用")
         );
@@ -203,7 +216,7 @@ class AppRecommendationControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(validRequest()))
             .andExpect(status().is(errorCode.status().value()))
-            .andExpect(jsonPath("$.code").value(code))
+            .andExpect(jsonPath("$.code").value(errorCode.name()))
             .andExpect(jsonPath("$.data").doesNotExist());
     }
 
@@ -215,57 +228,75 @@ class AppRecommendationControllerTest {
         return """
             {
               "birthDate":"1992-01-20",
-              "constellation":"水瓶座",
-              "zodiac":"猴",
-              "elementPreference":"水",
-              "wish":"专注",
-              "scene":"通勤",
-              "colorPreference":"灰蓝",
-              "budget":500,
-              "wristCircumferenceMm":160,
-              "fitType":"STANDARD",
-              "freeText":"private complete consultation text"
+              "wishInspiration":"事业",
+              "wish":"private wish"
             }
             """;
     }
 
+    private BirthProfileResponse profile() {
+        return new BirthProfileResponse("1992-01-20", "水瓶座", "猴", "风象");
+    }
+
     private RecommendationResponse response() {
-        LinkedHashMap<Long, Integer> quantities = new LinkedHashMap<>();
-        quantities.put(2001L, 2);
-        quantities.put(2002L, 1);
+        List<RecommendationResponse.Item> firstItems = List.of(
+            new RecommendationResponse.Item(
+                2001L, "白水晶", "/api/public/files/a.png", "清透质感"
+            ),
+            new RecommendationResponse.Item(
+                2002L, "紫水晶", "/api/public/files/b.png", "柔和层次"
+            ),
+            new RecommendationResponse.Item(
+                2003L, "月光石", "/api/public/files/c.png", "日常点缀"
+            )
+        );
         return new RecommendationResponse(
-            "灰蓝通勤",
-            List.of(2001L, 2002L, 2001L),
-            quantities,
+            profile(),
             List.of(
-                new RecommendationResponse.Item(
-                    2001L,
-                    "白水晶 8mm",
-                    "/api/public/files/a.png",
-                    2,
-                    "清透层次"
+                new RecommendationResponse.Plan(
+                    "清透通勤", "适合日常材质搭配。", firstItems
                 ),
-                new RecommendationResponse.Item(
-                    2002L,
-                    "紫水晶 8mm",
-                    "/api/public/files/b.png",
-                    1,
-                    "紫色点缀"
+                new RecommendationResponse.Plan(
+                    "沉静层次",
+                    "以沉静材质形成层次。",
+                    List.of(firstItems.get(2), firstItems.get(1), firstItems.get(0))
                 )
             ),
-            "适合通勤。",
-            new RecommendationResponse.CordOptionView(
-                6001L,
-                "ELASTIC-CLEAR",
-                "透明弹力绳",
-                "#E8E4DC"
+            "星座、生肖、星座元素及寓意内容仅供文化娱乐与搭配参考。"
+        );
+    }
+
+    private static java.util.stream.Stream<org.junit.jupiter.params.provider.Arguments>
+            birthdayErrors() {
+        return java.util.stream.Stream.of(
+            org.junit.jupiter.params.provider.Arguments.of(
+                ErrorCode.BIRTH_DATE_REQUIRED, ""
             ),
-            new BigDecimal("300.00"),
-            new BigDecimal("10.00"),
-            new BigDecimal("4.80"),
-            new BigDecimal("314.80"),
-            "server-fingerprint",
-            "星座、生肖、五行及寓意内容仅供文化娱乐参考。"
+            org.junit.jupiter.params.provider.Arguments.of(
+                ErrorCode.BIRTH_DATE_INVALID, "not-a-date"
+            )
+        );
+    }
+
+    private static java.util.stream.Stream<ErrorCode> recommendationErrors() {
+        return java.util.stream.Stream.of(
+            ErrorCode.AI_NOT_CONFIGURED,
+            ErrorCode.AI_PROMPT_NOT_CONFIGURED,
+            ErrorCode.AI_DISABLED,
+            ErrorCode.AI_UNAUTHORIZED,
+            ErrorCode.AI_MODEL_UNAVAILABLE,
+            ErrorCode.AI_RATE_LIMITED,
+            ErrorCode.AI_TIMEOUT,
+            ErrorCode.AI_UPSTREAM_ERROR,
+            ErrorCode.AI_RESPONSE_FORMAT_INVALID,
+            ErrorCode.AI_RESULT_COUNT_INVALID,
+            ErrorCode.AI_RESULT_ITEM_COUNT_INVALID,
+            ErrorCode.AI_RESULT_DUPLICATE_SKU,
+            ErrorCode.AI_RESULT_SKU_INVALID,
+            ErrorCode.AI_RESPONSE_CONTENT_UNSAFE,
+            ErrorCode.BIRTH_DATE_REQUIRED,
+            ErrorCode.BIRTH_DATE_INVALID,
+            ErrorCode.CATALOG_EMPTY
         );
     }
 }

@@ -42,6 +42,8 @@ import java.util.stream.Collectors;
 @Service
 public class DiySchemeService {
 
+    private static final long MAX_ACTIVE_SCHEMES_PER_CUSTOMER = 3;
+
     private static final TypeReference<List<Long>> LONG_LIST_TYPE =
             new TypeReference<>() {
             };
@@ -83,6 +85,7 @@ public class DiySchemeService {
     @Transactional
     public DiySchemeResponse create(SaveDiySchemeRequest request) {
         Long customerId = identityResolver.requireCustomerIdentityId();
+        ensureSchemeCapacity(customerId);
         DiyScheme scheme = toEntity(customerId, request);
         scheme.setVersion(0L);
         schemeMapper.insert(scheme);
@@ -148,6 +151,7 @@ public class DiySchemeService {
     public DiySchemeResponse copy(Long id) {
         Long customerId = identityResolver.requireCustomerIdentityId();
         DiyScheme source = requireOwnedScheme(id, customerId);
+        ensureSchemeCapacity(customerId);
         DiyScheme copy = new DiyScheme();
         copy.setCustomerIdentityId(customerId);
         copy.setName(copyName(source.getName()));
@@ -263,6 +267,17 @@ public class DiySchemeService {
 
     private void ensureOwnedSchemeExists(Long id, Long customerId) {
         requireOwnedScheme(id, customerId);
+    }
+
+    private void ensureSchemeCapacity(Long customerId) {
+        if (schemeMapper.countOwnedActive(customerId)
+                < MAX_ACTIVE_SCHEMES_PER_CUSTOMER) {
+            return;
+        }
+        throw new BusinessException(
+                ErrorCode.DIY_SCHEME_LIMIT_REACHED,
+                "最多保存 3 个 DIY 方案"
+        );
     }
 
     private DiySchemeResponse toResponse(DiyScheme scheme) {

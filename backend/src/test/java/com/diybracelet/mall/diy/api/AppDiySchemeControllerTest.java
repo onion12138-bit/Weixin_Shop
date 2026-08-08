@@ -144,6 +144,26 @@ class AppDiySchemeControllerTest extends MySqlIntegrationTest {
     }
 
     @Test
+    void shouldRejectTheFourthActiveSchemeForOneCustomer() throws Exception {
+        String customerToken = customerToken(
+                "21efad2d-7dcb-4a69-9a4f-11b22fb90c82"
+        );
+        List<Long> sequence = sequence(12, 9);
+
+        createScheme(customerToken, "方案一", sequence);
+        createScheme(customerToken, "方案二", sequence);
+        createScheme(customerToken, "方案三", sequence);
+
+        mockMvc.perform(post("/api/app/diy/schemes")
+                        .header("Authorization", "Bearer " + customerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload("方案四", sequence, 0)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code")
+                        .value("DIY_SCHEME_LIMIT_REACHED"));
+    }
+
+    @Test
     void shouldHideOtherCustomerSchemeAsNotFound() throws Exception {
         String ownerToken = customerToken(
                 "3f6f7816-0f1a-4aa0-870f-f34f9195a2ec"

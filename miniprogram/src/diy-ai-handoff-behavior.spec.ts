@@ -1,4 +1,9 @@
 declare function require(name: string): unknown
+export {}
+
+const { readFileSync } = require('fs') as {
+  readFileSync(path: string, encoding: string): string
+}
 
 jest.mock('../miniprogram/services/catalog', () => ({
   getBead: jest.fn(),
@@ -58,8 +63,12 @@ function instantiate(definition: Record<string, any>): Record<string, any> {
     ...definition,
     data: { ...definition.data },
   }
-  instance.setData = jest.fn((patch: Record<string, unknown>) => {
+  instance.setData = jest.fn((
+    patch: Record<string, unknown>,
+    callback?: () => void,
+  ) => {
     Object.assign(instance.data, patch)
+    callback?.()
   })
   return instance
 }
@@ -108,17 +117,44 @@ function loadEditor(options: { removeThrows?: boolean } = {}) {
     }
     const diy = jest.requireMock('../miniprogram/services/diy') as {
       getDiyConfiguration: jest.Mock
+      getScheme: jest.Mock
     }
     catalog.listAllPublicBeads.mockReset()
     catalog.listBeads.mockReset()
     catalog.listCategories.mockReset()
     diy.getDiyConfiguration.mockReset()
+    diy.getScheme.mockReset()
     catalog.listAllPublicBeads.mockResolvedValue([bead])
     catalog.listBeads.mockResolvedValue({
       items: [bead], total: 1, page: 1, size: 30,
     })
     catalog.listCategories.mockResolvedValue([])
     diy.getDiyConfiguration.mockResolvedValue(config)
+    diy.getScheme.mockResolvedValue({
+      id: 91,
+      name: '之前保存的设计',
+      wristCircumferenceMm: 160,
+      fitType: 'STANDARD',
+      cordOptionId: 6001,
+      sequence: [2001],
+      beadCount: 1,
+      catalogSnapshot: [{
+        skuId: 2001,
+        skuCode: 'BEAD-2001',
+        name: '合法珠子',
+        color: '透明',
+        diameterMm: 8,
+        coverUrl: 'https://cdn.test/2001.png',
+        status: 'ON_SALE',
+        diyVisual: null,
+      }],
+      quoteStatus: 'VALID',
+      previewAssetId: null,
+      previewUrl: null,
+      version: 1,
+      createdAt: '2026-08-01T00:00:00',
+      updatedAt: '2026-08-01T00:00:00',
+    })
     require('../miniprogram/pages/diy/editor')
   })
   if (!definition) throw new Error('Editor Page definition was not captured')
@@ -131,9 +167,6 @@ async function flushMicrotasks(): Promise<void> {
 
 const validHandoff = {
   sequence: [2001],
-  wristCircumferenceMm: 165,
-  fitType: 'STANDARD',
-  cordOptionId: 6001,
 }
 
 describe('DIY editor AI handoff behavior', () => {
@@ -160,6 +193,9 @@ describe('DIY editor AI handoff behavior', () => {
     firstPage.onLoad({ source: 'ai' })
     await flushMicrotasks()
     expect(firstPage.data.sequence).toEqual([2001])
+    expect(firstPage.data.wristCircumferenceMm).toBe(160)
+    expect(firstPage.data.fitType).toBe('STANDARD')
+    expect(firstPage.data.cordOptionId).toBe(6001)
 
     const secondPage = instantiate(definition)
     secondPage.onLoad({ source: 'ai' })
@@ -169,5 +205,44 @@ describe('DIY editor AI handoff behavior', () => {
     expect(wxMock.showModal).not.toHaveBeenCalled()
     expect(wxMock.getStorageSync)
       .toHaveBeenCalledWith('pending_ai_recommendation')
+  })
+
+  it('mounts a saved design canvas beneath the loading overlay', async () => {
+    const { definition, wxMock } = loadEditor()
+    const page = instantiate(definition)
+
+    page.onLoad({ schemeId: '91' })
+    await flushMicrotasks()
+
+    expect(page.data.sequence).toEqual([2001])
+    expect(page.data.loading).toBe(false)
+    expect(wxMock.createSelectorQuery).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the bead operation bar visible and inert until a bead is selected', async () => {
+    const { definition } = loadEditor()
+    const page = instantiate(definition)
+    page.refreshDerivedState = jest.fn()
+
+    page.onLoad({ schemeId: '91' })
+    await flushMicrotasks()
+    page.refreshDerivedState.mockClear()
+    page.decreaseSelectedSku()
+
+    expect(page.data.selectedIndex).toBe(-1)
+    expect(page.data.selectedNumber).toBe(0)
+    expect(page.refreshDerivedState).not.toHaveBeenCalled()
+
+    const template = readFileSync('miniprogram/pages/diy/editor.wxml', 'utf8')
+    expect(template).not.toContain(
+      '<view wx:if="{{selectedIndex >= 0}}" class="selected-actions">',
+    )
+    expect(template).toContain('disabled="{{selectedIndex < 0}}"')
+  })
+
+  it('uses an opaque loading overlay while initial bracelet visuals load', () => {
+    const template = readFileSync('miniprogram/pages/diy/editor.wxml', 'utf8')
+
+    expect(template).toContain('class="loading-overlay"')
   })
 })

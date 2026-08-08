@@ -20,6 +20,8 @@ admin_username="${ADMIN_USERNAME:-admin}"
 admin_password="${ADMIN_PASSWORD:-Admin@123}"
 timeout_seconds="${RECOMMENDATION_TIMEOUT_SECONDS:-30}"
 max_output_tokens="${RECOMMENDATION_MAX_OUTPUT_TOKENS:-2048}"
+plan_count="${RECOMMENDATION_PLAN_COUNT:-3}"
+recommendation_prompt='根据生日画像与顾客期望，从候选库存珠子中给出风格有区分的日常材质搭配，并说明每种材质的选择理由。'
 catalog_page_size=100
 
 if [[ ! "$timeout_seconds" =~ ^[0-9]+$ ]] \
@@ -30,6 +32,11 @@ fi
 if [[ ! "$max_output_tokens" =~ ^[0-9]+$ ]] \
     || (( max_output_tokens < 256 || max_output_tokens > 16384 )); then
   printf 'ERROR: RECOMMENDATION_MAX_OUTPUT_TOKENS must be an integer from 256 to 16384\n' >&2
+  exit 1
+fi
+if [[ ! "$plan_count" =~ ^[0-9]+$ ]] \
+    || (( plan_count < 1 || plan_count > 5 )); then
+  printf 'ERROR: RECOMMENDATION_PLAN_COUNT must be an integer from 1 to 5\n' >&2
   exit 1
 fi
 
@@ -58,31 +65,27 @@ validate_live_recommendation() {
   local recommendation_json="$1"
   local public_catalog_ids="$2"
 
-  jq -e --argjson catalogIds "$public_catalog_ids" '
+  jq -e \
+    --argjson catalogIds "$public_catalog_ids" \
+    --argjson planCount "$plan_count" '
     .code == "OK"
     and (.data | type == "object")
-    and (.data.sequence | type == "array" and length > 0)
-    and (all(.data.sequence[]; type == "number" and floor == . and . > 0))
-    and (([.data.sequence[]] | unique) - $catalogIds | length == 0)
-    and (.data.quantities | type == "object" and length > 0)
-    and (.data.quantities | to_entries | all(.[].key; test("^[1-9][0-9]*$")))
-    and (.data.quantities | to_entries | all(.[].value;
-      type == "number" and floor == . and . > 0))
-    and ((.data.quantities | keys | map(tonumber) | sort)
-      == ([.data.sequence[]] | unique | sort))
-    and (.data.quantities == (reduce .data.sequence[] as $sku ({};
-      .[$sku | tostring] = ((.[$sku | tostring] // 0) + 1))))
-    and (.data.items | type == "array" and length > 0)
-    and (all(.data.items[];
-      (.skuId | type == "number" and floor == . and . > 0)
-      and (.imageUrl | type == "string" and length > 0)))
-    and (([.data.items[].skuId] | length)
-      == ([.data.items[].skuId] | unique | length))
-    and (([.data.items[].skuId] | unique | sort)
-      == ([.data.sequence[]] | unique | sort))
-    and (([.data.items[].skuId] | unique) - $catalogIds | length == 0)
-    and (.data.totalAmount | type == "number" and . >= 0)
-    and (.data.quoteFingerprint | type == "string" and length > 0)
+    and (.data.profile.birthDate == "1992-01-20")
+    and (.data.profile.constellation | type == "string" and length > 0)
+    and (.data.profile.zodiac | type == "string" and length > 0)
+    and (.data.profile.constellationElement | type == "string" and length > 0)
+    and (.data.plans | type == "array" and length == $planCount)
+    and (all(.data.plans[];
+      (.schemeName | type == "string" and length > 0)
+      and (.summary | type == "string" and length > 0)
+      and (.items | type == "array" and length >= 3 and length <= 5)
+      and (([.items[].skuId] | length) == ([.items[].skuId] | unique | length))
+      and (([.items[].skuId] | unique) - $catalogIds | length == 0)
+      and (all(.items[];
+        (.skuId | type == "number" and floor == . and . > 0)
+        and (.name | type == "string" and length > 0)
+        and (.imageUrl | type == "string" and length > 0)
+        and (.reason | type == "string" and length > 0))))
     and (.data.culturalDisclaimer | type == "string" and length > 0)
   ' >/dev/null 2>&1 <<< "$recommendation_json"
 }
@@ -103,6 +106,8 @@ build_payload() {
       SMOKE_CONFIG_VERSION="$config_version" \
         SMOKE_TIMEOUT_SECONDS="$timeout_seconds" \
         SMOKE_MAX_OUTPUT_TOKENS="$max_output_tokens" \
+        SMOKE_PLAN_COUNT="$plan_count" \
+        SMOKE_RECOMMENDATION_PROMPT="$recommendation_prompt" \
         jq -cn '{
           baseUrl:"https://api.deepseek.com",
           modelName:"deepseek-v4-flash",
@@ -110,22 +115,15 @@ build_payload() {
           enabled:true,
           timeoutSeconds:(env.SMOKE_TIMEOUT_SECONDS | tonumber),
           maxOutputTokens:(env.SMOKE_MAX_OUTPUT_TOKENS | tonumber),
+          recommendationPrompt:env.SMOKE_RECOMMENDATION_PROMPT,
+          planCount:(env.SMOKE_PLAN_COUNT | tonumber),
           version:(env.SMOKE_CONFIG_VERSION | tonumber)
         }'
       ;;
     recommendation)
       jq -cn '{
         birthDate:"1992-01-20",
-        constellation:"水瓶座",
-        zodiac:"猴",
-        elementPreference:"水",
-        wish:"专注与从容",
-        scene:"通勤",
-        colorPreference:"灰蓝、酒红或紫绿",
-        budget:500,
-        wristCircumferenceMm:160,
-        fitType:"STANDARD",
-        freeText:"优先选择适合日常佩戴且当前有商品图片的搭配"
+        wish:"希望得到适合日常佩戴、风格从容的材质搭配"
       }'
       ;;
     *)
@@ -218,12 +216,16 @@ expect_ok() {
 expect_error() {
   local operation="$1"
   local expected_code="$2"
+  local alternate_code="${3:-}"
   if [[ "$HTTP_STATUS" != '503' ]] \
-      || ! jq -e --arg code "$expected_code" \
-        '.code == $code and (.data == null)' \
+      || ! jq -e --arg code "$expected_code" --arg alternate "$alternate_code" \
+        '(.code == $code or ($alternate != "" and .code == $alternate))
+          and (.data == null)' \
         >/dev/null 2>&1 <<< "$RESPONSE_BODY"; then
     safe_error_summary "$operation"
-    printf 'ERROR: expected HTTP 503 with code %s\n' "$expected_code" >&2
+    printf 'ERROR: expected HTTP 503 with code %s%s\n' \
+      "$expected_code" \
+      "${alternate_code:+ or $alternate_code}" >&2
     exit 1
   fi
 }
@@ -241,8 +243,8 @@ customer_token="$(jq -er \
 call_api \
   'recommendation status' \
   GET \
-  '/api/app/recommendations/status' \
-  "$customer_token"
+  '/api/public/recommendations/status' \
+  ''
 expect_ok 'recommendation status'
 if ! jq -e '
   (.data.status == "AVAILABLE" and .data.available == true)
@@ -265,8 +267,10 @@ if [[ -z "${DEEPSEEK_API_KEY:-}" ]]; then
 
   if [[ "$initial_status" == 'NOT_CONFIGURED' ]]; then
     expected_error='AI_NOT_CONFIGURED'
+    alternate_error='AI_PROMPT_NOT_CONFIGURED'
   else
     expected_error='AI_DISABLED'
+    alternate_error=''
   fi
   call_api \
     'paused recommendation POST' \
@@ -274,9 +278,12 @@ if [[ -z "${DEEPSEEK_API_KEY:-}" ]]; then
     '/api/app/recommendations' \
     "$customer_token" \
     recommendation
-  expect_error 'paused recommendation POST' "$expected_error"
+  expect_error \
+    'paused recommendation POST' \
+    "$expected_error" \
+    "$alternate_error"
   printf '%s\n' \
-    "AI 推荐暂停路径 HTTP 冒烟通过：状态 $initial_status 与 $expected_error 精确匹配；未调用 DeepSeek，也未使用本地降级。"
+    "AI 推荐暂停路径 HTTP 冒烟通过：状态 $initial_status 与返回配置状态匹配；未调用 DeepSeek，也未使用本地降级。"
   exit 0
 fi
 
@@ -320,7 +327,9 @@ if [[ ! "$HTTP_STATUS" =~ ^2[0-9][0-9]$ ]] \
 fi
 if ! jq -e \
   --argjson timeout "$timeout_seconds" \
-  --argjson maxTokens "$max_output_tokens" '
+  --argjson maxTokens "$max_output_tokens" \
+  --argjson planCount "$plan_count" \
+  --arg prompt "$recommendation_prompt" '
     .data.provider == "DEEPSEEK"
     and .data.baseUrl == "https://api.deepseek.com"
     and .data.modelName == "deepseek-v4-flash"
@@ -328,6 +337,8 @@ if ! jq -e \
     and .data.enabled == true
     and .data.timeoutSeconds == $timeout
     and .data.maxOutputTokens == $maxTokens
+    and .data.recommendationPrompt == $prompt
+    and .data.planCount == $planCount
   ' >/dev/null 2>&1 <<< "$RESPONSE_BODY"; then
   printf 'ERROR: saved AI configuration did not match the requested safe contract\n' >&2
   exit 1
@@ -343,8 +354,8 @@ expect_ok 'test DeepSeek configuration'
 call_api \
   'configured recommendation status' \
   GET \
-  '/api/app/recommendations/status' \
-  "$customer_token"
+  '/api/public/recommendations/status' \
+  ''
 expect_ok 'configured recommendation status'
 if ! jq -e \
   '.data.status == "AVAILABLE" and .data.available == true' \
@@ -406,9 +417,9 @@ done
 
 if ! validate_live_recommendation "$recommendation_response" "$catalog_ids"; then
   printf '%s\n' \
-    'ERROR: live recommendation failed the single-design, paginated-catalog, amount, fingerprint, disclaimer, or image assertions.' >&2
+    'ERROR: live recommendation failed the configured-plan-count, birthday-profile, current-catalog, disclaimer, or image assertions.' >&2
   exit 1
 fi
 
 printf '%s\n' \
-  "AI 推荐 live HTTP 冒烟通过：DeepSeek 连接测试与单套服务端校验推荐成功，目录共检查 $catalog_page 页；未输出任何密钥或令牌。"
+  "AI 推荐 live HTTP 冒烟通过：DeepSeek 连接测试与 $plan_count 套库存材质推荐成功，目录共检查 $catalog_page 页；未输出任何密钥或令牌。"

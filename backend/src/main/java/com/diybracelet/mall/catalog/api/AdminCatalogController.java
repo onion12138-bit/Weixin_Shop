@@ -1,6 +1,7 @@
 package com.diybracelet.mall.catalog.api;
 
 import com.diybracelet.mall.catalog.api.dto.ChangeCatalogStatusRequest;
+import com.diybracelet.mall.catalog.api.dto.ChangePackageRecommendationRequest;
 import com.diybracelet.mall.catalog.api.dto.CreateBeadSkuRequest;
 import com.diybracelet.mall.catalog.api.dto.AdminBeadSkuView;
 import com.diybracelet.mall.catalog.api.dto.AdminPackageDetail;
@@ -230,6 +231,17 @@ public class AdminCatalogController {
         return success(adminCatalogService.changePackageStatus(
                 id,
                 request.status()
+        ));
+    }
+
+    @PatchMapping("/packages/{id}/recommendation")
+    public ApiResponse<ProductPackage> changePackageRecommendation(
+            @PathVariable @Min(1) Long id,
+            @Valid @RequestBody ChangePackageRecommendationRequest request
+    ) {
+        return success(adminCatalogService.changePackageRecommendation(
+                id,
+                request.recommended()
         ));
     }
 

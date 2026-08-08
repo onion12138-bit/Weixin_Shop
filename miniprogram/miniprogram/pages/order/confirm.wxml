@@ -1,76 +1,98 @@
 <view class="order-page">
-  <view class="page-heading">
-    <view>
-      <text class="kicker">CHECKOUT</text>
-      <text class="title">确认专属手串</text>
-    </view>
-    <button bindtap="openOrders">我的订单</button>
-  </view>
-
-  <view wx:if="{{loading}}" class="page-state">正在读取方案…</view>
+  <view wx:if="{{loading}}" class="page-state">正在准备订单…</view>
   <view wx:elif="{{errorMessage && !scheme}}" class="page-state error-state">
     <text>{{errorMessage}}</text>
-    <button bindtap="loadScheme">重新加载</button>
+    <button bindtap="loadCheckout">重新加载</button>
   </view>
 
   <block wx:elif="{{scheme}}">
-    <view class="scheme-summary">
-      <image src="{{scheme.previewUrl}}" mode="aspectFill" />
-      <view>
-        <text class="summary-name">{{scheme.name}}</text>
-        <text>{{scheme.beadCountText}}</text>
-        <text>{{scheme.amountText}}</text>
+    <view class="section-card address-section">
+      <view class="section-heading">
+        <text>收货地址</text>
+        <button bindtap="openAddresses">{{address ? '修改' : '添加地址'}}</button>
       </view>
-      <text class="quote-badge">后端重算</text>
+      <view wx:if="{{address}}" class="address-ticket">
+        <image src="/assets/images/profile/address.webp" mode="aspectFit" />
+        <view class="address-copy">
+          <view><text>{{address.receiverName}}</text><text>{{maskedPhone}}</text></view>
+          <text>{{address.region}} {{address.detail}}</text>
+        </view>
+        <image class="row-arrow" src="/assets/icons/home/arrow-right-s-line.svg" mode="aspectFit" />
+      </view>
+      <button wx:else class="empty-address" bindtap="openAddresses">添加常用收货地址</button>
     </view>
 
-    <view class="notice-card">
-      页面金额用于确认设计。提交后，系统会按最新 SKU 价格和库存重新计算，
-      不使用小程序自行提交的金额。
+    <view class="section-card product-section">
+      <view class="section-heading"><text>商品信息</text></view>
+      <view class="product-overview">
+        <image class="product-preview" src="{{previewUrl}}" mode="aspectFill" />
+        <view class="product-copy">
+          <view><text class="product-name">{{productName}}</text><text class="product-total">{{productTotalText}}</text></view>
+          <text class="product-subtitle">专属 DIY 手串 · {{beadCountText}}</text>
+          <view class="bead-list">
+            <view wx:for="{{beadRows}}" wx:key="skuId" class="bead-row">
+              <image wx:if="{{item.imageUrl}}" src="{{item.imageUrl}}" mode="aspectFit" />
+              <view wx:else class="bead-dot" style="background: {{item.colorHex}};" />
+              <text class="bead-row-name">{{item.name}}</text>
+              <text>{{item.specificationText}}</text>
+              <text>{{item.quantityText}}</text>
+            </view>
+            <text wx:if="{{hasMoreBeads}}" class="more-beads">… 其他珠子已包含在制作清单中</text>
+          </view>
+        </view>
+      </view>
     </view>
 
-    <view class="address-card">
-      <text class="card-title">收货信息</text>
-      <label>
-        <text>收货人</text>
-        <input
-          value="{{contactName}}"
-          data-field="contactName"
-          bindinput="updateField"
-          placeholder="请输入姓名"
-        />
-      </label>
-      <label>
-        <text>联系电话</text>
-        <input
-          value="{{contactPhone}}"
-          data-field="contactPhone"
-          bindinput="updateField"
-          type="number"
-          placeholder="请输入手机号"
-        />
-      </label>
-      <label>
-        <text>详细地址</text>
-        <textarea
-          value="{{addressDetail}}"
-          data-field="addressDetail"
-          bindinput="updateField"
-          placeholder="省市区、街道及门牌号"
-        />
-      </label>
+    <view class="section-card coupon-section" bindtap="openCouponModal">
+      <view class="coupon-icon"><image src="/assets/images/profile/benefits.webp" mode="aspectFit" /></view>
+      <view class="coupon-summary">
+        <text>选择优惠券</text>
+        <text>{{selectedCouponName}}</text>
+      </view>
+      <text class="coupon-value">{{discountCents ? discountText : coupons.length + ' 张可查看'}}</text>
+      <image class="row-arrow" src="/assets/icons/home/arrow-right-s-line.svg" mode="aspectFit" />
+    </view>
+
+    <view class="section-card amount-section">
+      <view><text>商品金额</text><text>{{productTotalText}}</text></view>
+      <view><text>优惠券抵扣</text><text class="discount-value">{{discountText}}</text></view>
+      <view><text>配送费</text><text>¥0.00</text></view>
+      <view class="amount-total"><text>应付金额</text><text>{{payableText}}</text></view>
     </view>
 
     <view wx:if="{{errorMessage}}" class="inline-error">{{errorMessage}}</view>
 
     <view class="checkout-bar">
-      <view>
-        <text>方案参考价</text>
-        <strong>{{scheme.amountText}}</strong>
+      <view class="checkout-total">
+        <text>{{savedText}}</text>
+        <view><text>合计</text><strong>{{payableText}}</strong></view>
       </view>
-      <button loading="{{submitting}}" disabled="{{submitting}}" bindtap="submitOrder">
-        创建订单
-      </button>
+      <button loading="{{submitting}}" disabled="{{submitting}}" bindtap="submitOrder">立即支付</button>
     </view>
   </block>
+
+  <view wx:if="{{couponModalVisible}}" class="coupon-backdrop" bindtap="closeCouponModal">
+    <view class="coupon-sheet" catchtap="keepCouponModalOpen">
+      <view class="sheet-handle" />
+      <view class="sheet-heading">
+        <view><text>选择优惠券</text><text>系统会按订单金额核验使用条件</text></view>
+        <button bindtap="closeCouponModal">关闭</button>
+      </view>
+      <scroll-view scroll-y class="coupon-scroll">
+        <view class="coupon-option no-coupon" data-id="0" bindtap="selectCoupon">
+          <view><text>暂不使用优惠券</text><text>按商品原价结算</text></view>
+          <radio checked="{{selectedCouponId === 0}}" color="#a74d70" />
+        </view>
+        <view wx:for="{{coupons}}" wx:key="id" class="coupon-option {{item.usable ? '' : 'disabled'}}" data-id="{{item.id}}" bindtap="selectCoupon">
+          <view class="coupon-amount"><strong>{{item.amountText}}</strong><text>{{item.thresholdText}}</text></view>
+          <view class="coupon-detail"><text>{{item.name}}</text><text>{{item.description}}</text><text>{{item.expiresText}}</text></view>
+          <view class="coupon-status">
+            <text>{{item.statusText}}</text>
+            <radio checked="{{item.selected}}" color="#a74d70" />
+          </view>
+        </view>
+        <view wx:if="{{!coupons.length}}" class="empty-coupons">暂时没有优惠券</view>
+      </scroll-view>
+    </view>
+  </view>
 </view>

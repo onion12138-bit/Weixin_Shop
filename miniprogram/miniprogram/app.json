@@ -1,6 +1,11 @@
 {
   "pages": [
     "pages/home/index",
+    "pages/profile/index",
+    "pages/profile/edit",
+    "pages/profile/favorites",
+    "pages/profile/addresses",
+    "pages/profile/coupons",
     "pages/recommendation/index",
     "pages/catalog/index",
     "pages/catalog/detail",

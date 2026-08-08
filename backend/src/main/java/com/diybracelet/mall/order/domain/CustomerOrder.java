@@ -33,6 +33,8 @@ public class CustomerOrder {
 
     private String addressDetail;
 
+    private String orderNote;
+
     private String schemeSnapshotJson;
 
     private BigDecimal beadAmount;
@@ -40,6 +42,10 @@ public class CustomerOrder {
     private BigDecimal craftFee;
 
     private BigDecimal cordFee;
+
+    private Long couponId;
+
+    private BigDecimal discountAmount;
 
     private BigDecimal totalAmount;
 
@@ -124,6 +130,14 @@ public class CustomerOrder {
         this.addressDetail = addressDetail;
     }
 
+    public String getOrderNote() {
+        return orderNote;
+    }
+
+    public void setOrderNote(String orderNote) {
+        this.orderNote = orderNote;
+    }
+
     public String getSchemeSnapshotJson() {
         return schemeSnapshotJson;
     }
@@ -154,6 +168,22 @@ public class CustomerOrder {
 
     public void setCordFee(BigDecimal cordFee) {
         this.cordFee = cordFee;
+    }
+
+    public Long getCouponId() {
+        return couponId;
+    }
+
+    public void setCouponId(Long couponId) {
+        this.couponId = couponId;
+    }
+
+    public BigDecimal getDiscountAmount() {
+        return discountAmount;
+    }
+
+    public void setDiscountAmount(BigDecimal discountAmount) {
+        this.discountAmount = discountAmount;
     }
 
     public BigDecimal getTotalAmount() {

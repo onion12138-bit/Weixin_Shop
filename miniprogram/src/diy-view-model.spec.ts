@@ -1,6 +1,7 @@
 import {
   buildEditorSummary,
   restorePackageSequence,
+  sizeStatusText,
 } from '../miniprogram/utils/diy-view-model'
 
 declare function require(name: string): unknown
@@ -55,6 +56,11 @@ describe('DIY view model', () => {
       priceText: '预估 ¥314.80',
       priceBadge: '预估',
     })
+  })
+
+  it('presents an overlong design as an optional adjustment', () => {
+    expect(sizeStatusText('TOO_LONG'))
+      .toBe('偏长，可减少珠子或调整腕围')
   })
 })
 

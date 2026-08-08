@@ -25,6 +25,7 @@
 - Flyway 空库迁移、表结构和演示数据。
 - Mapper 查询、上下架过滤和分页。
 - 公共商品目录与管理 CRUD 的 MySQL 集成测试。
+- Excel 模板可重新打开、批量导入合法/错误行分流、图片留空和初始库存事务测试。
 - 管理员登录、JWT 保护、401/403 JSON。
 - 访客安装身份、顾客 JWT 和顾客接口保护。
 - DIY 配置读取、后台规则保存、工艺费区间校验和绳材维护。
@@ -38,17 +39,18 @@
 - 健康接口、统一错误和参数校验。
 - V6 DeepSeek 单例迁移、AES-GCM 往返/篡改/主密钥校验、Key 掩码、官方 Base URL 和乐观锁。
 - DeepSeek `/models` 与 `/chat/completions` 请求、超时、无重试、严格 JSON、上游错误映射及敏感字段不泄漏。
-- 推荐候选目录、可用状态、单套推荐、SKU/库存/预算/腕围/文案/权威价格复核和文化娱乐免责声明。
+- 推荐候选目录、公开可用状态/生日画像、后台配置套数、每套 3～5 种 SKU、当前库存、文案安全、同模型一次纠正和文化娱乐免责声明。
 
 数据库测试基于 Testcontainers MySQL 8，需要 Docker Desktop 正常运行。
 
 ### 管理后台
 
 - 商品目录页面挂载、API 数据呈现和主要交互。
+- Excel 模板下载/拖拽导入结果，以及散珠、成品封面拖拽上传交互。
 - DIY 配置页面加载、规则保存、工艺费区间校验和绳材编辑。
 - 订单页面金额、收货信息、BOM、动作按钮和制作状态更新。
 - `vue-tsc` 严格类型检查和 Vite 生产构建。
-- AI 配置 API、页面加载/保存/清 Key/测试连接、安全错误映射和不回显 Key。
+- AI 配置 API、页面加载/保存/清 Key/测试连接、安全错误映射，以及管理员显式查看并再次隐藏已保存 Key；普通配置响应仍不回显 Key。
 
 ### 小程序
 
@@ -97,28 +99,28 @@
 
 1. 基于保存方案创建订单并校验权威总价和 BOM
 2. 顾客订单列表和详情可读取本人订单
-3. 连续两次模拟支付均返回 `PAID`
-4. 管理员可查询已支付订单并按顺序开始制作、发货、完成
-5. 发货保存模拟运单号，完成状态对顾客可见
+3. 连续两次模拟支付均返回 `IN_PRODUCTION`
+4. 管理员可查询制作中订单并按顺序完成制作、发货
+5. 发货保存运单号，小程序展示“待收货”，顾客确认收货后状态为已完成
 6. 第二笔待支付订单可以取消并释放库存
 
 `recommendation-smoke.sh` 默认不需要 Key，验证：
 
-1. 创建 guest JWT 并读取 `GET /api/app/recommendations/status`；
+1. 创建 guest JWT，并匿名读取 `GET /api/public/recommendations/status`；
 2. 只接受精确的 `NOT_CONFIGURED` 或 `DISABLED` 暂停状态；
 3. POST 必须分别返回 `AI_NOT_CONFIGURED` 或 `AI_DISABLED`；
 4. 明确输出“未调用 DeepSeek，也未使用本地降级”；若无 Key 却返回 `AVAILABLE`，脚本失败并要求改走显式 live 路径。
 
 2026-07-13 实测：`catalog`、`diy`、`order` 三个真实 HTTP smoke 均通过；推荐脚本以 `NOT_CONFIGURED → AI_NOT_CONFIGURED` 通过。3 款演示散珠首次创建成功，第二次运行全部按 SKU 跳过。以上没有访问真实 DeepSeek。
 
-只有在安全环境显式设置有效 `DEEPSEEK_API_KEY` 与后端启动时相同的 `AI_CONFIG_ENCRYPTION_KEY`，推荐脚本才会执行外部 live 路径。它会保存官方地址、`deepseek-v4-flash`、启用/超时/Token 配置，调用 `/test`，再请求一套推荐，并分页读取全部公共目录，断言每个 sequence SKU、非负总价、`quoteFingerprint`、免责声明和图片。截至 2026-07-13 尚未提供真实 Key，因此这条 live 验证仍是明确待办，不能记为通过。
+只有在安全环境显式设置有效 `DEEPSEEK_API_KEY` 与后端启动时相同的 `AI_CONFIG_ENCRYPTION_KEY`，推荐脚本才会执行外部 live 路径。它会保存官方地址、`deepseek-v4-flash`、推荐提示词、1～5 套数量及启用/超时/Token 配置，调用 `/test`，再只提交生日与期望，并分页读取全部公共目录。脚本断言生日画像、实际 `plans` 数量、每套 3～5 个唯一当前目录 SKU、图片、理由和免责声明。连接测试和真实 `/chat/completions` 调用均已执行；最近一次在非思考 JSON Output 和动态完整示例下因某套种类数不足、纠正后仍不合规而准确返回 `AI_RESULT_ITEM_COUNT_INVALID`，所以成功多套结果仍是明确待办。
 
 ## 5. 合入门槛
 
 1. `./scripts/verify.sh` 返回 0。
 2. Docker 集成测试没有跳过。
 3. 四个 `catalog`、`diy`、`order`、`recommendation` 冒烟脚本返回 0；默认 recommendation 只要求暂停路径，不产生费用。
-4. 用户在后台安全输入有效 Key 后，另行完成一次 opt-in live `/test` + 推荐验证并记录结果。
+4. 有效 Key 已完成后台保存和 `/test` 连接验证；仍需另行完成一次真实推荐生成并记录结果，不能仅凭模型列表连接成功写成完整 live 通过。
 5. 管理后台完成人工烟测：登录、商品维护、DIY 配置、订单履约、AI 配置保存和安全错误显示。
 6. 小程序完成人工烟测：访客身份、DIY/订单闭环、推荐暂停文案、可用时的咨询结果与一次性 handoff。
 7. 文档中的“已实现”和“已验证”必须分开，不能把模拟网关测试或暂停 smoke 写成真实 DeepSeek 成功。

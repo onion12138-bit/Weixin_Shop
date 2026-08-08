@@ -1,0 +1,19 @@
+<view class="subpage edit-page">
+  <text class="page-kicker">MY PROFILE</text>
+  <text class="page-title">编辑个人资料</text>
+  <text class="page-subtitle">换上喜欢的头像和昵称，让每份设计更有专属感</text>
+
+  <view wx:if="{{loading}}" class="soft-card state-card">正在读取个人资料…</view>
+  <view wx:else class="soft-card edit-card">
+    <button class="avatar-button" open-type="chooseAvatar" bindchooseavatar="chooseAvatar">
+      <image src="{{avatarUrl}}" mode="aspectFill" />
+      <text>更换头像</text>
+    </button>
+    <label>
+      <text>昵称</text>
+      <input value="{{nickname}}" maxlength="40" bindinput="onNicknameInput" placeholder="请输入昵称" />
+    </label>
+    <view wx:if="{{errorMessage}}" class="inline-error">{{errorMessage}}</view>
+    <button class="primary-action save-button" loading="{{saving}}" disabled="{{saving}}" bindtap="submit">保存资料</button>
+  </view>
+</view>

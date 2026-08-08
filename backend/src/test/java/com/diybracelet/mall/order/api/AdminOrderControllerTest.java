@@ -43,6 +43,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 @Sql(statements = {
         "delete from inventory_ledger where order_id is not null",
+        "delete from order_operation_log",
         "delete from fulfillment_task",
         "delete from payment_record",
         "delete from order_item",
@@ -61,6 +62,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Sql(
         statements = {
                 "delete from inventory_ledger where order_id is not null",
+                "delete from order_operation_log",
                 "delete from fulfillment_task",
                 "delete from payment_record",
                 "delete from order_item",
@@ -95,38 +97,61 @@ class AdminOrderControllerTest extends MySqlIntegrationTest {
         String adminToken = loginAsAdmin();
 
         mockMvc.perform(get("/api/admin/orders")
-                        .param("status", "PAID")
+                        .param("status", "IN_PRODUCTION")
+                        .param("orderNo", "ORD")
+                        .param("contactName", "后台测试")
+                        .param("contactPhone", "1360000")
+                        .param("minAmount", "1")
+                        .param("sortDirection", "desc")
                         .param("page", "1")
                         .param("size", "20")
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.total").value(1))
                 .andExpect(jsonPath("$.data.items[0].id").value(orderId))
-                .andExpect(jsonPath("$.data.items[0].status").value("PAID"))
+                .andExpect(jsonPath("$.data.items[0].status")
+                        .value("IN_PRODUCTION"))
                 .andExpect(jsonPath("$.data.items[0].items[0].skuId")
                         .value(2001))
                 .andExpect(jsonPath("$.data.items[0].items[0].quantity")
                         .value(12))
                 .andExpect(jsonPath("$.data.items[0].fulfillment.status")
-                        .value("PENDING"));
+                        .value("IN_PRODUCTION"));
+
+        mockMvc.perform(get("/api/admin/orders/statistics")
+                        .param("contactName", "后台测试")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(1))
+                .andExpect(jsonPath("$.data.inProduction").value(1))
+                .andExpect(jsonPath("$.data.pendingShipment").value(0));
+
+        mockMvc.perform(get("/api/admin/orders/{orderId}", orderId)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.product.name")
+                        .value("后台订单测试方案"))
+                .andExpect(jsonPath("$.data.payment.channel").value("MOCK"))
+                .andExpect(jsonPath("$.data.operations.length()")
+                        .value(3));
     }
 
     @Test
-    void shouldStartProductionForPaidOrder() throws Exception {
+    void shouldCompleteProductionAndEnterPendingShipment() throws Exception {
         Long orderId = createPaidOrder("157454e9-f92b-4096-ab8d-1a70c710e4f8");
         String adminToken = loginAsAdmin();
 
         mockMvc.perform(post(
-                        "/api/admin/orders/{orderId}/start-production",
+                        "/api/admin/orders/{orderId}/complete-production",
                         orderId
                 ).header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status")
-                        .value("IN_PRODUCTION"))
+                        .value("PENDING_SHIPMENT"))
                 .andExpect(jsonPath("$.data.fulfillment.status")
-                        .value("IN_PRODUCTION"));
+                        .value("PENDING_SHIPMENT"));
 
-        assertThat(orderStatus(orderId)).isEqualTo("IN_PRODUCTION");
+        assertThat(orderStatus(orderId)).isEqualTo("PENDING_SHIPMENT");
     }
 
     @Test
@@ -134,7 +159,7 @@ class AdminOrderControllerTest extends MySqlIntegrationTest {
             throws Exception {
         Long orderId = createPaidOrder("ce050697-a5a0-41cd-814d-2b24876feb35");
         String adminToken = loginAsAdmin();
-        startProduction(adminToken, orderId);
+        completeProduction(adminToken, orderId);
 
         mockMvc.perform(post("/api/admin/orders/{orderId}/ship", orderId)
                         .header("Authorization", "Bearer " + adminToken)
@@ -160,7 +185,7 @@ class AdminOrderControllerTest extends MySqlIntegrationTest {
     void shouldCompleteShippedOrder() throws Exception {
         Long orderId = createPaidOrder("31b6e62c-790f-466e-9bc8-a38ee51c8ff7");
         String adminToken = loginAsAdmin();
-        startProduction(adminToken, orderId);
+        completeProduction(adminToken, orderId);
         ship(adminToken, orderId);
 
         mockMvc.perform(post("/api/admin/orders/{orderId}/complete", orderId)
@@ -190,7 +215,7 @@ class AdminOrderControllerTest extends MySqlIntegrationTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("COMMON_CONFLICT"));
 
-        assertThat(orderStatus(orderId)).isEqualTo("PAID");
+        assertThat(orderStatus(orderId)).isEqualTo("IN_PRODUCTION");
     }
 
     private String orderStatus(Long orderId) {
@@ -201,10 +226,10 @@ class AdminOrderControllerTest extends MySqlIntegrationTest {
         );
     }
 
-    private void startProduction(String adminToken, Long orderId)
+    private void completeProduction(String adminToken, Long orderId)
             throws Exception {
         mockMvc.perform(post(
-                        "/api/admin/orders/{orderId}/start-production",
+                        "/api/admin/orders/{orderId}/complete-production",
                         orderId
                 ).header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk());

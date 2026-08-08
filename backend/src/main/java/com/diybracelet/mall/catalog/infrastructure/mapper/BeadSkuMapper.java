@@ -36,6 +36,7 @@ public interface BeadSkuMapper extends BaseMapper<BeadSku> {
             inner join category category
               on category.id = bead.category_id
              and category.status = 'ON_SALE'
+             and category.product_type = 'BEAD'
             where bead.status = 'ON_SALE'
             <if test="categoryId != null">
               and bead.category_id = #{categoryId}
@@ -71,6 +72,7 @@ public interface BeadSkuMapper extends BaseMapper<BeadSku> {
             inner join category category
               on category.id = bead.category_id
              and category.status = 'ON_SALE'
+             and category.product_type = 'BEAD'
             where bead.status = 'ON_SALE'
             <if test="categoryId != null">
               and bead.category_id = #{categoryId}
@@ -104,6 +106,7 @@ public interface BeadSkuMapper extends BaseMapper<BeadSku> {
             inner join category category
               on category.id = bead.category_id
              and category.status = 'ON_SALE'
+             and category.product_type = 'BEAD'
             where bead.status = 'ON_SALE'
               and bead.id in
               <foreach collection="ids" item="id" open="(" separator="," close=")">
@@ -112,4 +115,17 @@ public interface BeadSkuMapper extends BaseMapper<BeadSku> {
             </script>
             """)
     List<BeadSku> selectSellableForDiy(@Param("ids") List<Long> ids);
+
+    /** 查询一个同时满足分类和商品可见性规则的公开珠子。 */
+    @Select("""
+            select bead.*
+            from bead_sku bead
+            inner join category category
+              on category.id = bead.category_id
+             and category.status = 'ON_SALE'
+             and category.product_type = 'BEAD'
+            where bead.id = #{id}
+              and bead.status = 'ON_SALE'
+            """)
+    BeadSku selectPublicById(@Param("id") Long id);
 }

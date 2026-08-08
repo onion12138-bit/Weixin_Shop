@@ -4,6 +4,7 @@ import { ApiError } from '../api/http'
 import {
   clearAiApiKey,
   getAiConfiguration,
+  revealAiApiKey,
   saveAiConfiguration,
   testAiConfiguration,
   type AiConfiguration,
@@ -12,6 +13,7 @@ import AiConfigurationView from './AiConfigurationView.vue'
 
 vi.mock('../api/ai', () => ({
   getAiConfiguration: vi.fn(),
+  revealAiApiKey: vi.fn(),
   saveAiConfiguration: vi.fn(),
   testAiConfiguration: vi.fn(),
   clearAiApiKey: vi.fn(),
@@ -28,6 +30,8 @@ function configuration(
     enabled: true,
     timeoutSeconds: 30,
     maxOutputTokens: 2048,
+    recommendationPrompt: '请根据用户偏好生成可制作、可报价的手串方案。',
+    planCount: 1,
     version: 5,
     ...overrides,
   }
@@ -49,6 +53,9 @@ describe('AiConfigurationView', () => {
       configuration({ version: 6 }),
     )
     vi.mocked(testAiConfiguration).mockResolvedValue(undefined)
+    vi.mocked(revealAiApiKey).mockResolvedValue({
+      apiKey: 'ds-saved-secret',
+    })
     vi.mocked(clearAiApiKey).mockResolvedValue(
       configuration({ apiKeyConfigured: false, version: 6 }),
     )
@@ -104,7 +111,7 @@ describe('AiConfigurationView', () => {
       .toBe('v5')
   })
 
-  it('loads the DeepSeek configuration without ever echoing its API key', async () => {
+  it('loads the DeepSeek configuration with a masked API key initially', async () => {
     const wrapper = mount(AiConfigurationView)
     await flushPromises()
 
@@ -117,8 +124,78 @@ describe('AiConfigurationView', () => {
     expect(wrapper.get('[data-test="api-key"]').attributes('type'))
       .toBe('password')
     expect(wrapper.get('[data-test="api-key"]').element)
-      .toMatchObject({ value: '' })
+      .toMatchObject({ value: '••••••••••••••••' })
     expect(wrapper.get('[data-test="api-key-status"]').text()).toBe('已配置')
+    expect(wrapper.get<HTMLTextAreaElement>('[data-test="recommendation-prompt"]')
+      .element.value).toBe('请根据用户偏好生成可制作、可报价的手串方案。')
+    expect(wrapper.get<HTMLInputElement>('[data-test="plan-count"]')
+      .element.value).toBe('1')
+    expect(revealAiApiKey).not.toHaveBeenCalled()
+  })
+
+  it('reveals and hides the stored API key only after clicking the eye button', async () => {
+    const wrapper = mount(AiConfigurationView)
+    await flushPromises()
+
+    const toggle = wrapper.get('[data-test="toggle-api-key-visibility"]')
+    expect(toggle.attributes('aria-label')).toBe('显示 API Key')
+    await toggle.trigger('click')
+    await flushPromises()
+
+    expect(revealAiApiKey).toHaveBeenCalledOnce()
+    expect(wrapper.get('[data-test="api-key"]').attributes('type')).toBe('text')
+    expect(wrapper.get<HTMLInputElement>('[data-test="api-key"]').element.value)
+      .toBe('ds-saved-secret')
+    expect(toggle.attributes('aria-label')).toBe('隐藏 API Key')
+    expect(wrapper.get('[data-test="test-connection"]').attributes('disabled'))
+      .toBeUndefined()
+
+    await toggle.trigger('click')
+    expect(wrapper.get('[data-test="api-key"]').attributes('type'))
+      .toBe('password')
+    expect(wrapper.get<HTMLInputElement>('[data-test="api-key"]').element.value)
+      .toBe('ds-saved-secret')
+    expect(revealAiApiKey).toHaveBeenCalledOnce()
+
+    await wrapper.get('[data-test="configuration-form"]').trigger('submit')
+    await flushPromises()
+    expect(saveAiConfiguration).toHaveBeenCalledWith(
+      expect.objectContaining({ apiKey: '' }),
+    )
+  })
+
+  it('toggles a newly typed key locally without requesting the stored key', async () => {
+    const wrapper = mount(AiConfigurationView)
+    await flushPromises()
+
+    await wrapper.get('[data-test="api-key"]').setValue('ds-new-secret')
+    await wrapper.get('[data-test="toggle-api-key-visibility"]').trigger('click')
+
+    expect(revealAiApiKey).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-test="api-key"]').attributes('type')).toBe('text')
+  })
+
+  it('shows safe trace-aware feedback when revealing the key fails', async () => {
+    vi.mocked(revealAiApiKey).mockRejectedValue(
+      new ApiError(
+        'sensitive-reveal-detail',
+        'COMMON_INTERNAL_ERROR',
+        500,
+        'trace-reveal-7',
+      ),
+    )
+    const wrapper = mount(AiConfigurationView)
+    await flushPromises()
+
+    await wrapper.get('[data-test="toggle-api-key-visibility"]').trigger('click')
+    await flushPromises()
+
+    const alert = wrapper.get('[role="alert"]').text()
+    expect(alert).toContain('API Key 读取失败')
+    expect(alert).toContain('trace-reveal-7')
+    expect(alert).not.toContain('sensitive-reveal-detail')
+    expect(wrapper.get<HTMLInputElement>('[data-test="api-key"]').element.value)
+      .toBe('••••••••••••••••')
   })
 
   it('sends a blank API key to preserve it and adopts the saved version', async () => {
@@ -135,15 +212,17 @@ describe('AiConfigurationView', () => {
       enabled: true,
       timeoutSeconds: 30,
       maxOutputTokens: 2048,
+      recommendationPrompt: '请根据用户偏好生成可制作、可报价的手串方案。',
+      planCount: 1,
       version: 5,
     })
     expect(wrapper.get('[data-test="configuration-version"]').text())
       .toBe('v6')
     expect(wrapper.get('[data-test="api-key"]').element)
-      .toMatchObject({ value: '' })
+      .toMatchObject({ value: '••••••••••••••••' })
   })
 
-  it('clears a replacement API key only after a successful save', async () => {
+  it('replaces a submitted API key with the stored-key mask after saving', async () => {
     const wrapper = mount(AiConfigurationView)
     await flushPromises()
     await wrapper.get('[data-test="api-key"]').setValue('sk-replacement')
@@ -155,7 +234,53 @@ describe('AiConfigurationView', () => {
       expect.objectContaining({ apiKey: 'sk-replacement' }),
     )
     expect(wrapper.get('[data-test="api-key"]').element)
-      .toMatchObject({ value: '' })
+      .toMatchObject({ value: '••••••••••••••••' })
+  })
+
+  it('saves the trimmed recommendation prompt and plan count', async () => {
+    const wrapper = mount(AiConfigurationView)
+    await flushPromises()
+
+    await wrapper.get('[data-test="recommendation-prompt"]')
+      .setValue('  只返回满足尺寸和预算的完整方案。  ')
+    await wrapper.get('[data-test="plan-count"]').setValue('3')
+    await wrapper.get('[data-test="configuration-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(saveAiConfiguration).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recommendationPrompt: '只返回满足尺寸和预算的完整方案。',
+        planCount: 3,
+      }),
+    )
+  })
+
+  it.each(['0', '6', '1.5'])(
+    'rejects invalid plan count %s before saving',
+    async (planCount) => {
+      const wrapper = mount(AiConfigurationView)
+      await flushPromises()
+
+      await wrapper.get('[data-test="plan-count"]').setValue(planCount)
+      await wrapper.get('[data-test="configuration-form"]').trigger('submit')
+      await flushPromises()
+
+      expect(saveAiConfiguration).not.toHaveBeenCalled()
+      expect(wrapper.get('[role="alert"]').text())
+        .toContain('推荐套数必须是 1–5 的整数')
+    },
+  )
+
+  it('rejects a blank recommendation prompt before saving', async () => {
+    const wrapper = mount(AiConfigurationView)
+    await flushPromises()
+
+    await wrapper.get('[data-test="recommendation-prompt"]').setValue('   ')
+    await wrapper.get('[data-test="configuration-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(saveAiConfiguration).not.toHaveBeenCalled()
+    expect(wrapper.get('[role="alert"]').text()).toContain('推荐提示词不能为空')
   })
 
   it('retains the API key when client-side validation fails', async () => {
@@ -315,16 +440,18 @@ describe('AiConfigurationView', () => {
 
   it.each([
     ['input[type="url"]', 'https://api.deepseek.com/'],
-    ['input[type="number"]', '31'],
-    ['input[type="number"]:nth-of-type(2)', '4096'],
+    ['timeout', '31'],
+    ['max-output', '4096'],
+    ['[data-test="plan-count"]', '3'],
+    ['[data-test="recommendation-prompt"]', '更新后的提示词'],
   ])('requires saving after editing %s before testing', async (selector, value) => {
     const wrapper = mount(AiConfigurationView)
     await flushPromises()
 
     const numericInputs = wrapper.findAll('input[type="number"]')
-    const input = selector === 'input[type="number"]:nth-of-type(2)'
+    const input = selector === 'max-output'
       ? numericInputs[1]
-      : selector === 'input[type="number"]'
+      : selector === 'timeout'
         ? numericInputs[0]
         : wrapper.get(selector)
     await input.setValue(value)

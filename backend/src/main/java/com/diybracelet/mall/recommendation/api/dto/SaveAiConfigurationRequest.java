@@ -13,6 +13,8 @@ public record SaveAiConfigurationRequest(
     boolean enabled,
     @Min(1) @Max(120) int timeoutSeconds,
     @Min(256) @Max(16384) int maxOutputTokens,
+    @NotBlank @Size(max = 4000) String recommendationPrompt,
+    @Min(1) @Max(5) int planCount,
     @Min(0) long version
 ) {
 
@@ -24,6 +26,9 @@ public record SaveAiConfigurationRequest(
             + ", enabled=" + enabled
             + ", timeoutSeconds=" + timeoutSeconds
             + ", maxOutputTokens=" + maxOutputTokens
+            + ", recommendationPromptProvided="
+            + (recommendationPrompt != null && !recommendationPrompt.isBlank())
+            + ", planCount=" + planCount
             + ", version=" + version
             + "]";
     }

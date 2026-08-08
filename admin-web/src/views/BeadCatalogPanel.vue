@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ApiError, resolveApiResourceUrl } from '../api/http'
 import BeadVisualPanel from '../components/BeadVisualPanel.vue'
-import { generateBeadSku } from '../catalog/generate-sku'
+import { generateCatalogSku } from '../catalog/generate-sku'
 import {
   changeBeadStatus,
   createAdminBead,
@@ -17,6 +17,7 @@ import {
   type CatalogStatus,
   type Category,
   type CreateBeadSkuRequest,
+  type ProductType,
   type SaveBeadSkuRequest,
 } from '../api/catalog'
 
@@ -78,6 +79,12 @@ const coverPreviewUrl = ref('')
 const categoryNames = computed(() =>
   new Map(categories.value.map((category) => [category.id, category.name])),
 )
+const selectedCategory = computed(() => categories.value.find(
+  (category) => category.id === Number(form.categoryId),
+))
+const isBeadProduct = computed(
+  () => (selectedCategory.value?.productType || 'BEAD') === 'BEAD',
+)
 const totalPages = computed(() =>
   Math.max(1, Math.ceil(total.value / filters.size)),
 )
@@ -88,6 +95,14 @@ function statusLabel(status: CatalogStatus): string {
     ON_SALE: '已上架',
     OFF_SALE: '已下架',
   }[status]
+}
+
+function productTypeLabel(productType: ProductType): string {
+  return {
+    BEAD: '珠子',
+    CORD: '绳类',
+    ACCESSORY: '其他饰品',
+  }[productType]
 }
 
 function parseTags(tagsJson: string): string[] {
@@ -152,7 +167,23 @@ function generateSku(): void {
   const category = categories.value.find(
     (item) => item.id === Number(form.categoryId),
   )
-  form.skuCode = generateBeadSku(category?.slug || 'general', form.diameterMm)
+  form.skuCode = generateCatalogSku(
+    category?.productType || 'BEAD',
+    category?.slug || 'general',
+    form.diameterMm,
+  )
+}
+
+function handleCategoryChange(): void {
+  if (isBeadProduct.value && form.diameterMm === null) {
+    form.diameterMm = 8
+  }
+  if (!isBeadProduct.value) {
+    form.diameterMm = null
+  }
+  if (!editingBeadId.value) {
+    generateSku()
+  }
 }
 
 function resetForm(): void {
@@ -193,7 +224,7 @@ function openEditForm(bead: BeadSku): void {
     name: bead.name,
     material: bead.material,
     color: bead.color,
-    diameterMm: Number(bead.diameterMm),
+    diameterMm: bead.diameterMm === null ? null : Number(bead.diameterMm),
     salePrice: Number(bead.salePrice),
     costPrice: Number(bead.costPrice),
     stockAlertThreshold: bead.stockAlertThreshold,
@@ -335,6 +366,7 @@ async function submitBead(): Promise<void> {
     const { initialStock, ...bead } = form
     const payload: SaveBeadSkuRequest = {
       ...bead,
+      diameterMm: isBeadProduct.value ? bead.diameterMm : null,
       tags: tagInput.value
         .split(/[,，]/)
         .map((tag) => tag.trim())
@@ -342,10 +374,10 @@ async function submitBead(): Promise<void> {
     }
     if (editingBeadId.value) {
       await updateAdminBead(editingBeadId.value, payload)
-      successMessage.value = '散珠商品已更新'
+      successMessage.value = '商品已更新'
     } else {
       await createAdminBead({ ...payload, initialStock })
-      successMessage.value = '散珠商品已创建'
+      successMessage.value = '商品已创建'
     }
     showCreateForm.value = false
     resetForm()
@@ -383,7 +415,7 @@ onMounted(loadCatalog)
       <div>
         <p class="section-kicker">CATALOG / BEADS</p>
         <h1>散珠商品</h1>
-        <p class="muted">维护 DIY 设计器和成品手串共用的基础珠子。</p>
+        <p class="muted">统一维护珠子、绳类和其他饰品；只有珠子参与 DIY 与 AI 推荐。</p>
       </div>
       <div class="content-header-actions">
         <button
@@ -398,7 +430,7 @@ onMounted(loadCatalog)
           data-test="create-bead"
           @click="openCreateForm"
         >
-          ＋ 新增散珠
+          ＋ 新增商品
         </button>
       </div>
     </header>
@@ -485,6 +517,8 @@ onMounted(loadCatalog)
               <th>分类 / 属性</th>
               <th>销售价</th>
               <th>成本价</th>
+              <th>库存数量</th>
+              <th>库存预警</th>
               <th>状态</th>
               <th class="align-right">操作</th>
             </tr>
@@ -528,12 +562,24 @@ onMounted(loadCatalog)
                   {{ categoryNames.get(bead.categoryId) || '未分类' }}
                 </strong>
                 <span class="cell-detail">
-                  {{ bead.material }} · {{ bead.color }} ·
-                  {{ bead.diameterMm }}mm
+                  {{ productTypeLabel(bead.productType) }} · {{ bead.material }} · {{ bead.color }}
+                  <template v-if="bead.diameterMm !== null"> · {{ bead.diameterMm }}mm</template>
                 </span>
               </td>
               <td class="money">¥ {{ Number(bead.salePrice).toFixed(2) }}</td>
               <td class="money muted">¥ {{ Number(bead.costPrice).toFixed(2) }}</td>
+              <td>
+                <strong data-test="available-stock">{{ bead.availableQty }}</strong>
+                <span class="cell-detail">预占 {{ bead.reservedQty }} · 已售 {{ bead.soldQty }}</span>
+              </td>
+              <td>
+                <strong>{{ bead.stockAlertThreshold }}</strong>
+                <span
+                  class="status-pill"
+                  :class="bead.stockWarningStatus === 'RESTOCK' ? 'status-off_sale' : 'status-on_sale'"
+                  data-test="stock-warning-status"
+                >{{ bead.stockWarningStatus === 'RESTOCK' ? '补货' : '正常' }}</span>
+              </td>
               <td>
                 <span class="status-pill" :class="`status-${bead.status.toLowerCase()}`">
                   {{ statusLabel(bead.status) }}
@@ -692,7 +738,7 @@ onMounted(loadCatalog)
               {{ editingBeadId ? 'EDIT BEAD SKU' : 'NEW BEAD SKU' }}
             </p>
             <h2 id="create-bead-title">
-              {{ editingBeadId ? '编辑散珠商品' : '新增散珠商品' }}
+              {{ editingBeadId ? '编辑商品' : '新增商品' }}
             </h2>
           </div>
           <button class="icon-button" aria-label="关闭" @click="showCreateForm = false">
@@ -726,13 +772,18 @@ onMounted(loadCatalog)
             </label>
             <label>
               <span>所属分类</span>
-              <select v-model.number="form.categoryId" required>
+              <select
+                v-model.number="form.categoryId"
+                required
+                data-test="product-category"
+                @change="handleCategoryChange"
+              >
                 <option
                   v-for="category in categories"
                   :key="category.id"
                   :value="category.id"
                 >
-                  {{ category.name }}
+                  {{ category.name }}（{{ productTypeLabel(category.productType) }}）
                 </option>
               </select>
             </label>
@@ -752,7 +803,7 @@ onMounted(loadCatalog)
               <span>颜色</span>
               <input v-model="form.color" required maxlength="80" />
             </label>
-            <label>
+            <label v-if="isBeadProduct" data-test="diameter-field">
               <span>珠径（mm）</span>
               <input v-model.number="form.diameterMm" type="number" min="0.01" step="0.01" required />
             </label>
@@ -761,7 +812,7 @@ onMounted(loadCatalog)
               <input v-model.number="form.stockAlertThreshold" type="number" min="0" required />
             </label>
             <label v-if="!editingBeadId">
-              <span>初始库存</span>
+              <span>库存数量（初始）</span>
               <input
                 v-model.number="form.initialStock"
                 data-test="initial-stock"
@@ -857,6 +908,7 @@ onMounted(loadCatalog)
         <img :src="enlargedCoverUrl" alt="商品封面大图" />
       </section>
     </div>
+
     <BeadVisualPanel
       v-if="visualBead"
       :bead-id="visualBead.id"
@@ -864,6 +916,5 @@ onMounted(loadCatalog)
       @close="visualBead = null"
       @published="handleVisualPublished"
     />
-
   </section>
 </template>

@@ -57,19 +57,6 @@ export function renderBraceletCanvas(
     ctx.fillStyle = plan.config.canvasBackgroundColor
     ctx.fillRect(0, 0, ctx.width, ctx.height)
 
-    ctx.save()
-    try {
-      ctx.globalAlpha = plan.config.braceletShadowOpacity
-      ctx.translate(centerX, centerY + braceletRadius * 0.16)
-      ctx.scale(1, 0.52)
-      ctx.beginPath()
-      ctx.arc(0, 0, braceletRadius, 0, FULL_CIRCLE)
-      ctx.fillStyle = '#000000'
-      ctx.fill()
-    } finally {
-      ctx.restore()
-    }
-
     ctx.globalAlpha = 1
     ctx.beginPath()
     ctx.arc(centerX, centerY, braceletRadius, 0, FULL_CIRCLE)

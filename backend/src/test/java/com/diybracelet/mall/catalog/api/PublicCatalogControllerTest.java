@@ -1,11 +1,15 @@
 package com.diybracelet.mall.catalog.api;
 
+import com.diybracelet.mall.catalog.domain.CatalogStatus;
+import com.diybracelet.mall.catalog.domain.ProductPackage;
+import com.diybracelet.mall.catalog.infrastructure.mapper.ProductPackageMapper;
 import com.diybracelet.mall.support.MySqlIntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -23,6 +27,9 @@ class PublicCatalogControllerTest extends MySqlIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private ProductPackageMapper productPackageMapper;
 
     @Test
     void shouldListVisibleBeadsWithStablePageContract() throws Exception {
@@ -53,5 +60,29 @@ class PublicCatalogControllerTest extends MySqlIntegrationTest {
                         .queryParam("size", "101"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("COMMON_BAD_REQUEST"));
+    }
+
+    @Test
+    @Transactional
+    void shouldListOnlyRecommendedOnSalePackagesForHome() throws Exception {
+        ProductPackage productPackage = productPackageMapper.selectById(3001L);
+        productPackage.setRecommended(true);
+        productPackageMapper.updateById(productPackage);
+
+        mockMvc.perform(get("/api/public/catalog/packages/recommended")
+                        .queryParam("limit", "4"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].id").value(3001))
+                .andExpect(jsonPath("$.data[0].name")
+                        .value("澄心日常手串"));
+
+        productPackage.setStatus(CatalogStatus.OFF_SALE);
+        productPackageMapper.updateById(productPackage);
+
+        mockMvc.perform(get("/api/public/catalog/packages/recommended")
+                        .queryParam("limit", "4"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
     }
 }

@@ -85,11 +85,17 @@ export async function listPackages(
   )
   return {
     ...page,
-    items: page.items.map((item) => ({
-      ...item,
-      coverUrl: absolutePublicUrl(item.coverUrl),
-    })),
+    items: page.items.map(normalizePublicPackage),
   }
+}
+
+export async function listRecommendedPackages(
+  limit = 4,
+): Promise<PublicPackage[]> {
+  const items = await request<PublicPackage[]>(
+    `/public/catalog/packages/recommended?limit=${encodeURIComponent(limit)}`,
+  )
+  return items.map(normalizePublicPackage)
 }
 
 export async function getPackage(
@@ -119,6 +125,13 @@ function normalizePublicBead(bead: PublicBead): PublicBead {
         canvasUrl: absolutePublicUrl(bead.diyVisual.canvasUrl),
       }
       : null,
+  }
+}
+
+function normalizePublicPackage(item: PublicPackage): PublicPackage {
+  return {
+    ...item,
+    coverUrl: absolutePublicUrl(item.coverUrl),
   }
 }
 

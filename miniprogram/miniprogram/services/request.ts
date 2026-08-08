@@ -14,6 +14,7 @@ interface ApiEnvelope<T> {
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   data?: unknown
+  timeout?: number
 }
 
 interface UploadEnvelope<T> {
@@ -71,7 +72,7 @@ export function request<T>(
       method: options.method || 'GET',
       data: options.data,
       header,
-      timeout: 10000,
+      timeout: options.timeout || 10000,
       success(response) {
         const envelope = response.data
         if (

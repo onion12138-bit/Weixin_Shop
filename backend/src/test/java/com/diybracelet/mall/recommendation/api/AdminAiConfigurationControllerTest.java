@@ -20,6 +20,7 @@ import com.diybracelet.mall.auth.infrastructure.JwtService;
 import com.diybracelet.mall.auth.infrastructure.SecurityConfiguration;
 import com.diybracelet.mall.identity.infrastructure.CustomerJwtAuthenticationFilter;
 import com.diybracelet.mall.identity.infrastructure.CustomerJwtService;
+import com.diybracelet.mall.recommendation.api.dto.AiApiKeyView;
 import com.diybracelet.mall.recommendation.api.dto.SaveAiConfigurationRequest;
 import com.diybracelet.mall.recommendation.application.AiConfigurationService;
 import com.diybracelet.mall.recommendation.domain.AiModelConfig;
@@ -119,11 +120,20 @@ class AdminAiConfigurationControllerTest {
         mockMvc.perform(get("/api/admin/ai/config"))
             .andExpect(status().isUnauthorized())
             .andExpect(jsonPath("$.code").value("COMMON_UNAUTHORIZED"));
+
+        mockMvc.perform(get("/api/admin/ai/config/api-key"))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.code").value("COMMON_UNAUTHORIZED"));
     }
 
     @Test
     void shouldForbidAnAuthenticatedCustomerFromAdminConfiguration() throws Exception {
         mockMvc.perform(get("/api/admin/ai/config")
+                .header(authHeader(), "Bearer " + customerJwtService.issue(42L)))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.code").value("COMMON_FORBIDDEN"));
+
+        mockMvc.perform(get("/api/admin/ai/config/api-key")
                 .header(authHeader(), "Bearer " + customerJwtService.issue(42L)))
             .andExpect(status().isForbidden())
             .andExpect(jsonPath("$.code").value("COMMON_FORBIDDEN"));
@@ -151,12 +161,23 @@ class AdminAiConfigurationControllerTest {
             true,
             30,
             2048,
+            "生成日常材质搭配",
+            3,
             0
         );
 
         org.assertj.core.api.Assertions.assertThat(request.toString())
             .doesNotContain(SECRET)
             .contains("apiKeyProvided=true");
+    }
+
+    @Test
+    void shouldMaskTheExplicitApiKeyViewStringRepresentation() {
+        org.assertj.core.api.Assertions.assertThat(
+            new AiApiKeyView(SECRET).toString()
+        )
+            .doesNotContain(SECRET)
+            .contains("apiKeyRedacted=true");
     }
 
     @Test
@@ -169,6 +190,9 @@ class AdminAiConfigurationControllerTest {
             .andExpect(jsonPath("$.data.baseUrl").value("https://api.deepseek.com"))
             .andExpect(jsonPath("$.data.modelName").value("deepseek-v4-flash"))
             .andExpect(jsonPath("$.data.apiKeyConfigured").value(false))
+            .andExpect(jsonPath("$.data.recommendationPrompt")
+                .value("生成日常材质搭配"))
+            .andExpect(jsonPath("$.data.planCount").value(3))
             .andExpect(jsonPath("$.data.version").value(1));
 
         org.assertj.core.api.Assertions.assertThat(stored.getEncryptedApiKey()).isNull();
@@ -191,6 +215,32 @@ class AdminAiConfigurationControllerTest {
             .isEqualTo(SECRET);
         org.assertj.core.api.Assertions.assertThat(response)
             .doesNotContain(SECRET, stored.getEncryptedApiKey(), "Authorization");
+    }
+
+    @Test
+    void shouldRevealTheStoredKeyOnlyThroughTheExplicitAdminEndpoint() throws Exception {
+        stored.setEncryptedApiKey(cipher.encrypt(SECRET));
+
+        mockMvc.perform(get("/api/admin/ai/config/api-key")
+                .header(authHeader(), adminToken()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.apiKey").value(SECRET))
+            .andExpect(result -> org.assertj.core.api.Assertions.assertThat(
+                result.getResponse().getHeader("Cache-Control")
+            ).contains("no-store"));
+
+        mockMvc.perform(get("/api/admin/ai/config")
+                .header(authHeader(), adminToken()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.apiKey").doesNotExist());
+    }
+
+    @Test
+    void shouldRejectRevealWhenNoKeyIsConfigured() throws Exception {
+        mockMvc.perform(get("/api/admin/ai/config/api-key")
+                .header(authHeader(), adminToken()))
+            .andExpect(status().isServiceUnavailable())
+            .andExpect(jsonPath("$.code").value("AI_NOT_CONFIGURED"));
     }
 
     @Test
@@ -224,6 +274,40 @@ class AdminAiConfigurationControllerTest {
                 .content(saveRequest("https://api.deepseek.com", modelName, "", false, 30, 2048, 0)))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.code").value("COMMON_BAD_REQUEST"));
+
+        verify(configMapper, never()).updateWithVersion(any(), anyLong());
+    }
+
+    @ParameterizedTest(name = "invalid plan count {0}")
+    @ValueSource(ints = {0, 6})
+    void shouldRejectPlanCountsOutsideOneToFive(int planCount) throws Exception {
+        Map<String, Object> request = baseSaveRequest();
+        request.put("planCount", planCount);
+
+        mockMvc.perform(put("/api/admin/ai/config")
+                .header(authHeader(), adminToken())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("COMMON_BAD_REQUEST"));
+
+        verify(configMapper, never()).updateWithVersion(any(), anyLong());
+    }
+
+    @Test
+    void shouldRejectBlankAndOverlongRecommendationPrompts() throws Exception {
+        for (String prompt : List.of("   ", "提".repeat(4001))) {
+            Map<String, Object> request = baseSaveRequest();
+            request.put("recommendationPrompt", prompt);
+
+            mockMvc.perform(put("/api/admin/ai/config")
+                    .header(authHeader(), adminToken())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_BAD_REQUEST"))
+                .andExpect(content().string(not(containsString(prompt))));
+        }
 
         verify(configMapper, never()).updateWithVersion(any(), anyLong());
     }
@@ -352,8 +436,8 @@ class AdminAiConfigurationControllerTest {
         return Stream.of(
             Arguments.of("upstream 401", ErrorCode.AI_UNAUTHORIZED, 502),
             Arguments.of("upstream 429", ErrorCode.AI_RATE_LIMITED, 503),
-            Arguments.of("upstream timeout", ErrorCode.AI_TEMPORARILY_UNAVAILABLE, 503),
-            Arguments.of("upstream 5xx", ErrorCode.AI_TEMPORARILY_UNAVAILABLE, 503)
+            Arguments.of("upstream timeout", ErrorCode.AI_TIMEOUT, 504),
+            Arguments.of("upstream 5xx", ErrorCode.AI_UPSTREAM_ERROR, 502)
         );
     }
 
@@ -378,8 +462,24 @@ class AdminAiConfigurationControllerTest {
         request.put("enabled", enabled);
         request.put("timeoutSeconds", timeoutSeconds);
         request.put("maxOutputTokens", maxOutputTokens);
+        request.put("recommendationPrompt", "生成日常材质搭配");
+        request.put("planCount", 3);
         request.put("version", version);
         return objectMapper.writeValueAsString(request);
+    }
+
+    private Map<String, Object> baseSaveRequest() {
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("baseUrl", "https://api.deepseek.com");
+        request.put("modelName", "deepseek-v4-flash");
+        request.put("apiKey", "");
+        request.put("enabled", true);
+        request.put("timeoutSeconds", 30);
+        request.put("maxOutputTokens", 2048);
+        request.put("recommendationPrompt", "生成日常材质搭配");
+        request.put("planCount", 3);
+        request.put("version", 0);
+        return request;
     }
 
     private String authHeader() {
@@ -400,6 +500,8 @@ class AdminAiConfigurationControllerTest {
         config.setEnabled(false);
         config.setTimeoutSeconds(30);
         config.setMaxOutputTokens(2048);
+        config.setRecommendationPrompt("生成日常材质搭配");
+        config.setPlanCount(3);
         config.setVersion(0L);
         return config;
     }
@@ -414,6 +516,8 @@ class AdminAiConfigurationControllerTest {
         target.setEnabled(source.getEnabled());
         target.setTimeoutSeconds(source.getTimeoutSeconds());
         target.setMaxOutputTokens(source.getMaxOutputTokens());
+        target.setRecommendationPrompt(source.getRecommendationPrompt());
+        target.setPlanCount(source.getPlanCount());
         target.setVersion(source.getVersion());
         return target;
     }

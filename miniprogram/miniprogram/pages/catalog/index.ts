@@ -25,7 +25,10 @@ Page({
     errorMessage: '',
   },
 
-  async onLoad() {
+  async onLoad(options: Record<string, string | undefined> = {}) {
+    this.setData({
+      activeTab: options.tab === 'packages' ? 'packages' : 'beads',
+    })
     await this.loadInitialData()
   },
 

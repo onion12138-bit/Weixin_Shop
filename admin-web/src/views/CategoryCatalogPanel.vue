@@ -8,6 +8,7 @@ import {
   updateAdminCategory,
   type CatalogStatus,
   type Category,
+  type ProductType,
   type SaveCategoryRequest,
 } from '../api/catalog'
 
@@ -22,6 +23,7 @@ const successMessage = ref('')
 const form = reactive<SaveCategoryRequest>({
   name: '',
   slug: '',
+  productType: 'BEAD',
   sortOrder: 0,
   status: 'DRAFT',
 })
@@ -32,6 +34,14 @@ function statusLabel(status: CatalogStatus): string {
     ON_SALE: '已上架',
     OFF_SALE: '已下架',
   }[status]
+}
+
+function productTypeLabel(productType: ProductType): string {
+  return {
+    BEAD: '珠子',
+    CORD: '绳类',
+    ACCESSORY: '其他饰品',
+  }[productType]
 }
 
 function readableError(error: unknown): string {
@@ -60,6 +70,7 @@ function openCreate(): void {
   Object.assign(form, {
     name: '',
     slug: '',
+    productType: 'BEAD',
     sortOrder: (categories.value.length + 1) * 10,
     status: 'DRAFT',
   })
@@ -71,6 +82,7 @@ function openEdit(category: Category): void {
   Object.assign(form, {
     name: category.name,
     slug: category.slug,
+    productType: category.productType,
     sortOrder: category.sortOrder,
     status: category.status,
   })
@@ -148,6 +160,7 @@ onMounted(loadCategories)
             <tr>
               <th>分类名称</th>
               <th>Slug</th>
+              <th>商品类型</th>
               <th>排序</th>
               <th>状态</th>
               <th class="align-right">操作</th>
@@ -157,6 +170,7 @@ onMounted(loadCategories)
             <tr v-for="category in categories" :key="category.id">
               <td><strong>{{ category.name }}</strong></td>
               <td><code>{{ category.slug }}</code></td>
+              <td>{{ productTypeLabel(category.productType) }}</td>
               <td>{{ category.sortOrder }}</td>
               <td>
                 <span class="status-pill" :class="`status-${category.status.toLowerCase()}`">
@@ -203,6 +217,15 @@ onMounted(loadCategories)
               pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
               placeholder="natural-crystal"
             />
+          </label>
+          <label>
+            <span>商品类型</span>
+            <select v-model="form.productType" data-test="category-product-type">
+              <option value="BEAD">珠子</option>
+              <option value="CORD">绳类</option>
+              <option value="ACCESSORY">其他饰品</option>
+            </select>
+            <small>珠子参与 DIY 和 AI 推荐；绳类及其他饰品独立管理库存。</small>
           </label>
           <div class="form-grid">
             <label>

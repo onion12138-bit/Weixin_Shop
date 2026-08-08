@@ -5,7 +5,10 @@ jest.mock('../miniprogram/services/request', () => ({
   request: jest.fn(),
 }))
 
-import { listBeads } from '../miniprogram/services/catalog'
+import {
+  listBeads,
+  listRecommendedPackages,
+} from '../miniprogram/services/catalog'
 import { getScheme } from '../miniprogram/services/diy'
 import { request } from '../miniprogram/services/request'
 import { toBeadCard } from './catalog-view-model'
@@ -73,6 +76,26 @@ describe('catalog view model', () => {
         version: 3,
       },
     })
+  })
+
+  it('loads and normalizes the backend-configured home recommendations', async () => {
+    requestMock.mockResolvedValueOnce([{
+      id: 3001,
+      packageCode: 'PACKAGE-CALM-001',
+      name: '澄心日常手串',
+      description: '日常搭配',
+      salePrice: 168,
+      coverUrl: '/api/public/files/package.png',
+    }])
+
+    const items = await listRecommendedPackages(4)
+
+    expect(requestMock).toHaveBeenCalledWith(
+      '/public/catalog/packages/recommended?limit=4',
+    )
+    expect(items[0].coverUrl).toBe(
+      'https://shop.test/api/public/files/package.png',
+    )
   })
 
   it('normalizes cover, tray and canvas URLs in scheme snapshots', async () => {

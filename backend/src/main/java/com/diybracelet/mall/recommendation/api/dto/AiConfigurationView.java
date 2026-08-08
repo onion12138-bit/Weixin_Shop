@@ -9,6 +9,8 @@ public record AiConfigurationView(
     boolean enabled,
     int timeoutSeconds,
     int maxOutputTokens,
+    String recommendationPrompt,
+    int planCount,
     long version
 ) {
 }

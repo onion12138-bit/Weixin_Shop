@@ -12,6 +12,7 @@ public interface AiModelGateway {
     ModelRecommendation recommend(
         AiModelConfig config,
         RecommendationProfile profile,
-        List<RecommendationCandidate> candidates
+        List<RecommendationCandidate> candidates,
+        RecommendationRepairFeedback repairFeedback
     );
 }

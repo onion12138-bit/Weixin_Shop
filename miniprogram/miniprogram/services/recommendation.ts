@@ -1,4 +1,5 @@
 import type {
+  RecommendationProfileResponse,
   RecommendationRequest,
   RecommendationResponse,
   RecommendationStatusResponse,
@@ -9,7 +10,15 @@ import {
 } from './request'
 
 export function getRecommendationStatus(): Promise<RecommendationStatusResponse> {
-  return request<RecommendationStatusResponse>('/app/recommendations/status')
+  return request<RecommendationStatusResponse>('/public/recommendations/status')
+}
+
+export function getRecommendationProfile(
+  birthDate: string,
+): Promise<RecommendationProfileResponse> {
+  return request<RecommendationProfileResponse>(
+    `/public/recommendations/profile?birthDate=${encodeURIComponent(birthDate)}`,
+  )
 }
 
 export async function requestRecommendation(
@@ -18,12 +27,16 @@ export async function requestRecommendation(
   const response = await request<RecommendationResponse>('/app/recommendations', {
     method: 'POST',
     data: payload,
+    timeout: 70000,
   })
   return {
     ...response,
-    items: response.items.map((item) => ({
-      ...item,
-      imageUrl: absolutePublicUrl(item.imageUrl) || '',
+    plans: response.plans.map((plan) => ({
+      ...plan,
+      items: plan.items.map((item) => ({
+        ...item,
+        imageUrl: absolutePublicUrl(item.imageUrl) || '',
+      })),
     })),
   }
 }

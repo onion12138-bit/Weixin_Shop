@@ -37,6 +37,8 @@ class AiConfigurationServiceTest {
             true,
             30,
             2048,
+            "生成日常材质搭配",
+            3,
             2
         )))
             .isInstanceOf(BusinessException.class)

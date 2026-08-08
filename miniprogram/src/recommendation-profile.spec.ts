@@ -2,20 +2,20 @@ import {
   buildRecommendationRequest,
   consumePendingAiRecommendation,
   createPendingAiRecommendation,
-  deriveChineseZodiac,
-  deriveConstellation,
-  recommendationStatusMessage,
+  isRecommendationUnavailableCode,
   recommendationFailureMessage,
+  recommendationStatusMessage,
+  normalizeWishInspiration,
   toRecommendationViewModel,
   validateRecommendationForm,
   type RecommendationForm,
   type RecommendationResponse,
 } from '../miniprogram/domain/recommendation-profile'
 import {
+  getRecommendationProfile,
   getRecommendationStatus,
   requestRecommendation,
 } from '../miniprogram/services/recommendation'
-import { listAllPublicBeads } from '../miniprogram/services/catalog'
 import {
   absolutePublicUrl,
   request,
@@ -35,110 +35,95 @@ const absolutePublicUrlMock = absolutePublicUrl as jest.MockedFunction<
 
 const validForm = (overrides: Partial<RecommendationForm> = {}): RecommendationForm => ({
   birthDate: '2024-02-29',
-  manualConstellation: '',
-  manualZodiac: '',
-  elementPreference: '水',
-  wish: '专注',
-  scene: '通勤',
-  colorPreference: '灰蓝',
-  budget: '500',
-  wristCircumferenceMm: '160',
-  fitType: 'STANDARD',
-  freeText: '希望日常耐看',
+  wishInspiration: '',
+  wish: '希望日常佩戴时更从容',
   ...overrides,
 })
 
-describe('recommendation birth profile', () => {
+const response: RecommendationResponse = {
+  profile: {
+    birthDate: '2024-02-29',
+    constellation: '双鱼座',
+    zodiac: '龙',
+    constellationElement: '水',
+  },
+  plans: [
+    {
+      schemeName: '清透水光',
+      summary: '以清透层次为主。',
+      items: [
+        {
+          skuId: 2001,
+          name: '白水晶 8mm',
+          imageUrl: '/api/public/files/a.png',
+          reason: '清透通透',
+        },
+        {
+          skuId: 2002,
+          name: '海蓝宝 8mm',
+          imageUrl: '/api/public/files/b.png',
+          reason: '增加蓝色层次',
+        },
+      ],
+    },
+    {
+      schemeName: '柔和月光',
+      summary: '偏柔和的日常组合。',
+      items: [{
+        skuId: 2003,
+        name: '月光石 8mm',
+        imageUrl: '/api/public/files/c.png',
+        reason: '光感柔和',
+      }],
+    },
+  ],
+  culturalDisclaimer: '星座、生肖及寓意内容仅供文化娱乐参考。',
+}
+
+describe('recommendation form contract', () => {
   it.each([
-    ['2024-12-21', '射手座'],
-    ['2024-12-22', '摩羯座'],
-    ['2025-01-19', '摩羯座'],
-    ['2025-01-20', '水瓶座'],
-    ['2024-02-18', '水瓶座'],
-    ['2024-02-19', '双鱼座'],
-    ['2024-02-29', '双鱼座'],
-    ['2024-03-20', '双鱼座'],
-    ['2024-03-21', '白羊座'],
-    ['2024-04-20', '金牛座'],
-    ['2024-05-21', '双子座'],
-    ['2024-06-22', '巨蟹座'],
-    ['2024-07-23', '狮子座'],
-    ['2024-08-23', '处女座'],
-    ['2024-09-23', '天秤座'],
-    ['2024-10-24', '天蝎座'],
-    ['2024-11-23', '射手座'],
-  ])('derives constellation boundary %s as %s', (date, expected) => {
-    expect(deriveConstellation(date)).toBe(expected)
-  })
-
-  it('uses the backend Gregorian-year zodiac mapping across lunar and leap boundaries', () => {
-    expect(deriveChineseZodiac('2023-12-31')).toBe('兔')
-    expect(deriveChineseZodiac('2024-01-01')).toBe('龙')
-    expect(deriveChineseZodiac('2024-02-04')).toBe('龙')
-    expect(deriveChineseZodiac('2024-02-09')).toBe('龙')
-    expect(deriveChineseZodiac('2024-02-10')).toBe('龙')
-    expect(deriveChineseZodiac('2024-02-29')).toBe('龙')
-  })
-
-  it('prefers trimmed manual constellation and zodiac values over birthday derivation', () => {
-    const payload = buildRecommendationRequest(validForm({
-      manualConstellation: '  自定义星座  ',
-      manualZodiac: '  自定义生肖  ',
-    }))
-
-    expect(payload.constellation).toBe('自定义星座')
-    expect(payload.zodiac).toBe('自定义生肖')
-  })
-
-  it('derives missing manual values and sends budget, wrist and free text', () => {
-    const payload = buildRecommendationRequest(validForm({
-      budget: '888.88',
-      wristCircumferenceMm: '172.5',
-      fitType: 'LOOSE',
-      freeText: '  保留在本次页面内存  ',
-    }))
-
-    expect(payload).toMatchObject({
-      birthDate: '2024-02-29',
-      constellation: '双鱼座',
-      zodiac: '龙',
-      budget: 888.88,
-      wristCircumferenceMm: 172.5,
-      fitType: 'LOOSE',
-      freeText: '保留在本次页面内存',
-    })
-  })
-})
-
-describe('recommendation form validation', () => {
-  it.each([
-    [{ budget: '0' }, '请输入 0.01 至 999999.99 元预算'],
-    [{ budget: '1000000' }, '请输入 0.01 至 999999.99 元预算'],
-    [{ wristCircumferenceMm: '0' }, '请输入 1 至 1000 毫米手围'],
-    [{ wristCircumferenceMm: '1000.01' }, '请输入 1 至 1000 毫米手围'],
-    [{ freeText: '私'.repeat(501) }, '自由描述最多 500 个字'],
-    [{ manualConstellation: '星'.repeat(17) }, '星座最多 16 个字'],
-    [{ wish: '愿'.repeat(81) }, '期望最多 80 个字'],
+    [{ birthDate: '' }, '请选择生日'],
+    [{ birthDate: '2023-02-29' }, '请选择有效生日'],
     [{ birthDate: '2999-01-01' }, '生日不能晚于今天'],
-  ])('rejects DTO boundary %o', (overrides, expected) => {
+    [{ wishInspiration: '未知心愿' }, '请选择有效的心愿灵感'],
+    [{ wish: '愿'.repeat(81) }, '期望最多 80 个字'],
+  ])('rejects invalid input %o', (overrides, expected) => {
     expect(validateRecommendationForm(
       validForm(overrides),
-      '2026-07-13',
+      '2026-07-19',
     )).toBe(expected)
   })
 
-  it('accepts all Task 8 DTO upper boundaries', () => {
-    expect(validateRecommendationForm(validForm({
-      manualConstellation: '星'.repeat(16),
-      manualZodiac: '肖'.repeat(16),
-      elementPreference: '行'.repeat(16),
-      wish: '愿'.repeat(80),
-      scene: '景'.repeat(80),
-      colorPreference: '色'.repeat(80),
-      budget: '999999.99',
-      wristCircumferenceMm: '1000',
-      freeText: '私'.repeat(500),
-    }), '2026-07-13')).toBeNull()
+  it('accepts a required birthday with empty optional wish fields', () => {
+    expect(validateRecommendationForm(
+      validForm({ wishInspiration: '', wish: '' }),
+      '2026-07-19',
+    )).toBeNull()
+  })
+
+  it('builds a request containing a selected inspiration and trimmed optional wish', () => {
+    expect(buildRecommendationRequest(validForm({
+      wishInspiration: '事业',
+      wish: '  从容  ',
+    }))).toEqual({
+      birthDate: '2024-02-29',
+      wishInspiration: '事业',
+      wish: '从容',
+    })
+    expect(buildRecommendationRequest(validForm({
+      wishInspiration: '   ',
+      wish: '   ',
+    }))).toEqual({
+      birthDate: '2024-02-29',
+      wishInspiration: undefined,
+      wish: undefined,
+    })
+  })
+
+  it('normalizes only the eight supported inspiration values', () => {
+    expect(normalizeWishInspiration('  相守  ')).toBe('相守')
+    expect(normalizeWishInspiration('好运')).toBe('')
+    expect(normalizeWishInspiration(undefined)).toBe('')
   })
 })
 
@@ -147,109 +132,113 @@ describe('recommendation availability copy', () => {
     ['NOT_CONFIGURED', false, 'AI 推荐暂未开放'],
     ['DISABLED', false, 'AI 推荐暂停使用'],
     ['UNKNOWN', false, 'AI 推荐服务暂时不可用，请稍后重试'],
-  ])('maps %s to confirmed customer copy', (status, available, expected) => {
+  ])('maps %s to customer copy', (status, available, expected) => {
     expect(recommendationStatusMessage(status, available)).toBe(expected)
-  })
-
-  it('has no unavailable copy only for an explicitly available service', () => {
-    expect(recommendationStatusMessage('AVAILABLE', true)).toBe('')
-    expect(recommendationStatusMessage('AVAILABLE', false))
-      .toBe('AI 推荐服务暂时不可用，请稍后重试')
   })
 
   it.each([
     ['AI_NOT_CONFIGURED', 'AI 推荐暂未开放'],
     ['AI_DISABLED', 'AI 推荐暂停使用'],
-    ['AI_MODEL_UNAVAILABLE', 'AI 推荐服务暂时不可用，请稍后重试'],
-    ['trace-secret', 'AI 推荐服务暂时不可用，请稍后重试'],
-  ])('maps POST business code %s without exposing technical details', (
-    code,
-    expected,
-  ) => {
+    ['AI_PROMPT_NOT_CONFIGURED', 'AI 推荐规则尚未配置，请联系管理员'],
+    ['AI_UNAUTHORIZED', 'AI 服务鉴权失败，请联系管理员检查 API Key'],
+    ['AI_MODEL_UNAVAILABLE', '当前 AI 模型不可用，请联系管理员检查模型配置'],
+    ['AI_RATE_LIMITED', 'AI 请求较多，请稍后重试'],
+    ['AI_TEMPORARILY_UNAVAILABLE', 'AI 服务响应超时或暂时异常，请稍后重试'],
+    ['AI_TIMEOUT', 'AI 服务响应超时，请稍后重试'],
+    ['AI_UPSTREAM_ERROR', 'AI 服务暂时异常，请稍后重试'],
+    ['AI_INVALID_RECOMMENDATION', '本次推荐未通过校验，请重试或调整期望'],
+    ['AI_RESPONSE_FORMAT_INVALID', 'AI 返回的方案格式不完整，请重试'],
+    ['AI_RESULT_COUNT_INVALID', 'AI 返回的方案数量不正确，请重试'],
+    ['AI_RESULT_ITEM_COUNT_INVALID', 'AI 返回的单套珠子种类数量不正确，请重试'],
+    ['AI_RESULT_DUPLICATE_SKU', 'AI 在同一套方案中重复选择了珠子，请重试'],
+    ['AI_RESULT_SKU_INVALID', 'AI 选择的珠子已不可用，请重试'],
+    ['AI_RESPONSE_CONTENT_UNSAFE', 'AI 返回的文案未通过安全校验，请重试'],
+    ['BIRTH_DATE_REQUIRED', '请选择生日'],
+    ['BIRTH_DATE_INVALID', '生日信息无效，请重新选择'],
+    ['CATALOG_EMPTY', '暂无可推荐的在售珠子，请稍后重试'],
+    ['NETWORK_ERROR', '网络连接失败，请检查网络后重试'],
+    ['trace-secret', '生成推荐失败，请稍后重试'],
+  ])('maps POST code %s without exposing technical details', (code, expected) => {
     expect(recommendationFailureMessage(code)).toBe(expected)
+  })
+
+  it('shows a safe backend message and trace id for an unknown code', () => {
+    expect(recommendationFailureMessage(
+      'NEW_AI_ERROR',
+      '暂时无法生成这类方案',
+      '9c34a4d7-77a1-4d9c-a5c9-5073f0570c11',
+    )).toBe(
+      '暂时无法生成这类方案'
+      + '（追踪号：9c34a4d7-77a1-4d9c-a5c9-5073f0570c11）',
+    )
+  })
+
+  it('does not display a suspicious unknown server message', () => {
+    expect(recommendationFailureMessage(
+      'NEW_AI_ERROR',
+      'Authorization: Bearer secret-token',
+      'invalid trace!',
+    )).toBe('生成推荐失败，请稍后重试')
+  })
+
+  it.each([
+    ['AI_NOT_CONFIGURED', true],
+    ['AI_DISABLED', true],
+    ['AI_INVALID_RECOMMENDATION', false],
+    ['AI_TEMPORARILY_UNAVAILABLE', false],
+    ['NETWORK_ERROR', false],
+  ])('marks only configuration state %s as unavailable', (code, expected) => {
+    expect(isRecommendationUnavailableCode(code)).toBe(expected)
   })
 })
 
-describe('single recommendation view model', () => {
-  const response: RecommendationResponse = {
-    schemeName: '灰蓝通勤',
-    sequence: [2001, 2002, 2001],
-    quantities: { 2001: 2, 2002: 1 },
-    items: [
-      {
-        skuId: 2001,
-        name: '白水晶 8mm',
-        imageUrl: 'https://example.test/a.png',
-        quantity: 2,
-        reason: '清透层次',
-      },
-      {
-        skuId: 2002,
-        name: '紫水晶 8mm',
-        imageUrl: 'https://example.test/b.png',
-        quantity: 1,
-        reason: '紫色点缀',
-      },
-    ],
-    summary: '适合通勤。',
-    cordOption: {
-      id: 6001,
-      code: 'ELASTIC-CLEAR',
-      name: '透明弹力绳',
-      colorHex: '#E8E4DC',
-    },
-    beadAmount: 300,
-    craftFee: 10,
-    cordFee: 4.8,
-    totalAmount: 999.99,
-    quoteFingerprint: 'server-fingerprint',
-    culturalDisclaimer: '星座、生肖、五行及寓意内容仅供文化娱乐参考。',
-  }
-
-  it('renders one ordered design with item images, quantities and reasons', () => {
+describe('multi-plan recommendation view model and DIY seed', () => {
+  it('keeps every dynamic plan and omits price, wrist and fit fields', () => {
     const result = toRecommendationViewModel(response)
 
-    expect(result.schemeName).toBe('灰蓝通勤')
-    expect(result.items[0]).toMatchObject({
-      imageUrl: 'https://example.test/a.png',
-      quantityText: '2 颗',
-      reason: '清透层次',
-    })
-    expect(result.orderedBeads.map((item) => item.name))
-      .toEqual(['白水晶 8mm', '紫水晶 8mm', '白水晶 8mm'])
-    expect(result.culturalDisclaimer).toContain('文化娱乐参考')
+    expect(result.plans).toHaveLength(2)
+    expect(result.plans.map((plan) => plan.numberLabel))
+      .toEqual(['方案 1', '方案 2'])
+    expect(result.plans[0].items.map((item) => item.name))
+      .toEqual(['白水晶 8mm', '海蓝宝 8mm'])
+    expect(JSON.stringify(result)).not.toMatch(/totalAmount|budget|wrist|fitType/)
   })
 
-  it('formats the server total directly without calculating it from components', () => {
-    const result = toRecommendationViewModel(response)
+  it('creates a DIY seed with every bead type once and no sizing or price data', () => {
+    const seed = createPendingAiRecommendation({
+      ...response.plans[0],
+      items: [
+        response.plans[0].items[0],
+        response.plans[0].items[0],
+        response.plans[0].items[1],
+      ],
+    })
 
-    expect(result.totalAmountText).toBe('¥999.99')
-    expect(result.amountDetails.map((item) => item.amountText))
-      .toEqual(['¥300.00', '¥10.00', '¥4.80'])
+    expect(seed).toEqual({ sequence: [2001, 2002] })
+    expect(Object.keys(seed)).toEqual(['sequence'])
   })
 
-  it('creates a storage handoff containing only the four allowed fields', () => {
-    const handoff = createPendingAiRecommendation(response, validForm({
-      birthDate: '1992-01-20',
-      freeText: '不得进入 storage',
-      wristCircumferenceMm: '168',
-      fitType: 'SNUG',
-    }))
-
-    expect(handoff).toEqual({
-      sequence: [2001, 2002, 2001],
-      wristCircumferenceMm: 168,
-      fitType: 'SNUG',
-      cordOptionId: 6001,
+  it('applies existing DIY defaults only when the seed is consumed', () => {
+    expect(consumePendingAiRecommendation(
+      'ai',
+      { get: () => ({ sequence: [2001, 2002] }), remove: jest.fn() },
+      {
+        allowedSkuIds: [2001, 2002],
+        allowedCordOptionIds: [7001],
+        minWristCircumferenceMm: 120,
+        maxWristCircumferenceMm: 220,
+        maxSequenceLength: 30,
+      },
+    )).toEqual({
+      schemeId: 0,
+      schemeVersion: 0,
+      name: 'AI 推荐手串',
+      sequence: [2001, 2002],
+      wristCircumferenceMm: 160,
+      fitType: 'STANDARD',
+      cordOptionId: 7001,
+      selectedIndex: -1,
     })
-    expect(JSON.stringify(handoff)).not.toContain('birthDate')
-    expect(JSON.stringify(handoff)).not.toContain('freeText')
-    expect(Object.keys(handoff).sort()).toEqual([
-      'cordOptionId',
-      'fitType',
-      'sequence',
-      'wristCircumferenceMm',
-    ])
   })
 })
 
@@ -259,118 +248,43 @@ describe('recommendation API adapter', () => {
     absolutePublicUrlMock.mockClear()
   })
 
-  it('loads status from the Task 8 plural customer endpoint', async () => {
-    requestMock.mockResolvedValue({ status: 'AVAILABLE', available: true })
+  it('loads status and the server-derived birthday profile publicly', async () => {
+    requestMock
+      .mockResolvedValueOnce({ status: 'AVAILABLE', available: true })
+      .mockResolvedValueOnce(response.profile)
 
     await expect(getRecommendationStatus()).resolves.toEqual({
       status: 'AVAILABLE',
       available: true,
     })
-    expect(requestMock).toHaveBeenCalledWith('/app/recommendations/status')
-  })
-
-  it('loads a second public-catalog page so its SKU remains a valid AI handoff', async () => {
-    const firstPageBead = {
-      id: 2001,
-      skuCode: 'BEAD-2001',
-      name: '第一页珠子',
-      material: '水晶',
-      color: '透明',
-      diameterMm: 8,
-      salePrice: 10,
-      coverUrl: '/api/public/files/first.png',
-      tags: [],
-    }
-    const secondPageBead = {
-      ...firstPageBead,
-      id: 2031,
-      skuCode: 'BEAD-2031',
-      name: '第二页合法珠子',
-      coverUrl: '/api/public/files/second.png',
-    }
-    requestMock
-      .mockResolvedValueOnce({
-        items: [firstPageBead],
-        total: 101,
-        page: 1,
-        size: 100,
-      })
-      .mockResolvedValueOnce({
-        items: [secondPageBead],
-        total: 101,
-        page: 2,
-        size: 100,
-      })
-
-    const beads = await listAllPublicBeads()
-    const stored = {
-      sequence: [2031],
-      wristCircumferenceMm: 165,
-      fitType: 'STANDARD',
-      cordOptionId: 6001,
-    }
-    const draft = consumePendingAiRecommendation(
-      'ai',
-      { get: () => stored, remove: jest.fn() },
-      {
-        allowedSkuIds: beads.map((item) => item.id),
-        allowedCordOptionIds: [6001],
-        minWristCircumferenceMm: 120,
-        maxWristCircumferenceMm: 220,
-        maxSequenceLength: 30,
-      },
-    )
+    await expect(getRecommendationProfile('2024-02-29'))
+      .resolves.toEqual(response.profile)
 
     expect(requestMock).toHaveBeenNthCalledWith(
       1,
-      '/public/catalog/beads?page=1&size=100',
+      '/public/recommendations/status',
     )
     expect(requestMock).toHaveBeenNthCalledWith(
       2,
-      '/public/catalog/beads?page=2&size=100',
+      '/public/recommendations/profile?birthDate=2024-02-29',
     )
-    expect(beads.map((item) => item.id)).toEqual([2001, 2031])
-    expect(draft?.sequence).toEqual([2031])
   })
 
-  it('posts the exact DTO and normalizes every returned item image', async () => {
+  it('posts only the consultation DTO and normalizes every nested item image', async () => {
     const payload = buildRecommendationRequest(validForm())
-    const response: RecommendationResponse = {
-      schemeName: '灰蓝通勤',
-      sequence: [2001],
-      quantities: { 2001: 1 },
-      items: [{
-        skuId: 2001,
-        name: '白水晶 8mm',
-        imageUrl: '/api/public/files/a.png',
-        quantity: 1,
-        reason: '清透层次',
-      }],
-      summary: '适合通勤。',
-      cordOption: {
-        id: 6001,
-        code: 'ELASTIC-CLEAR',
-        name: '透明弹力绳',
-        colorHex: '#E8E4DC',
-      },
-      beadAmount: 100,
-      craftFee: 10,
-      cordFee: 4.8,
-      totalAmount: 114.8,
-      quoteFingerprint: 'server-fingerprint',
-      culturalDisclaimer: '仅供文化娱乐参考。',
-    }
     requestMock.mockResolvedValue(response)
 
-    await expect(requestRecommendation(payload)).resolves.toMatchObject({
-      items: [{ imageUrl: 'https://cdn.test/api/public/files/a.png' }],
-      totalAmount: 114.8,
-    })
+    const actual = await requestRecommendation(payload)
+
+    expect(actual.plans[0].items[0].imageUrl)
+      .toBe('https://cdn.test/api/public/files/a.png')
+    expect(actual.plans[1].items[0].imageUrl)
+      .toBe('https://cdn.test/api/public/files/c.png')
     expect(requestMock).toHaveBeenCalledWith('/app/recommendations', {
       method: 'POST',
       data: payload,
+      timeout: 70000,
     })
-    expect(absolutePublicUrlMock)
-      .toHaveBeenCalledWith('/api/public/files/a.png')
+    expect(absolutePublicUrlMock).toHaveBeenCalledTimes(3)
   })
 })
