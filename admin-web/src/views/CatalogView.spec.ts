@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import CatalogView from './CatalogView.vue'
 import {
+  changeBeadStatus,
   changePackageRecommendation,
   createAdminBead,
   downloadBeadImportTemplate,
@@ -153,6 +154,43 @@ describe('CatalogView', () => {
     expect(wrapper.text()).toContain('白水晶 8mm')
     expect(wrapper.text()).toContain('BEAD-CRYSTAL-001')
     expect(wrapper.find('[data-test="create-bead"]').exists()).toBe(true)
+  })
+
+  it('updates a bead status in place without reloading the catalog', async () => {
+    vi.mocked(changeBeadStatus).mockResolvedValue({
+      id: 2001,
+      categoryId: 1001,
+      productType: 'BEAD',
+      skuCode: 'BEAD-CRYSTAL-001',
+      name: '白水晶 8mm',
+      material: '天然水晶',
+      color: '透明',
+      diameterMm: 8,
+      salePrice: 12.8,
+      costPrice: 5.2,
+      stockAlertThreshold: 20,
+      availableQty: 200,
+      reservedQty: 0,
+      soldQty: 0,
+      stockWarningStatus: 'NORMAL',
+      coverAssetId: 5001,
+      coverUrl: '/api/public/files/2026/07/white-crystal.png',
+      tagsJson: '["净化","日常"]',
+      status: 'OFF_SALE',
+    })
+    const wrapper = mount(CatalogView)
+    await flushPromises()
+    const catalogCallsBeforeToggle = vi.mocked(listAdminBeads).mock.calls.length
+
+    await wrapper.get('[data-test="toggle-bead-status-2001"]').trigger('click')
+    await flushPromises()
+
+    expect(changeBeadStatus).toHaveBeenCalledWith(2001, 'OFF_SALE')
+    expect(vi.mocked(listAdminBeads).mock.calls.length)
+      .toBe(catalogCallsBeforeToggle)
+    expect(wrapper.text()).toContain('已下架')
+    expect(wrapper.get('[data-test="toggle-bead-status-2001"]').text())
+      .toBe('上架')
   })
 
   it('shows the uploaded cover and opens a large image preview', async () => {

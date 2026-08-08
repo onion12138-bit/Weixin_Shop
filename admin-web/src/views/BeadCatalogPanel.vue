@@ -394,8 +394,17 @@ async function toggleStatus(bead: BeadSku): Promise<void> {
     bead.status === 'ON_SALE' ? 'OFF_SALE' : 'ON_SALE'
   errorMessage.value = ''
   try {
-    await changeBeadStatus(bead.id, nextStatus)
-    await loadCatalog()
+    const updated = await changeBeadStatus(bead.id, nextStatus)
+    if (filters.status && filters.status !== updated.status) {
+      beads.value = beads.value.filter((item) => item.id !== bead.id)
+      total.value = Math.max(0, total.value - 1)
+      return
+    }
+    beads.value = beads.value.map((item) => (
+      item.id === bead.id
+        ? { ...item, status: updated.status }
+        : item
+    ))
   } catch (error) {
     errorMessage.value = readableError(error)
   }
@@ -600,7 +609,11 @@ onMounted(loadCatalog)
                 >
                   DIY 效果
                 </button>
-                <button class="text-button" @click="toggleStatus(bead)">
+                <button
+                  class="text-button"
+                  :data-test="`toggle-bead-status-${bead.id}`"
+                  @click="toggleStatus(bead)"
+                >
                   {{ bead.status === 'ON_SALE' ? '下架' : '上架' }}
                 </button>
               </td>

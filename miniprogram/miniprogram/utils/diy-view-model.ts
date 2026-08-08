@@ -1,4 +1,7 @@
-import type { SizeStatus } from '../services/diy'
+import type {
+  DiySchemeResponse,
+  SizeStatus,
+} from '../services/diy'
 
 export interface PackageSequenceItem {
   beadSkuId: number
@@ -23,15 +26,23 @@ export interface EditorSummary {
   priceBadge: string
 }
 
-export interface SchemeCardInput {
-  id: number
+export type SchemeCardInput = Pick<DiySchemeResponse,
+  | 'id'
+  | 'name'
+  | 'beadCount'
+  | 'totalAmount'
+  | 'quoteStatus'
+  | 'sequence'
+  | 'catalogSnapshot'
+  | 'updatedAt'
+  | 'version'
+>
+
+export interface SchemePreviewBead {
+  key: string
   name: string
-  beadCount: number
-  totalAmount: number
-  quoteStatus: string
-  previewUrl: string | null
-  updatedAt: string
-  version: number
+  imageUrl: string
+  style: string
 }
 
 export interface SchemeCard {
@@ -41,12 +52,14 @@ export interface SchemeCard {
   amountText: string
   statusText: string
   statusClass: string
-  previewUrl: string
+  previewBeads: SchemePreviewBead[]
   updatedAtText: string
   version: number
 }
 
-const PLACEHOLDER_PREVIEW = '/assets/images/bead-placeholder.svg'
+const PLACEHOLDER_BEAD_IMAGE = '/assets/images/bead-placeholder.svg'
+const SCHEME_PREVIEW_SIZE_RPX = 360
+const SCHEME_PREVIEW_CENTER_RPX = SCHEME_PREVIEW_SIZE_RPX / 2
 
 /**
  * 将套餐明细中的“某 SKU 数量 N”展开为编辑器使用的有序 SKU 序列。
@@ -103,10 +116,49 @@ export function toSchemeCard(input: SchemeCardInput): SchemeCard {
     amountText: formatYuan(input.totalAmount),
     statusText: quoteStatusText(input.quoteStatus),
     statusClass: input.quoteStatus.toLowerCase().replace(/_/g, '-'),
-    previewUrl: input.previewUrl || PLACEHOLDER_PREVIEW,
+    previewBeads: buildSchemePreviewBeads(input),
     updatedAtText: formatDateTime(input.updatedAt),
     version: input.version,
   }
+}
+
+/**
+ * 方案列表重新使用保存的珠子快照拼出手串。
+ *
+ * 这样无论历史预览图中是否带有旧版中心投影，列表都会稳定展示完整、
+ * 无中心阴影的手串；同时不需要增大卡片预览区域。
+ */
+function buildSchemePreviewBeads(input: SchemeCardInput): SchemePreviewBead[] {
+  const catalogById = new Map(
+    input.catalogSnapshot.map((item) => [item.skuId, item]),
+  )
+  const count = Math.max(1, input.sequence.length)
+  const beadSize = Math.max(28, Math.min(66, 1080 / count))
+  const radius = SCHEME_PREVIEW_CENTER_RPX - 18 - beadSize / 2
+
+  return input.sequence.map((skuId, index) => {
+    const item = catalogById.get(skuId)
+    const angle = -Math.PI / 2 + (Math.PI * 2 * index) / count
+    const left = SCHEME_PREVIEW_CENTER_RPX
+      + Math.cos(angle) * radius
+      - beadSize / 2
+    const top = SCHEME_PREVIEW_CENTER_RPX
+      + Math.sin(angle) * radius
+      - beadSize / 2
+    return {
+      key: `${index}-${skuId}`,
+      name: item?.name || '方案珠子',
+      imageUrl: item?.diyVisual?.canvasUrl
+        || item?.coverUrl
+        || PLACEHOLDER_BEAD_IMAGE,
+      style: [
+        `left:${left.toFixed(2)}rpx`,
+        `top:${top.toFixed(2)}rpx`,
+        `width:${beadSize.toFixed(2)}rpx`,
+        `height:${beadSize.toFixed(2)}rpx`,
+      ].join(';'),
+    }
+  })
 }
 
 export function sizeStatusText(status: SizeStatus): string {

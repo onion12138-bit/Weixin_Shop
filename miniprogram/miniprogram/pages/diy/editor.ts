@@ -28,10 +28,6 @@ import {
   replaceBead,
 } from '../../domain/editor-state'
 import {
-  createHistory,
-  type EditorHistory,
-} from '../../domain/editor-history'
-import {
   PENDING_AI_RECOMMENDATION_KEY,
   consumePendingAiRecommendation,
 } from '../../domain/recommendation-profile'
@@ -161,6 +157,14 @@ const FIT_TYPES: FitType[] = ['SNUG', 'STANDARD', 'LOOSE']
 const FIT_TYPE_LABELS = ['贴手', '标准', '宽松']
 const MAX_CONCURRENT_CANVAS_IMAGE_LOADS = 4
 const CANVAS_REDRAW_FRAME_MS = 16
+const PREVIEW_SCROLL_DEAD_ZONE_PX = 20
+const PREVIEW_COLLAPSE_DISTANCE_PX = 120
+const PREVIEW_TRANSITION_MS = 240
+const PREVIEW_EXPANDED_CANVAS_HEIGHT_RPX = 660
+const PREVIEW_COLLAPSED_CANVAS_HEIGHT_RPX = 196
+const PREVIEW_EXPANDED_SUMMARY_HEIGHT_RPX = 132
+const PREVIEW_FAST_SCROLL_DELTA_PX = 32
+const PREVIEW_FAST_SCROLL_VELOCITY_PX_PER_MS = 0.7
 
 Page({
   data: {
@@ -184,8 +188,17 @@ Page({
     cordOptionNames: [] as string[],
     cordOptionIndex: 0,
     sequence: [] as number[],
+    totalBeadCount: 0,
     selectedIndex: -1,
     selectedNumber: 0,
+    previewExpanded: true,
+    previewCollapseProgress: 0,
+    previewCanvasHeightRpx: PREVIEW_EXPANDED_CANVAS_HEIGHT_RPX,
+    previewCanvasScale: 1,
+    previewSummaryHeightRpx: PREVIEW_EXPANDED_SUMMARY_HEIGHT_RPX,
+    previewPrimaryOpacity: 1,
+    previewSecondaryOpacity: 1,
+    previewScrollTracking: false,
     catalog: [] as CatalogItem[],
     visibleCatalog: [] as CatalogItem[],
     trayExpanded: false,
@@ -197,10 +210,7 @@ Page({
     lengthText: '尚未选珠',
     sizeText: '请选择珠子',
     priceText: '预估 ¥0.00',
-    priceBadge: '预估',
     quoteIssues: [] as QuoteIssueItem[],
-    canUndo: false,
-    canRedo: false,
     authoritative: false,
     errorMessage: '',
   },
@@ -209,7 +219,6 @@ Page({
    * 编辑器只把“有序 SKU 数组”作为设计状态。
    * 临时序号、数量统计、预估价格和 Canvas 坐标全部由该数组派生，避免多份状态冲突。
    */
-  history: createHistory<number[]>([]),
   config: null as DiyConfiguration | null,
   layoutPoints: [] as BeadLayoutPoint[],
   canvasNode: null as CanvasNode | null,
@@ -230,9 +239,17 @@ Page({
   dragFromIndex: -1,
   dragToIndex: -1,
   pendingAiRecommendationRaw: null as unknown,
+  currentPageScrollTop: 0,
+  previewExpandedScrollTop: 0,
+  lastPageScrollTop: 0,
+  lastPageScrollTimestamp: 0,
+  previewAutoCollapseTriggered: false,
+  previewExpansionScrollResetting: false,
+  previewTransitionTimer: null as ReturnType<typeof setTimeout> | null,
 
   onLoad(options: Record<string, string>) {
     this.cancelCanvasRedraw()
+    this.cancelPreviewTransition()
     this.editorActive = true
     this.editorGeneration += 1
     this.canvasNode = null
@@ -244,6 +261,12 @@ Page({
     this.canvasImageQueue = []
     this.activeCanvasImageLoads = 0
     this.initialVisualLoading = true
+    this.currentPageScrollTop = 0
+    this.previewExpandedScrollTop = 0
+    this.lastPageScrollTop = 0
+    this.lastPageScrollTimestamp = Date.now()
+    this.previewAutoCollapseTriggered = false
+    this.previewExpansionScrollResetting = false
     if (options.source === 'ai') {
       try {
         this.pendingAiRecommendationRaw = wx.getStorageSync(
@@ -278,6 +301,7 @@ Page({
 
   onUnload() {
     this.cancelCanvasRedraw()
+    this.cancelPreviewTransition()
     this.editorActive = false
     this.editorGeneration += 1
     this.canvasNode = null
@@ -289,6 +313,12 @@ Page({
     this.canvasImageQueue = []
     this.activeCanvasImageLoads = 0
     this.initialVisualLoading = false
+    this.currentPageScrollTop = 0
+    this.previewExpandedScrollTop = 0
+    this.lastPageScrollTop = 0
+    this.lastPageScrollTimestamp = 0
+    this.previewAutoCollapseTriggered = false
+    this.previewExpansionScrollResetting = false
   },
 
   async bootstrap(options: Record<string, string>) {
@@ -328,7 +358,6 @@ Page({
       })
 
       const initial = await this.resolveInitialDraft(options)
-      this.history = createHistory(initial.sequence)
       this.setData({
         schemeId: initial.schemeId,
         schemeVersion: initial.schemeVersion,
@@ -351,7 +380,6 @@ Page({
       this.refreshDerivedState(initial.sequence, {
         authoritative: false,
         persistDraft: false,
-        pushHistory: false,
       })
     } catch (error) {
       this.initialVisualLoading = false
@@ -574,7 +602,6 @@ Page({
     this.refreshDerivedState(next, {
       authoritative: false,
       persistDraft: true,
-      pushHistory: true,
       selectedIndex: selectedIndex === null ? next.length - 1 : selectedIndex + 1,
     })
   },
@@ -585,7 +612,6 @@ Page({
     this.refreshDerivedState(next, {
       authoritative: false,
       persistDraft: true,
-      pushHistory: true,
       selectedIndex: Math.min(this.data.selectedIndex, next.length - 1),
     })
   },
@@ -598,7 +624,6 @@ Page({
       {
         authoritative: false,
         persistDraft: true,
-        pushHistory: true,
       },
     )
   },
@@ -610,7 +635,6 @@ Page({
     this.refreshDerivedState(next, {
       authoritative: false,
       persistDraft: true,
-      pushHistory: true,
       selectedIndex: normalizeSelectedIndex(this.data.selectedIndex, next),
     })
   },
@@ -625,29 +649,8 @@ Page({
       {
         authoritative: false,
         persistDraft: true,
-        pushHistory: true,
       },
     )
-  },
-
-  undo() {
-    if (!this.history.canUndo()) return
-    this.refreshDerivedState(this.history.undo(), {
-      authoritative: false,
-      persistDraft: true,
-      pushHistory: false,
-      selectedIndex: -1,
-    })
-  },
-
-  redo() {
-    if (!this.history.canRedo()) return
-    this.refreshDerivedState(this.history.redo(), {
-      authoritative: false,
-      persistDraft: true,
-      pushHistory: false,
-      selectedIndex: -1,
-    })
   },
 
   changeWrist(event: WechatMiniprogram.PickerChange) {
@@ -662,7 +665,6 @@ Page({
     this.refreshDerivedState(this.data.sequence, {
       authoritative: false,
       persistDraft: true,
-      pushHistory: false,
     })
   },
 
@@ -673,7 +675,6 @@ Page({
     this.refreshDerivedState(this.data.sequence, {
       authoritative: false,
       persistDraft: true,
-      pushHistory: false,
     })
   },
 
@@ -688,7 +689,6 @@ Page({
     this.refreshDerivedState(this.data.sequence, {
       authoritative: false,
       persistDraft: true,
-      pushHistory: false,
     })
   },
 
@@ -722,7 +722,6 @@ Page({
     this.refreshDerivedState(moveBead(this.data.sequence, from, to), {
       authoritative: false,
       persistDraft: true,
-      pushHistory: true,
       selectedIndex: to,
     })
   },
@@ -787,6 +786,144 @@ Page({
     this.setData({ trayExpanded: !this.data.trayExpanded })
   },
 
+  togglePreview() {
+    if (this.data.previewExpanded) {
+      this.startPreviewCollapse()
+      return
+    }
+    this.expandPreview()
+  },
+
+  expandPreview() {
+    if (this.data.previewExpanded) return
+    this.cancelPreviewTransition()
+    this.previewAutoCollapseTriggered = false
+    const canResetPageScroll = this.currentPageScrollTop > 0
+      && typeof wx.pageScrollTo === 'function'
+    this.previewExpansionScrollResetting = canResetPageScroll
+    this.previewExpandedScrollTop = this.currentPageScrollTop
+    this.lastPageScrollTop = this.currentPageScrollTop
+    this.lastPageScrollTimestamp = Date.now()
+    if (canResetPageScroll) {
+      wx.pageScrollTo({
+        scrollTop: 0,
+        duration: PREVIEW_TRANSITION_MS,
+      })
+    }
+    ;(this.setData as unknown as (
+      patch: Record<string, unknown>,
+      callback: () => void,
+    ) => void)(
+      {
+        previewExpanded: true,
+        previewCollapseProgress: 0,
+        previewCanvasHeightRpx: PREVIEW_EXPANDED_CANVAS_HEIGHT_RPX,
+        previewCanvasScale: 1,
+        previewSummaryHeightRpx: PREVIEW_EXPANDED_SUMMARY_HEIGHT_RPX,
+        previewPrimaryOpacity: 1,
+        previewSecondaryOpacity: 1,
+        previewScrollTracking: false,
+      },
+      () => {
+        this.previewTransitionTimer = setTimeout(() => {
+          this.previewTransitionTimer = null
+          if (canResetPageScroll) {
+            this.currentPageScrollTop = 0
+            this.previewExpandedScrollTop = 0
+            this.lastPageScrollTop = 0
+          }
+          this.previewExpansionScrollResetting = false
+        }, PREVIEW_TRANSITION_MS)
+      },
+    )
+  },
+
+  startPreviewCollapse() {
+    if (
+      !this.data.previewExpanded
+      || this.previewAutoCollapseTriggered
+    ) {
+      return
+    }
+    this.previewAutoCollapseTriggered = true
+    this.previewExpansionScrollResetting = false
+    this.cancelPreviewTransition()
+    this.applyPreviewCollapseProgress(1, false)
+    this.previewTransitionTimer = setTimeout(() => {
+      this.previewTransitionTimer = null
+      this.setData({
+        previewExpanded: false,
+        previewScrollTracking: false,
+      })
+    }, PREVIEW_TRANSITION_MS)
+  },
+
+  applyPreviewCollapseProgress(progress: number, scrollTracking: boolean) {
+    const normalized = Math.max(0, Math.min(1, progress))
+    const collapsedScale = PREVIEW_COLLAPSED_CANVAS_HEIGHT_RPX
+      / PREVIEW_EXPANDED_CANVAS_HEIGHT_RPX
+    const canvasHeight = PREVIEW_EXPANDED_CANVAS_HEIGHT_RPX
+      - (PREVIEW_EXPANDED_CANVAS_HEIGHT_RPX
+        - PREVIEW_COLLAPSED_CANVAS_HEIGHT_RPX) * normalized
+    const canvasScale = 1 - (1 - collapsedScale) * normalized
+    const primaryFade = normalized <= 0.7
+      ? 1
+      : 1 - (normalized - 0.7) / 0.3
+    const secondaryFade = 1 - Math.min(1, normalized / 0.78)
+    this.setData({
+      previewCollapseProgress: normalized,
+      previewCanvasHeightRpx: Math.round(canvasHeight),
+      previewCanvasScale: Number(canvasScale.toFixed(4)),
+      previewSummaryHeightRpx: Math.round(
+        PREVIEW_EXPANDED_SUMMARY_HEIGHT_RPX * (1 - normalized),
+      ),
+      previewPrimaryOpacity: Number(Math.max(0, primaryFade).toFixed(3)),
+      previewSecondaryOpacity: Number(
+        Math.max(0, secondaryFade).toFixed(3),
+      ),
+      previewScrollTracking: scrollTracking,
+    })
+  },
+
+  onPageScroll(event: { scrollTop?: number }) {
+    const scrollTop = Math.max(0, Number(event.scrollTop || 0))
+    const timestamp = Date.now()
+    const delta = scrollTop - this.lastPageScrollTop
+    const elapsed = Math.max(1, timestamp - this.lastPageScrollTimestamp)
+    this.currentPageScrollTop = scrollTop
+    this.lastPageScrollTop = scrollTop
+    this.lastPageScrollTimestamp = timestamp
+    if (
+      !this.data.previewExpanded
+      || this.previewAutoCollapseTriggered
+      || this.previewExpansionScrollResetting
+    ) {
+      return
+    }
+
+    const distance = Math.max(0, scrollTop - this.previewExpandedScrollTop)
+    if (distance <= PREVIEW_SCROLL_DEAD_ZONE_PX) {
+      if (this.data.previewCollapseProgress > 0) {
+        this.applyPreviewCollapseProgress(0, true)
+      }
+      return
+    }
+
+    const progress = (distance - PREVIEW_SCROLL_DEAD_ZONE_PX)
+      / (PREVIEW_COLLAPSE_DISTANCE_PX - PREVIEW_SCROLL_DEAD_ZONE_PX)
+    const fastUpwardScroll = delta > 0
+      && distance > PREVIEW_SCROLL_DEAD_ZONE_PX
+      && (
+        delta >= PREVIEW_FAST_SCROLL_DELTA_PX
+        || delta / elapsed >= PREVIEW_FAST_SCROLL_VELOCITY_PX_PER_MS
+      )
+    if (distance >= PREVIEW_COLLAPSE_DISTANCE_PX || fastUpwardScroll) {
+      this.startPreviewCollapse()
+      return
+    }
+    this.applyPreviewCollapseProgress(progress, true)
+  },
+
   async confirmQuote() {
     if (this.data.quoting) return
     this.setData({ quoting: true, errorMessage: '' })
@@ -819,28 +956,24 @@ Page({
     options: {
       authoritative: boolean
       persistDraft: boolean
-      pushHistory: boolean
       selectedIndex?: number
     },
   ) {
-    if (options.pushHistory) this.history.push(sequence)
     const summary = this.buildLocalSummary(sequence, options.authoritative)
     const selectedIndex = options.selectedIndex === undefined
       ? normalizeSelectedIndex(this.data.selectedIndex, sequence)
       : normalizeSelectedIndex(options.selectedIndex, sequence)
     this.setData({
       sequence,
+      totalBeadCount: sequence.length,
       selectedIndex,
       selectedNumber: selectedIndex >= 0 ? selectedIndex + 1 : 0,
       countText: summary.countText,
       lengthText: summary.lengthText,
       sizeText: summary.sizeText,
       priceText: summary.priceText,
-      priceBadge: summary.priceBadge,
       quoteIssues: options.authoritative ? this.data.quoteIssues : [],
       authoritative: options.authoritative,
-      canUndo: this.history.canUndo(),
-      canRedo: this.history.canRedo(),
     })
     if (options.persistDraft) writeDraftCache(this.currentDraft())
     this.drawBracelet()
@@ -895,7 +1028,6 @@ Page({
       lengthText: summary.lengthText,
       sizeText: summary.sizeText,
       priceText: summary.priceText,
-      priceBadge: summary.priceBadge,
       authoritative: quote.quotable,
     })
   },
@@ -949,6 +1081,13 @@ Page({
       return Math.sqrt(dx * dx + dy * dy) <= item.radius + 8
     })
     return point?.index ?? -1
+  },
+
+  cancelPreviewTransition() {
+    if (this.previewTransitionTimer !== null) {
+      clearTimeout(this.previewTransitionTimer)
+      this.previewTransitionTimer = null
+    }
   },
 
   refreshCanvasLayout(width: number, height: number) {

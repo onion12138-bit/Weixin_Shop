@@ -243,6 +243,11 @@ describe('DIY editor AI handoff behavior', () => {
   it('uses an opaque loading overlay while initial bracelet visuals load', () => {
     const template = readFileSync('miniprogram/pages/diy/editor.wxml', 'utf8')
 
-    expect(template).toContain('class="loading-overlay"')
+    expect(template).toContain(
+      '<cover-view wx:if="{{loading}}" class="loading-overlay">',
+    )
+    expect(template).not.toContain(
+      '<view wx:if="{{loading}}" class="loading-overlay">',
+    )
   })
 })

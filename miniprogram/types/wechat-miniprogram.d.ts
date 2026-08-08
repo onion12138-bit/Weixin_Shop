@@ -110,6 +110,11 @@ declare const wx: {
 
   stopPullDownRefresh(): void
 
+  pageScrollTo(options: {
+    scrollTop: number
+    duration?: number
+  }): void
+
   showToast(options: {
     title: string
     icon?: 'success' | 'error' | 'loading' | 'none'

@@ -6,6 +6,10 @@ import {
 
 declare function require(name: string): unknown
 
+const { readFileSync } = require('fs') as {
+  readFileSync(path: string, encoding: string): string
+}
+
 function loadEditorDefinition(): Record<string, any> {
   let definition: Record<string, any> | null = null
   ;(globalThis as any).Page = (pageOptions: Record<string, any>) => {
@@ -61,6 +65,229 @@ describe('DIY view model', () => {
   it('presents an overlong design as an optional adjustment', () => {
     expect(sizeStatusText('TOO_LONG'))
       .toBe('偏长，可减少珠子或调整腕围')
+  })
+})
+
+describe('Saved DIY scheme count', () => {
+  it('shows the saved bead total even when no individual bead is selected', () => {
+    const template = readFileSync('miniprogram/pages/diy/editor.wxml', 'utf8')
+    const page = instantiate(loadEditorDefinition())
+    page.drawBracelet = jest.fn()
+
+    page.refreshDerivedState(
+      Array.from({ length: 9 }, () => 2001),
+      {
+        authoritative: false,
+        persistDraft: false,
+        selectedIndex: -1,
+      },
+    )
+
+    expect(template).toContain('共 {{totalBeadCount}} 颗 · 未选珠子')
+    expect(page.data.totalBeadCount).toBe(9)
+    expect(page.data.selectedIndex).toBe(-1)
+    expect(page.data.selectedNumber).toBe(0)
+  })
+})
+
+describe('DIY preview controls', () => {
+  it('keeps the preview collapse control in the canvas toolbar', () => {
+    const template = readFileSync('miniprogram/pages/diy/editor.wxml', 'utf8')
+    const styles = readFileSync('miniprogram/pages/diy/editor.wxss', 'utf8')
+
+    expect(template).toContain('class="preview-toggle"')
+    expect(template).toContain('bindtap="togglePreview"')
+    expect(template).toContain("previewExpanded ? '收起预览' : '展开预览'")
+    expect(template).not.toContain('class="history-actions"')
+    expect(template).not.toContain('bindtap="undo"')
+    expect(template).not.toContain('bindtap="redo"')
+    expect(styles).toMatch(
+      /\.preview-toolbar\s*{[^}]*position:\s*absolute;[^}]*right:\s*16rpx;/,
+    )
+    expect(styles).toMatch(
+      /\.preview-toggle\s*{[^}]*margin:\s*0 0 0 auto;/,
+    )
+  })
+
+  it('settles the preview without replacing the live canvas', () => {
+    jest.useFakeTimers()
+    try {
+      const page = instantiate(loadEditorDefinition())
+      page.data.previewExpanded = true
+      page.drawBracelet = jest.fn()
+      page.setData = jest.fn((patch: Record<string, unknown>, callback?: () => void) => {
+        Object.assign(page.data, patch)
+        callback?.()
+      })
+
+      page.togglePreview()
+
+      expect(page.data.previewExpanded).toBe(true)
+      expect(page.data.previewCanvasHeightRpx).toBe(196)
+      expect(page.data.previewSummaryHeightRpx).toBe(0)
+
+      jest.advanceTimersByTime(240)
+
+      expect(page.data.previewExpanded).toBe(false)
+      expect(page.drawBracelet).not.toHaveBeenCalled()
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
+  it('keeps a 20px dead zone, then shrinks smoothly and settles at 120px', () => {
+    jest.useFakeTimers()
+    try {
+      const page = instantiate(loadEditorDefinition())
+      page.data.previewExpanded = true
+      page.previewExpandedScrollTop = 0
+      page.lastPageScrollTop = 0
+      page.lastPageScrollTimestamp = Date.now()
+      page.previewAutoCollapseTriggered = false
+      page.drawBracelet = jest.fn()
+      page.setData = jest.fn((patch: Record<string, unknown>, callback?: () => void) => {
+        Object.assign(page.data, patch)
+        callback?.()
+      })
+
+      page.onPageScroll({ scrollTop: 20 })
+      expect(page.data.previewCollapseProgress).toBe(0)
+      expect(page.data.previewExpanded).toBe(true)
+
+      jest.advanceTimersByTime(100)
+      page.onPageScroll({ scrollTop: 40 })
+      expect(page.data.previewCollapseProgress).toBeCloseTo(0.2)
+      expect(page.data.previewExpanded).toBe(true)
+
+      jest.advanceTimersByTime(100)
+      page.onPageScroll({ scrollTop: 70 })
+      expect(page.data.previewCollapseProgress).toBeCloseTo(0.5)
+      expect(page.data.previewSecondaryOpacity).toBeLessThan(1)
+
+      jest.advanceTimersByTime(100)
+      page.onPageScroll({ scrollTop: 100 })
+      jest.advanceTimersByTime(100)
+      page.onPageScroll({ scrollTop: 120 })
+
+      expect(page.data.previewExpanded).toBe(true)
+      expect(page.data.previewCanvasHeightRpx).toBe(196)
+      expect(page.data.previewSummaryHeightRpx).toBe(0)
+
+      jest.advanceTimersByTime(240)
+
+      expect(page.data.previewExpanded).toBe(false)
+      expect(page.drawBracelet).not.toHaveBeenCalled()
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
+  it('finishes the collapse early for a clearly fast upward swipe', () => {
+    jest.useFakeTimers()
+    try {
+      const page = instantiate(loadEditorDefinition())
+      page.data.previewExpanded = true
+      page.previewExpandedScrollTop = 0
+      page.lastPageScrollTop = 0
+      page.lastPageScrollTimestamp = Date.now()
+      page.previewAutoCollapseTriggered = false
+      page.drawBracelet = jest.fn()
+      page.setData = jest.fn((patch: Record<string, unknown>, callback?: () => void) => {
+        Object.assign(page.data, patch)
+        callback?.()
+      })
+
+      jest.advanceTimersByTime(30)
+      page.onPageScroll({ scrollTop: 48 })
+      page.onPageScroll({ scrollTop: 52 })
+
+      expect(page.previewAutoCollapseTriggered).toBe(true)
+      expect(jest.getTimerCount()).toBe(1)
+
+      jest.advanceTimersByTime(240)
+
+      expect(page.data.previewExpanded).toBe(false)
+      expect(page.drawBracelet).not.toHaveBeenCalled()
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
+  it('does not auto-collapse again when the preview is already compact', () => {
+    const page = instantiate(loadEditorDefinition())
+    page.data.previewExpanded = false
+    page.startPreviewCollapse = jest.fn()
+
+    page.onPageScroll({ scrollTop: 180 })
+
+    expect(page.startPreviewCollapse).not.toHaveBeenCalled()
+  })
+})
+
+describe('DIY editor compact layout', () => {
+  it('lets the expanded page scroll and only makes compact controls sticky', () => {
+    const template = readFileSync('miniprogram/pages/diy/editor.wxml', 'utf8')
+    const styles = readFileSync('miniprogram/pages/diy/editor.wxss', 'utf8')
+    const config = readFileSync('miniprogram/pages/diy/editor.json', 'utf8')
+
+    expect(template).toContain(
+      'class="diy-controls {{previewExpanded ? \'\' : \'is-sticky\'}}"',
+    )
+    expect(template).not.toContain('scroll-y')
+    expect(template).not.toContain('class="bead-list-scroll"')
+    expect(template).toContain('previewCanvasHeightRpx')
+    expect(template).toContain('previewCanvasScale')
+    expect(template).toContain('previewSummaryHeightRpx')
+    expect(template.indexOf('class="bead-search"'))
+      .toBeLessThan(template.indexOf('class="category-tabs"'))
+    expect(styles).toMatch(
+      /\.diy-controls\.is-sticky\s*{[^}]*position:\s*sticky;[^}]*top:\s*0;/,
+    )
+    expect(styles).toMatch(
+      /\.bracelet-canvas-viewport\s*{[^}]*transition:\s*height 240ms ease-out;/,
+    )
+    expect(styles).toMatch(
+      /\.bracelet-canvas\s*{[^}]*transition:\s*transform 240ms ease-out;/,
+    )
+    expect(styles).toMatch(
+      /\.canvas-panel\.is-collapsed \.bracelet-canvas\s*{[^}]*height:\s*660rpx;[^}]*transform:\s*scale\(\.297\);/,
+    )
+    expect(styles).toMatch(
+      /\.canvas-panel\.is-collapsed \.editor-summary\s*{[^}]*position:\s*absolute;[^}]*height:\s*196rpx;/,
+    )
+    expect(config).not.toContain('"disableScroll"')
+  })
+
+  it('renders published bead images without a circular white decoration', () => {
+    const styles = readFileSync('miniprogram/pages/diy/editor.wxss', 'utf8')
+
+    expect(styles).toMatch(
+      /\.tray-bead-image\s*{[^}]*border:\s*0;[^}]*border-radius:\s*0;[^}]*box-shadow:\s*none;/,
+    )
+  })
+
+  it('combines the estimated price with checkout and removes the price strip', () => {
+    const template = readFileSync('miniprogram/pages/diy/editor.wxml', 'utf8')
+
+    expect(template).not.toContain('class="price-strip"')
+    expect(template).toContain('{{priceText}} · 去下单')
+  })
+
+  it('uses compact vertical spacing between editor controls', () => {
+    const styles = readFileSync('miniprogram/pages/diy/editor.wxss', 'utf8')
+
+    expect(styles).toMatch(
+      /\.configuration-strip\s*{[^}]*margin-bottom:\s*10rpx;/,
+    )
+    expect(styles).toMatch(
+      /\.selected-actions\s*{[^}]*margin:\s*10rpx 0;/,
+    )
+    expect(styles).toMatch(
+      /\.bead-search\s*{[^}]*margin-bottom:\s*8rpx;/,
+    )
+    expect(styles).toMatch(
+      /\.category-tabs\s*{[^}]*margin-bottom:\s*8rpx;/,
+    )
   })
 })
 
