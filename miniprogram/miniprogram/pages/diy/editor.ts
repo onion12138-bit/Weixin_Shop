@@ -799,7 +799,10 @@ Page({
     const canResetPageScroll = this.currentPageScrollTop > 0
       && typeof wx.pageScrollTo === 'function'
     if (!canResetPageScroll) {
-      this.setData({ previewExpanded: true })
+      this.setData({ previewExpanded: true }, () => {
+        this.resetCanvasForResize()
+        this.drawBracelet()
+      })
       return
     }
 
@@ -812,7 +815,10 @@ Page({
       this.previewTransitionTimer = null
       this.currentPageScrollTop = 0
       this.previewExpansionScrollResetting = false
-      this.setData({ previewExpanded: true })
+      this.setData({ previewExpanded: true }, () => {
+        this.resetCanvasForResize()
+        this.drawBracelet()
+      })
     }, PREVIEW_TRANSITION_MS)
   },
 
@@ -826,7 +832,10 @@ Page({
     this.previewAutoCollapseTriggered = true
     this.previewExpansionScrollResetting = false
     this.cancelPreviewTransition()
-    this.setData({ previewExpanded: false })
+    this.setData({ previewExpanded: false }, () => {
+      this.resetCanvasForResize()
+      this.drawBracelet()
+    })
   },
 
   onPageScroll(event: { scrollTop?: number }) {
@@ -1036,6 +1045,15 @@ Page({
       clearTimeout(this.previewTransitionTimer)
       this.previewTransitionTimer = null
     }
+  },
+
+  resetCanvasForResize() {
+    this.cancelCanvasRedraw()
+    this.canvasNode = null
+    this.canvasContext = null
+    this.canvasLogicalWidth = 0
+    this.canvasLogicalHeight = 0
+    this.canvasQueryPending = false
   },
 
   refreshCanvasLayout(width: number, height: number) {

@@ -113,11 +113,22 @@ describe('DIY preview controls', () => {
   it('collapses the upper preview immediately when its own control is tapped', () => {
     const page = instantiate(loadEditorDefinition())
     page.data.previewExpanded = true
+    page.resetCanvasForResize = jest.fn()
+    page.drawBracelet = jest.fn()
+    page.setData = jest.fn((
+      patch: Record<string, unknown>,
+      callback?: () => void,
+    ) => {
+      Object.assign(page.data, patch)
+      callback?.()
+    })
 
     page.togglePreview()
 
     expect(page.data.previewExpanded).toBe(false)
     expect(page.previewAutoCollapseTriggered).toBe(true)
+    expect(page.resetCanvasForResize).toHaveBeenCalledTimes(1)
+    expect(page.drawBracelet).toHaveBeenCalledTimes(1)
   })
 
   it('scrolls the compact preview into place before expanding it again', () => {
@@ -234,13 +245,14 @@ describe('DIY editor compact layout', () => {
       /\.diy-controls\.is-sticky\s*{[^}]*position:\s*sticky;[^}]*top:\s*0;/,
     )
     expect(styles).toMatch(
-      /\.preview-layout\s*{[^}]*height:\s*792rpx;[^}]*transition:\s*height 240ms ease-out;/,
+      /\.preview-layout\s*{[^}]*height:\s*792rpx;/,
+    )
+    expect(styles).not.toContain('transform: scale(.297)')
+    expect(styles).toMatch(
+      /\.canvas-panel\.is-collapsed \.bracelet-canvas-viewport\s*{[^}]*width:\s*226rpx;[^}]*height:\s*196rpx;/,
     )
     expect(styles).toMatch(
-      /\.bracelet-canvas\s*{[^}]*transition:\s*transform 240ms ease-out;/,
-    )
-    expect(styles).toMatch(
-      /\.canvas-panel\.is-collapsed \.bracelet-canvas\s*{[^}]*height:\s*660rpx;[^}]*transform:\s*scale\(\.297\);/,
+      /\.canvas-panel\.is-collapsed \.bracelet-canvas\s*{[^}]*width:\s*226rpx;[^}]*height:\s*196rpx;/,
     )
     expect(styles).toMatch(
       /\.canvas-panel\.is-collapsed \.editor-summary\s*{[^}]*left:\s*226rpx;[^}]*height:\s*196rpx;/,

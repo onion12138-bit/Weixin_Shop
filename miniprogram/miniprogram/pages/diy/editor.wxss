@@ -113,21 +113,18 @@ page {
   height: 792rpx;
   min-width: 0;
   overflow: hidden;
-  transition: height 240ms ease-out;
 }
 
 .bracelet-canvas-viewport {
+  width: 100%;
   height: 660rpx;
   overflow: hidden;
-  transition: height 240ms ease-out;
 }
 
 .bracelet-canvas {
   display: block;
   width: 100%;
   height: 660rpx;
-  transform-origin: left top;
-  transition: transform 240ms ease-out;
 }
 
 .canvas-panel.is-collapsed .preview-layout {
@@ -135,12 +132,13 @@ page {
 }
 
 .canvas-panel.is-collapsed .bracelet-canvas-viewport {
+  width: 226rpx;
   height: 196rpx;
 }
 
 .canvas-panel.is-collapsed .bracelet-canvas {
-  height: 660rpx;
-  transform: scale(.297);
+  width: 226rpx;
+  height: 196rpx;
 }
 
 .editor-summary {
@@ -158,11 +156,6 @@ page {
   font-size: 24rpx;
   text-align: center;
   box-sizing: border-box;
-  transition:
-    top 240ms ease-out,
-    left 240ms ease-out,
-    height 240ms ease-out,
-    padding 240ms ease-out;
 }
 
 .editor-summary text:first-child {
