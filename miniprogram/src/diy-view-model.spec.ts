@@ -91,11 +91,12 @@ describe('Saved DIY scheme count', () => {
 })
 
 describe('DIY preview controls', () => {
-  it('keeps the preview collapse control in the canvas toolbar', () => {
+  it('renders the preview control above the native canvas', () => {
     const template = readFileSync('miniprogram/pages/diy/editor.wxml', 'utf8')
     const styles = readFileSync('miniprogram/pages/diy/editor.wxss', 'utf8')
 
-    expect(template).toContain('class="preview-toggle"')
+    expect(template).toContain('<cover-view class="preview-toolbar">')
+    expect(template).toContain('<cover-view class="preview-toggle"')
     expect(template).toContain('bindtap="togglePreview"')
     expect(template).toContain("previewExpanded ? '收起预览' : '展开预览'")
     expect(template).not.toContain('class="history-actions"')
@@ -105,112 +106,84 @@ describe('DIY preview controls', () => {
       /\.preview-toolbar\s*{[^}]*position:\s*absolute;[^}]*right:\s*16rpx;/,
     )
     expect(styles).toMatch(
-      /\.preview-toggle\s*{[^}]*margin:\s*0 0 0 auto;/,
+      /\.preview-toolbar\s*{[^}]*z-index:\s*10;/,
     )
   })
 
-  it('settles the preview without replacing the live canvas', () => {
+  it('collapses the upper preview immediately when its own control is tapped', () => {
+    const page = instantiate(loadEditorDefinition())
+    page.data.previewExpanded = true
+
+    page.togglePreview()
+
+    expect(page.data.previewExpanded).toBe(false)
+    expect(page.previewAutoCollapseTriggered).toBe(true)
+  })
+
+  it('scrolls the compact preview into place before expanding it again', () => {
     jest.useFakeTimers()
     try {
       const page = instantiate(loadEditorDefinition())
-      page.data.previewExpanded = true
-      page.drawBracelet = jest.fn()
-      page.setData = jest.fn((patch: Record<string, unknown>, callback?: () => void) => {
-        Object.assign(page.data, patch)
-        callback?.()
-      })
+      const pageScrollTo = jest.fn()
+      ;(globalThis as any).wx = { pageScrollTo }
+      page.data.previewExpanded = false
+      page.currentPageScrollTop = 480
+      page.previewAutoCollapseTriggered = true
 
       page.togglePreview()
 
-      expect(page.data.previewExpanded).toBe(true)
-      expect(page.data.previewCanvasHeightRpx).toBe(196)
-      expect(page.data.previewSummaryHeightRpx).toBe(0)
+      expect(pageScrollTo).toHaveBeenCalledWith({
+        scrollTop: 0,
+        duration: 240,
+      })
+      expect(page.data.previewExpanded).toBe(false)
 
       jest.advanceTimersByTime(240)
 
-      expect(page.data.previewExpanded).toBe(false)
-      expect(page.drawBracelet).not.toHaveBeenCalled()
+      expect(page.data.previewExpanded).toBe(true)
+      expect(page.previewAutoCollapseTriggered).toBe(false)
     } finally {
       jest.useRealTimers()
     }
   })
 
-  it('keeps a 20px dead zone, then shrinks smoothly and settles at 120px', () => {
-    jest.useFakeTimers()
-    try {
-      const page = instantiate(loadEditorDefinition())
-      page.data.previewExpanded = true
-      page.previewExpandedScrollTop = 0
-      page.lastPageScrollTop = 0
-      page.lastPageScrollTimestamp = Date.now()
-      page.previewAutoCollapseTriggered = false
-      page.drawBracelet = jest.fn()
-      page.setData = jest.fn((patch: Record<string, unknown>, callback?: () => void) => {
-        Object.assign(page.data, patch)
-        callback?.()
-      })
-
-      page.onPageScroll({ scrollTop: 20 })
-      expect(page.data.previewCollapseProgress).toBe(0)
-      expect(page.data.previewExpanded).toBe(true)
-
-      jest.advanceTimersByTime(100)
-      page.onPageScroll({ scrollTop: 40 })
-      expect(page.data.previewCollapseProgress).toBeCloseTo(0.2)
-      expect(page.data.previewExpanded).toBe(true)
-
-      jest.advanceTimersByTime(100)
-      page.onPageScroll({ scrollTop: 70 })
-      expect(page.data.previewCollapseProgress).toBeCloseTo(0.5)
-      expect(page.data.previewSecondaryOpacity).toBeLessThan(1)
-
-      jest.advanceTimersByTime(100)
-      page.onPageScroll({ scrollTop: 100 })
-      jest.advanceTimersByTime(100)
-      page.onPageScroll({ scrollTop: 120 })
-
-      expect(page.data.previewExpanded).toBe(true)
-      expect(page.data.previewCanvasHeightRpx).toBe(196)
-      expect(page.data.previewSummaryHeightRpx).toBe(0)
-
-      jest.advanceTimersByTime(240)
-
-      expect(page.data.previewExpanded).toBe(false)
-      expect(page.drawBracelet).not.toHaveBeenCalled()
-    } finally {
-      jest.useRealTimers()
+  it('auto-collapses only after the bracelet image has left the viewport', () => {
+    const page = instantiate(loadEditorDefinition())
+    page.data.previewExpanded = true
+    page.previewAutoCollapseTriggered = false
+    let bottom = 1
+    const query: Record<string, jest.Mock> = {
+      exec: jest.fn(),
+      in: jest.fn(),
+      select: jest.fn(),
     }
-  })
-
-  it('finishes the collapse early for a clearly fast upward swipe', () => {
-    jest.useFakeTimers()
-    try {
-      const page = instantiate(loadEditorDefinition())
-      page.data.previewExpanded = true
-      page.previewExpandedScrollTop = 0
-      page.lastPageScrollTop = 0
-      page.lastPageScrollTimestamp = Date.now()
-      page.previewAutoCollapseTriggered = false
-      page.drawBracelet = jest.fn()
-      page.setData = jest.fn((patch: Record<string, unknown>, callback?: () => void) => {
-        Object.assign(page.data, patch)
-        callback?.()
-      })
-
-      jest.advanceTimersByTime(30)
-      page.onPageScroll({ scrollTop: 48 })
-      page.onPageScroll({ scrollTop: 52 })
-
-      expect(page.previewAutoCollapseTriggered).toBe(true)
-      expect(jest.getTimerCount()).toBe(1)
-
-      jest.advanceTimersByTime(240)
-
-      expect(page.data.previewExpanded).toBe(false)
-      expect(page.drawBracelet).not.toHaveBeenCalled()
-    } finally {
-      jest.useRealTimers()
+    const node = {
+      fields: jest.fn((
+        _fields: Record<string, boolean>,
+        callback: (result: unknown) => void,
+      ) => {
+        callback({ bottom })
+        return query
+      }),
     }
+    query.in.mockReturnValue(query)
+    query.select.mockReturnValue(node)
+    ;(globalThis as any).wx = {
+      createSelectorQuery: jest.fn(() => query),
+    }
+
+    page.onPageScroll({ scrollTop: 300 })
+    expect(page.data.previewExpanded).toBe(true)
+
+    bottom = 0
+    page.onPageScroll({ scrollTop: 520 })
+
+    expect(page.data.previewExpanded).toBe(false)
+    expect(page.previewAutoCollapseTriggered).toBe(true)
+    expect(node.fields).toHaveBeenCalledWith(
+      { rect: true },
+      expect.any(Function),
+    )
   })
 
   it('does not auto-collapse again when the preview is already compact', () => {
@@ -221,6 +194,23 @@ describe('DIY preview controls', () => {
     page.onPageScroll({ scrollTop: 180 })
 
     expect(page.startPreviewCollapse).not.toHaveBeenCalled()
+  })
+
+  it('keeps preview and bead-list controls independent', async () => {
+    const template = readFileSync('miniprogram/pages/diy/editor.wxml', 'utf8')
+    const page = instantiate(loadEditorDefinition())
+    page.data.trayExpanded = false
+    page.data.catalogLoading = false
+    page.searchCatalog = jest.fn().mockResolvedValue(undefined)
+
+    await page.toggleTrayExpanded()
+
+    expect(page.data.trayExpanded).toBe(true)
+    expect(page.data.previewExpanded).toBe(true)
+    expect(page.searchCatalog).toHaveBeenCalledTimes(1)
+    expect(template).toContain('<text wx:elif="{{trayExpanded}}">收起全部珠子</text>')
+    expect(template).toContain('<text wx:else>展开全部珠子</text>')
+    expect(template).toContain('wx:else class="bead-grid"')
   })
 })
 
@@ -235,16 +225,16 @@ describe('DIY editor compact layout', () => {
     )
     expect(template).not.toContain('scroll-y')
     expect(template).not.toContain('class="bead-list-scroll"')
-    expect(template).toContain('previewCanvasHeightRpx')
-    expect(template).toContain('previewCanvasScale')
-    expect(template).toContain('previewSummaryHeightRpx')
+    expect(template).not.toContain('previewCanvasHeightRpx')
+    expect(template).not.toContain('previewCanvasScale')
+    expect(template).not.toContain('previewSummaryHeightRpx')
     expect(template.indexOf('class="bead-search"'))
       .toBeLessThan(template.indexOf('class="category-tabs"'))
     expect(styles).toMatch(
       /\.diy-controls\.is-sticky\s*{[^}]*position:\s*sticky;[^}]*top:\s*0;/,
     )
     expect(styles).toMatch(
-      /\.bracelet-canvas-viewport\s*{[^}]*transition:\s*height 240ms ease-out;/,
+      /\.preview-layout\s*{[^}]*height:\s*792rpx;[^}]*transition:\s*height 240ms ease-out;/,
     )
     expect(styles).toMatch(
       /\.bracelet-canvas\s*{[^}]*transition:\s*transform 240ms ease-out;/,
@@ -253,7 +243,7 @@ describe('DIY editor compact layout', () => {
       /\.canvas-panel\.is-collapsed \.bracelet-canvas\s*{[^}]*height:\s*660rpx;[^}]*transform:\s*scale\(\.297\);/,
     )
     expect(styles).toMatch(
-      /\.canvas-panel\.is-collapsed \.editor-summary\s*{[^}]*position:\s*absolute;[^}]*height:\s*196rpx;/,
+      /\.canvas-panel\.is-collapsed \.editor-summary\s*{[^}]*left:\s*226rpx;[^}]*height:\s*196rpx;/,
     )
     expect(config).not.toContain('"disableScroll"')
   })

@@ -6,6 +6,7 @@ jest.mock('../miniprogram/services/request', () => ({
 }))
 
 import {
+  listAllPublicBeads,
   listBeads,
   listRecommendedPackages,
 } from '../miniprogram/services/catalog'
@@ -76,6 +77,50 @@ describe('catalog view model', () => {
         version: 3,
       },
     })
+  })
+
+  it('loads every filtered bead page for the expanded DIY tray', async () => {
+    requestMock.mockClear()
+    const bead = (id: number) => ({
+      id,
+      skuCode: `BEAD-${id}`,
+      name: `测试珠子 ${id}`,
+      material: '天然水晶',
+      color: '透明',
+      diameterMm: 8,
+      salePrice: 12.8,
+      coverUrl: null,
+      diyVisual: null,
+      tags: [],
+    })
+    requestMock
+      .mockResolvedValueOnce({
+        items: [bead(1)],
+        total: 101,
+        page: 1,
+        size: 100,
+      })
+      .mockResolvedValueOnce({
+        items: [bead(2)],
+        total: 101,
+        page: 2,
+        size: 100,
+      })
+
+    const items = await listAllPublicBeads({
+      categoryId: 7,
+      keyword: '月光',
+    })
+
+    expect(items.map((item) => item.id)).toEqual([1, 2])
+    expect(requestMock).toHaveBeenNthCalledWith(
+      1,
+      '/public/catalog/beads?categoryId=7&keyword=%E6%9C%88%E5%85%89&page=1&size=100',
+    )
+    expect(requestMock).toHaveBeenNthCalledWith(
+      2,
+      '/public/catalog/beads?categoryId=7&keyword=%E6%9C%88%E5%85%89&page=2&size=100',
+    )
   })
 
   it('loads and normalizes the backend-configured home recommendations', async () => {

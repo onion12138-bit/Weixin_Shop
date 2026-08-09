@@ -78,52 +78,42 @@ page {
 
 .preview-toolbar {
   position: absolute;
-  z-index: 3;
+  z-index: 10;
   top: 14rpx;
   right: 16rpx;
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  box-sizing: border-box;
 }
 
 .preview-toggle {
   display: flex;
-  flex: 0 0 auto;
-  min-width: 142rpx;
+  width: 154rpx;
   height: 58rpx;
-  margin: 0 0 0 auto;
   padding: 0 16rpx;
   align-items: center;
   justify-content: center;
-  gap: 10rpx;
   border: 1rpx solid #dfbdc9;
   border-radius: 29rpx;
   color: #754657;
   font-size: 21rpx;
   line-height: 58rpx;
   background: rgba(255, 255, 255, .92);
+  box-sizing: border-box;
 }
 
-.preview-toggle-icon {
-  width: 12rpx;
-  height: 12rpx;
-  border-top: 3rpx solid currentColor;
-  border-left: 3rpx solid currentColor;
+.preview-toggle-label {
+  line-height: 56rpx;
 }
 
-.preview-toggle-icon.is-up {
-  margin-top: 6rpx;
-  transform: rotate(45deg);
-}
-
-.preview-toggle-icon.is-down {
-  margin-bottom: 6rpx;
-  transform: rotate(225deg);
+.preview-toggle-arrow {
+  margin-left: 8rpx;
+  line-height: 52rpx;
 }
 
 .preview-layout {
+  position: relative;
+  height: 792rpx;
   min-width: 0;
+  overflow: hidden;
+  transition: height 240ms ease-out;
 }
 
 .bracelet-canvas-viewport {
@@ -140,17 +130,8 @@ page {
   transition: transform 240ms ease-out;
 }
 
-.canvas-panel.is-scroll-tracking .bracelet-canvas-viewport,
-.canvas-panel.is-scroll-tracking .bracelet-canvas,
-.canvas-panel.is-scroll-tracking .editor-summary,
-.canvas-panel.is-scroll-tracking .editor-summary text {
-  transition-duration: 64ms;
-  transition-timing-function: linear;
-}
-
 .canvas-panel.is-collapsed .preview-layout {
-  position: relative;
-  min-height: 196rpx;
+  height: 196rpx;
 }
 
 .canvas-panel.is-collapsed .bracelet-canvas-viewport {
@@ -163,6 +144,10 @@ page {
 }
 
 .editor-summary {
+  position: absolute;
+  top: 660rpx;
+  right: 0;
+  left: 0;
   display: grid;
   height: 132rpx;
   grid-template-columns: 1fr;
@@ -173,11 +158,11 @@ page {
   font-size: 24rpx;
   text-align: center;
   box-sizing: border-box;
-  transition: height 240ms ease-out;
-}
-
-.editor-summary text {
-  transition: opacity 240ms ease-out;
+  transition:
+    top 240ms ease-out,
+    left 240ms ease-out,
+    height 240ms ease-out,
+    padding 240ms ease-out;
 }
 
 .editor-summary text:first-child {
@@ -187,10 +172,8 @@ page {
 }
 
 .canvas-panel.is-collapsed .editor-summary {
-  position: absolute;
   top: 0;
   right: 0;
-  bottom: 0;
   left: 226rpx;
   height: 196rpx;
   align-items: flex-start;
@@ -303,7 +286,12 @@ page {
 }
 
 .bead-list-content {
+  min-height: 180rpx;
   box-sizing: border-box;
+}
+
+.bead-list-content.is-expanded {
+  padding-bottom: 16rpx;
 }
 
 .tray-heading {
@@ -331,7 +319,7 @@ page {
 
 .tray-heading button {
   width: auto;
-  min-width: 146rpx;
+  min-width: 194rpx;
   height: 58rpx;
   margin: 0;
   padding: 0 22rpx;
@@ -340,6 +328,7 @@ page {
   color: #87465e;
   font-size: 21rpx;
   line-height: 58rpx;
+  white-space: nowrap;
   background: #fff8fa;
 }
 

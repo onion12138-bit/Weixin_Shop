@@ -157,14 +157,7 @@ const FIT_TYPES: FitType[] = ['SNUG', 'STANDARD', 'LOOSE']
 const FIT_TYPE_LABELS = ['贴手', '标准', '宽松']
 const MAX_CONCURRENT_CANVAS_IMAGE_LOADS = 4
 const CANVAS_REDRAW_FRAME_MS = 16
-const PREVIEW_SCROLL_DEAD_ZONE_PX = 20
-const PREVIEW_COLLAPSE_DISTANCE_PX = 120
 const PREVIEW_TRANSITION_MS = 240
-const PREVIEW_EXPANDED_CANVAS_HEIGHT_RPX = 660
-const PREVIEW_COLLAPSED_CANVAS_HEIGHT_RPX = 196
-const PREVIEW_EXPANDED_SUMMARY_HEIGHT_RPX = 132
-const PREVIEW_FAST_SCROLL_DELTA_PX = 32
-const PREVIEW_FAST_SCROLL_VELOCITY_PX_PER_MS = 0.7
 
 Page({
   data: {
@@ -192,16 +185,10 @@ Page({
     selectedIndex: -1,
     selectedNumber: 0,
     previewExpanded: true,
-    previewCollapseProgress: 0,
-    previewCanvasHeightRpx: PREVIEW_EXPANDED_CANVAS_HEIGHT_RPX,
-    previewCanvasScale: 1,
-    previewSummaryHeightRpx: PREVIEW_EXPANDED_SUMMARY_HEIGHT_RPX,
-    previewPrimaryOpacity: 1,
-    previewSecondaryOpacity: 1,
-    previewScrollTracking: false,
     catalog: [] as CatalogItem[],
     visibleCatalog: [] as CatalogItem[],
     trayExpanded: false,
+    catalogLoading: false,
     favoritesOnly: false,
     categories: [] as Category[],
     categoryId: 0,
@@ -240,11 +227,9 @@ Page({
   dragToIndex: -1,
   pendingAiRecommendationRaw: null as unknown,
   currentPageScrollTop: 0,
-  previewExpandedScrollTop: 0,
-  lastPageScrollTop: 0,
-  lastPageScrollTimestamp: 0,
   previewAutoCollapseTriggered: false,
   previewExpansionScrollResetting: false,
+  previewVisibilityQueryPending: false,
   previewTransitionTimer: null as ReturnType<typeof setTimeout> | null,
 
   onLoad(options: Record<string, string>) {
@@ -262,11 +247,9 @@ Page({
     this.activeCanvasImageLoads = 0
     this.initialVisualLoading = true
     this.currentPageScrollTop = 0
-    this.previewExpandedScrollTop = 0
-    this.lastPageScrollTop = 0
-    this.lastPageScrollTimestamp = Date.now()
     this.previewAutoCollapseTriggered = false
     this.previewExpansionScrollResetting = false
+    this.previewVisibilityQueryPending = false
     if (options.source === 'ai') {
       try {
         this.pendingAiRecommendationRaw = wx.getStorageSync(
@@ -314,11 +297,9 @@ Page({
     this.activeCanvasImageLoads = 0
     this.initialVisualLoading = false
     this.currentPageScrollTop = 0
-    this.previewExpandedScrollTop = 0
-    this.lastPageScrollTop = 0
-    this.lastPageScrollTimestamp = 0
     this.previewAutoCollapseTriggered = false
     this.previewExpansionScrollResetting = false
+    this.previewVisibilityQueryPending = false
   },
 
   async bootstrap(options: Record<string, string>) {
@@ -536,15 +517,21 @@ Page({
   },
 
   async searchCatalog() {
+    if (this.data.catalogLoading) return
+    this.setData({ catalogLoading: true })
     try {
       if (this.data.favoritesOnly) {
         const favoriteIds = new Set(readFavoriteBeadIds())
-        const keyword = this.data.keyword.trim().toLowerCase()
-        const items = (await listAllPublicBeads()).filter((item) => (
-          favoriteIds.has(item.id)
-          && (!keyword || [item.name, item.material, item.color]
-            .some((value) => value.toLowerCase().includes(keyword)))
-        ))
+        const items = (await listAllPublicBeads({
+          categoryId: this.data.categoryId || undefined,
+          keyword: this.data.keyword || undefined,
+        })).filter((item) => favoriteIds.has(item.id))
+        this.mergeCatalog(items.map(toCatalogItem), true)
+      } else if (this.data.trayExpanded) {
+        const items = await listAllPublicBeads({
+          categoryId: this.data.categoryId || undefined,
+          keyword: this.data.keyword || undefined,
+        })
         this.mergeCatalog(items.map(toCatalogItem), true)
       } else {
         const page = await listBeads({
@@ -556,9 +543,12 @@ Page({
         this.mergeCatalog(page.items.map(toCatalogItem), true)
       }
     } catch (error) {
-      this.setData({
-        errorMessage: error instanceof Error ? error.message : '珠子加载失败',
+      wx.showToast({
+        title: error instanceof Error ? error.message : '珠子加载失败',
+        icon: 'none',
       })
+    } finally {
+      this.setData({ catalogLoading: false })
     }
   },
 
@@ -782,8 +772,11 @@ Page({
     }
   },
 
-  toggleTrayExpanded() {
-    this.setData({ trayExpanded: !this.data.trayExpanded })
+  async toggleTrayExpanded() {
+    if (this.data.catalogLoading) return
+    const trayExpanded = !this.data.trayExpanded
+    this.setData({ trayExpanded })
+    if (trayExpanded) await this.searchCatalog()
   },
 
   togglePreview() {
@@ -795,47 +788,32 @@ Page({
   },
 
   expandPreview() {
-    if (this.data.previewExpanded) return
+    if (
+      this.data.previewExpanded
+      || this.previewExpansionScrollResetting
+    ) {
+      return
+    }
     this.cancelPreviewTransition()
     this.previewAutoCollapseTriggered = false
     const canResetPageScroll = this.currentPageScrollTop > 0
       && typeof wx.pageScrollTo === 'function'
-    this.previewExpansionScrollResetting = canResetPageScroll
-    this.previewExpandedScrollTop = this.currentPageScrollTop
-    this.lastPageScrollTop = this.currentPageScrollTop
-    this.lastPageScrollTimestamp = Date.now()
-    if (canResetPageScroll) {
-      wx.pageScrollTo({
-        scrollTop: 0,
-        duration: PREVIEW_TRANSITION_MS,
-      })
+    if (!canResetPageScroll) {
+      this.setData({ previewExpanded: true })
+      return
     }
-    ;(this.setData as unknown as (
-      patch: Record<string, unknown>,
-      callback: () => void,
-    ) => void)(
-      {
-        previewExpanded: true,
-        previewCollapseProgress: 0,
-        previewCanvasHeightRpx: PREVIEW_EXPANDED_CANVAS_HEIGHT_RPX,
-        previewCanvasScale: 1,
-        previewSummaryHeightRpx: PREVIEW_EXPANDED_SUMMARY_HEIGHT_RPX,
-        previewPrimaryOpacity: 1,
-        previewSecondaryOpacity: 1,
-        previewScrollTracking: false,
-      },
-      () => {
-        this.previewTransitionTimer = setTimeout(() => {
-          this.previewTransitionTimer = null
-          if (canResetPageScroll) {
-            this.currentPageScrollTop = 0
-            this.previewExpandedScrollTop = 0
-            this.lastPageScrollTop = 0
-          }
-          this.previewExpansionScrollResetting = false
-        }, PREVIEW_TRANSITION_MS)
-      },
-    )
+
+    this.previewExpansionScrollResetting = true
+    wx.pageScrollTo({
+      scrollTop: 0,
+      duration: PREVIEW_TRANSITION_MS,
+    })
+    this.previewTransitionTimer = setTimeout(() => {
+      this.previewTransitionTimer = null
+      this.currentPageScrollTop = 0
+      this.previewExpansionScrollResetting = false
+      this.setData({ previewExpanded: true })
+    }, PREVIEW_TRANSITION_MS)
   },
 
   startPreviewCollapse() {
@@ -848,80 +826,50 @@ Page({
     this.previewAutoCollapseTriggered = true
     this.previewExpansionScrollResetting = false
     this.cancelPreviewTransition()
-    this.applyPreviewCollapseProgress(1, false)
-    this.previewTransitionTimer = setTimeout(() => {
-      this.previewTransitionTimer = null
-      this.setData({
-        previewExpanded: false,
-        previewScrollTracking: false,
-      })
-    }, PREVIEW_TRANSITION_MS)
-  },
-
-  applyPreviewCollapseProgress(progress: number, scrollTracking: boolean) {
-    const normalized = Math.max(0, Math.min(1, progress))
-    const collapsedScale = PREVIEW_COLLAPSED_CANVAS_HEIGHT_RPX
-      / PREVIEW_EXPANDED_CANVAS_HEIGHT_RPX
-    const canvasHeight = PREVIEW_EXPANDED_CANVAS_HEIGHT_RPX
-      - (PREVIEW_EXPANDED_CANVAS_HEIGHT_RPX
-        - PREVIEW_COLLAPSED_CANVAS_HEIGHT_RPX) * normalized
-    const canvasScale = 1 - (1 - collapsedScale) * normalized
-    const primaryFade = normalized <= 0.7
-      ? 1
-      : 1 - (normalized - 0.7) / 0.3
-    const secondaryFade = 1 - Math.min(1, normalized / 0.78)
-    this.setData({
-      previewCollapseProgress: normalized,
-      previewCanvasHeightRpx: Math.round(canvasHeight),
-      previewCanvasScale: Number(canvasScale.toFixed(4)),
-      previewSummaryHeightRpx: Math.round(
-        PREVIEW_EXPANDED_SUMMARY_HEIGHT_RPX * (1 - normalized),
-      ),
-      previewPrimaryOpacity: Number(Math.max(0, primaryFade).toFixed(3)),
-      previewSecondaryOpacity: Number(
-        Math.max(0, secondaryFade).toFixed(3),
-      ),
-      previewScrollTracking: scrollTracking,
-    })
+    this.setData({ previewExpanded: false })
   },
 
   onPageScroll(event: { scrollTop?: number }) {
     const scrollTop = Math.max(0, Number(event.scrollTop || 0))
-    const timestamp = Date.now()
-    const delta = scrollTop - this.lastPageScrollTop
-    const elapsed = Math.max(1, timestamp - this.lastPageScrollTimestamp)
     this.currentPageScrollTop = scrollTop
-    this.lastPageScrollTop = scrollTop
-    this.lastPageScrollTimestamp = timestamp
     if (
       !this.data.previewExpanded
       || this.previewAutoCollapseTriggered
       || this.previewExpansionScrollResetting
+      || this.previewVisibilityQueryPending
     ) {
       return
     }
+    this.checkExpandedPreviewVisibility()
+  },
 
-    const distance = Math.max(0, scrollTop - this.previewExpandedScrollTop)
-    if (distance <= PREVIEW_SCROLL_DEAD_ZONE_PX) {
-      if (this.data.previewCollapseProgress > 0) {
-        this.applyPreviewCollapseProgress(0, true)
-      }
-      return
+  checkExpandedPreviewVisibility() {
+    this.previewVisibilityQueryPending = true
+    const query = wx.createSelectorQuery() as WechatMiniprogram.SelectorQuery & {
+      in?(component: object): WechatMiniprogram.SelectorQuery
     }
-
-    const progress = (distance - PREVIEW_SCROLL_DEAD_ZONE_PX)
-      / (PREVIEW_COLLAPSE_DISTANCE_PX - PREVIEW_SCROLL_DEAD_ZONE_PX)
-    const fastUpwardScroll = delta > 0
-      && distance > PREVIEW_SCROLL_DEAD_ZONE_PX
-      && (
-        delta >= PREVIEW_FAST_SCROLL_DELTA_PX
-        || delta / elapsed >= PREVIEW_FAST_SCROLL_VELOCITY_PX_PER_MS
-      )
-    if (distance >= PREVIEW_COLLAPSE_DISTANCE_PX || fastUpwardScroll) {
-      this.startPreviewCollapse()
-      return
-    }
-    this.applyPreviewCollapseProgress(progress, true)
+    const scopedQuery = query.in ? query.in(this) : query
+    scopedQuery
+      .select('.bracelet-canvas-viewport')
+      .fields({ rect: true }, (result) => {
+        this.previewVisibilityQueryPending = false
+        if (
+          !this.data.previewExpanded
+          || this.previewAutoCollapseTriggered
+          || this.previewExpansionScrollResetting
+        ) {
+          return
+        }
+        const rect = result as { bottom?: number } | null
+        if (
+          rect
+          && Number.isFinite(rect.bottom)
+          && Number(rect.bottom) <= 0
+        ) {
+          this.startPreviewCollapse()
+        }
+      })
+      .exec()
   },
 
   async confirmQuote() {

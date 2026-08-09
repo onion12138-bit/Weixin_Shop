@@ -54,14 +54,16 @@ export async function listBeads(
   }
 }
 
-/** Loads every current public bead so AI handoff IDs can be validated. */
-export async function listAllPublicBeads(): Promise<PublicBead[]> {
+/** Loads every matching public bead so full trays and AI handoffs are complete. */
+export async function listAllPublicBeads(
+  query: Omit<CatalogQuery, 'page' | 'size'> = {},
+): Promise<PublicBead[]> {
   const pageSize = 100
-  const first = await listBeads({ page: 1, size: pageSize })
+  const first = await listBeads({ ...query, page: 1, size: pageSize })
   const pageCount = Math.max(1, Math.ceil(first.total / pageSize))
   const remaining = await Promise.all(
     Array.from({ length: pageCount - 1 }, (_, index) => (
-      listBeads({ page: index + 2, size: pageSize })
+      listBeads({ ...query, page: index + 2, size: pageSize })
     )),
   )
   const byId = new Map<number, PublicBead>()

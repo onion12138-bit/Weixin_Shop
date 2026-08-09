@@ -17,31 +17,30 @@
         </picker>
       </view>
 
-      <view class="canvas-panel {{previewExpanded ? 'is-expanded' : 'is-collapsed'}} {{previewScrollTracking ? 'is-scroll-tracking' : ''}}">
-        <view class="preview-toolbar">
-          <button class="preview-toggle" bindtap="togglePreview" aria-label="{{previewExpanded ? '收起预览' : '展开预览'}}">
-            <text>{{previewExpanded ? '收起预览' : '展开预览'}}</text>
-            <view class="preview-toggle-icon {{previewExpanded ? 'is-up' : 'is-down'}}" />
-          </button>
-        </view>
+      <view class="canvas-panel {{previewExpanded ? 'is-expanded' : 'is-collapsed'}}">
         <view class="preview-layout">
-          <view class="bracelet-canvas-viewport" style="{{previewExpanded ? 'height: ' + previewCanvasHeightRpx + 'rpx;' : ''}}">
+          <view class="bracelet-canvas-viewport">
             <canvas
               id="bracelet-canvas"
               type="2d"
               class="bracelet-canvas"
-              style="{{previewExpanded ? 'transform: scale(' + previewCanvasScale + ');' : ''}}"
               bindtouchstart="onCanvasTouchStart"
               bindtouchmove="onCanvasTouchMove"
               bindtouchend="onCanvasTouchEnd"
             />
           </view>
-          <view class="editor-summary" style="{{previewExpanded ? 'height: ' + previewSummaryHeightRpx + 'rpx;' : ''}}">
-            <text class="summary-primary" style="{{previewExpanded ? 'opacity: ' + previewPrimaryOpacity + ';' : ''}}">{{countText}}</text>
-            <text class="summary-secondary" style="{{previewExpanded ? 'opacity: ' + previewSecondaryOpacity + ';' : ''}}">{{lengthText}}</text>
-            <text class="summary-secondary" style="{{previewExpanded ? 'opacity: ' + previewSecondaryOpacity + ';' : ''}}">{{sizeText}}</text>
+          <view class="editor-summary">
+            <text class="summary-primary">{{countText}}</text>
+            <text class="summary-secondary">{{lengthText}}</text>
+            <text class="summary-secondary">{{sizeText}}</text>
           </view>
         </view>
+        <cover-view class="preview-toolbar">
+          <cover-view class="preview-toggle" bindtap="togglePreview" aria-label="{{previewExpanded ? '收起预览' : '展开预览'}}">
+            <cover-view class="preview-toggle-label">{{previewExpanded ? '收起预览' : '展开预览'}}</cover-view>
+            <cover-view class="preview-toggle-arrow">{{previewExpanded ? '⌃' : '⌄'}}</cover-view>
+          </cover-view>
+        </cover-view>
       </view>
 
       <view class="selected-actions">
@@ -77,14 +76,16 @@
           <text>挑选珠子</text>
           <text>点击珠子即可加入手串</text>
         </view>
-        <button bindtap="toggleTrayExpanded">
-          {{trayExpanded ? '收起珠子' : '展开全部'}}
+        <button class="tray-toggle" loading="{{catalogLoading}}" disabled="{{catalogLoading}}" bindtap="toggleTrayExpanded">
+          <text wx:if="{{catalogLoading}}">正在加载…</text>
+          <text wx:elif="{{trayExpanded}}">收起全部珠子</text>
+          <text wx:else>展开全部珠子</text>
         </button>
       </view>
     </view>
 
-    <view class="bead-list-content">
-        <scroll-view wx:if="{{!trayExpanded}}" scroll-x class="bead-tray">
+    <view class="bead-list-content {{trayExpanded ? 'is-expanded' : ''}}">
+      <scroll-view wx:if="{{!trayExpanded}}" scroll-x class="bead-tray">
           <view
             wx:for="{{visibleCatalog}}"
             wx:key="id"
@@ -97,9 +98,9 @@
             </button>
             <button class="tray-heart {{item.isFavorite ? 'active' : ''}}" data-id="{{item.id}}" bindtap="toggleFavorite">{{item.isFavorite ? '♥' : '♡'}}</button>
           </view>
-        </scroll-view>
+      </scroll-view>
 
-        <view wx:else class="bead-grid">
+      <view wx:else class="bead-grid">
           <view
             wx:for="{{visibleCatalog}}"
             wx:key="id"
@@ -114,11 +115,11 @@
             <button class="tray-heart {{item.isFavorite ? 'active' : ''}}" data-id="{{item.id}}" bindtap="toggleFavorite">{{item.isFavorite ? '♥' : '♡'}}</button>
           </view>
           <view wx:if="{{!visibleCatalog.length}}" class="empty-catalog">没有符合条件的珠子</view>
-        </view>
+      </view>
 
-        <view wx:if="{{quoteIssues.length}}" class="quote-issues">
-          <text wx:for="{{quoteIssues}}" wx:key="code">{{item.message}}</text>
-        </view>
+      <view wx:if="{{quoteIssues.length}}" class="quote-issues">
+        <text wx:for="{{quoteIssues}}" wx:key="code">{{item.message}}</text>
+      </view>
     </view>
 
     <view class="editor-actions">
