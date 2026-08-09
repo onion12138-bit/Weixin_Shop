@@ -95,7 +95,9 @@ describe('DIY preview controls', () => {
     const template = readFileSync('miniprogram/pages/diy/editor.wxml', 'utf8')
     const styles = readFileSync('miniprogram/pages/diy/editor.wxss', 'utf8')
 
-    expect(template).toContain('<cover-view class="preview-toolbar">')
+    expect(template).toContain(
+      '<cover-view wx:if="{{!loading}}" class="preview-toolbar">',
+    )
     expect(template).toContain('<cover-view class="preview-toggle"')
     expect(template).toContain('bindtap="togglePreview"')
     expect(template).toContain("previewExpanded ? '收起预览' : '展开预览'")
@@ -113,7 +115,6 @@ describe('DIY preview controls', () => {
   it('collapses the upper preview immediately when its own control is tapped', () => {
     const page = instantiate(loadEditorDefinition())
     page.data.previewExpanded = true
-    page.resetCanvasForResize = jest.fn()
     page.drawBracelet = jest.fn()
     page.setData = jest.fn((
       patch: Record<string, unknown>,
@@ -127,8 +128,30 @@ describe('DIY preview controls', () => {
 
     expect(page.data.previewExpanded).toBe(false)
     expect(page.previewAutoCollapseTriggered).toBe(true)
-    expect(page.resetCanvasForResize).toHaveBeenCalledTimes(1)
-    expect(page.drawBracelet).toHaveBeenCalledTimes(1)
+    expect(page.drawBracelet).not.toHaveBeenCalled()
+  })
+
+  it('captures the expanded canvas once and uses that fixed image when compact', async () => {
+    const page = instantiate(loadEditorDefinition())
+    const canvas = { width: 640, height: 660 }
+    const canvasToTempFilePath = jest.fn((options: Record<string, any>) => {
+      options.success({ tempFilePath: 'wxfile://fixed-bracelet.png' })
+    })
+    ;(globalThis as any).wx = { canvasToTempFilePath }
+    page.editorActive = true
+    page.editorGeneration = 3
+    page.canvasNode = canvas
+    page.canvasRenderRevision = 7
+    page.compactPreviewCapturedRevision = -1
+
+    await page.captureCompactPreview()
+
+    expect(canvasToTempFilePath).toHaveBeenCalledWith(expect.objectContaining({
+      canvas,
+      fileType: 'png',
+    }))
+    expect(page.data.compactPreviewUrl).toBe('wxfile://fixed-bracelet.png')
+    expect(page.compactPreviewCapturedRevision).toBe(7)
   })
 
   it('scrolls the compact preview into place before expanding it again', () => {
@@ -251,8 +274,16 @@ describe('DIY editor compact layout', () => {
     expect(styles).toMatch(
       /\.canvas-panel\.is-collapsed \.bracelet-canvas-viewport\s*{[^}]*width:\s*226rpx;[^}]*height:\s*196rpx;/,
     )
+    expect(template).toContain('hidden="{{!previewExpanded}}"')
+    expect(template).toContain(
+      'wx:if="{{!previewExpanded && compactPreviewUrl}}"',
+    )
+    expect(template).toContain('src="{{compactPreviewUrl}}"')
     expect(styles).toMatch(
-      /\.canvas-panel\.is-collapsed \.bracelet-canvas\s*{[^}]*width:\s*226rpx;[^}]*height:\s*196rpx;/,
+      /\.compact-preview-image\s*{[^}]*width:\s*226rpx;[^}]*height:\s*196rpx;/,
+    )
+    expect(styles).not.toMatch(
+      /\.canvas-panel\.is-collapsed \.bracelet-canvas\s*{/,
     )
     expect(styles).toMatch(
       /\.canvas-panel\.is-collapsed \.editor-summary\s*{[^}]*left:\s*226rpx;[^}]*height:\s*196rpx;/,

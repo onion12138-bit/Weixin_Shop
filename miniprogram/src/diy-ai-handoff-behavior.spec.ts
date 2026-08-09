@@ -240,14 +240,23 @@ describe('DIY editor AI handoff behavior', () => {
     expect(template).toContain('disabled="{{selectedIndex < 0}}"')
   })
 
-  it('uses an opaque loading overlay while initial bracelet visuals load', () => {
+  it('loads the bracelet and catalog independently without showing canvas placeholders', () => {
     const template = readFileSync('miniprogram/pages/diy/editor.wxml', 'utf8')
+    const styles = readFileSync('miniprogram/pages/diy/editor.wxss', 'utf8')
 
     expect(template).toContain(
-      '<cover-view wx:if="{{loading}}" class="loading-overlay">',
+      '<view wx:if="{{loading}}" class="section-loading board-loading">',
     )
-    expect(template).not.toContain(
-      '<view wx:if="{{loading}}" class="loading-overlay">',
+    expect(template).toContain(
+      '<view wx:if="{{catalogInitialLoading}}" class="section-loading catalog-loading">',
+    )
+    expect(template).toContain(
+      '<block wx:if="{{!catalogInitialLoading}}">',
+    )
+    expect(template).toContain('<text>加载中...</text>')
+    expect(template).not.toContain('class="loading-overlay"')
+    expect(styles).toMatch(
+      /\.canvas-panel\.is-loading \.bracelet-canvas,[\s\S]*?visibility:\s*hidden;/,
     )
   })
 })

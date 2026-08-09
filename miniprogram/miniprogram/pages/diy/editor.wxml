@@ -5,7 +5,7 @@
 
   <block wx:else>
     <view class="diy-controls {{previewExpanded ? '' : 'is-sticky'}}">
-      <view class="configuration-strip">
+      <view wx:if="{{!loading}}" class="configuration-strip">
         <picker range="{{wristOptionLabels}}" value="{{wristOptionIndex}}" bindchange="changeWrist">
           <button>腕围 {{wristCircumferenceText}}</button>
         </picker>
@@ -17,16 +17,23 @@
         </picker>
       </view>
 
-      <view class="canvas-panel {{previewExpanded ? 'is-expanded' : 'is-collapsed'}}">
+      <view class="canvas-panel {{previewExpanded ? 'is-expanded' : 'is-collapsed'}} {{loading ? 'is-loading' : ''}}">
         <view class="preview-layout">
           <view class="bracelet-canvas-viewport">
             <canvas
               id="bracelet-canvas"
               type="2d"
               class="bracelet-canvas"
+              hidden="{{!previewExpanded}}"
               bindtouchstart="onCanvasTouchStart"
               bindtouchmove="onCanvasTouchMove"
               bindtouchend="onCanvasTouchEnd"
+            />
+            <image
+              wx:if="{{!previewExpanded && compactPreviewUrl}}"
+              class="compact-preview-image"
+              src="{{compactPreviewUrl}}"
+              mode="aspectFit"
             />
           </view>
           <view class="editor-summary">
@@ -35,15 +42,19 @@
             <text class="summary-secondary">{{sizeText}}</text>
           </view>
         </view>
-        <cover-view class="preview-toolbar">
+        <cover-view wx:if="{{!loading}}" class="preview-toolbar">
           <cover-view class="preview-toggle" bindtap="togglePreview" aria-label="{{previewExpanded ? '收起预览' : '展开预览'}}">
             <cover-view class="preview-toggle-label">{{previewExpanded ? '收起预览' : '展开预览'}}</cover-view>
             <cover-view class="preview-toggle-arrow">{{previewExpanded ? '⌃' : '⌄'}}</cover-view>
           </cover-view>
         </cover-view>
+        <view wx:if="{{loading}}" class="section-loading board-loading">
+          <view class="loading-ring" />
+          <text>加载中...</text>
+        </view>
       </view>
 
-      <view class="selected-actions">
+      <view wx:if="{{!loading}}" class="selected-actions">
         <text wx:if="{{selectedIndex >= 0}}">第 {{selectedNumber}} 颗</text>
         <text wx:else>共 {{totalBeadCount}} 颗 · 未选珠子</text>
         <button disabled="{{selectedIndex < 0}}" bindtap="decreaseSelectedSku">−</button>
@@ -52,39 +63,54 @@
         <button disabled="{{selectedIndex < 0}}" bindtap="removeSelected">删除</button>
       </view>
 
-      <view class="bead-search">
-        <input value="{{keyword}}" bindinput="onKeywordInput" placeholder="搜索珠子" />
-        <button class="favorite-filter {{favoritesOnly ? 'active' : ''}}" bindtap="toggleFavoritesOnly">{{favoritesOnly ? '♥ 喜欢' : '♡ 喜欢'}}</button>
-        <button bindtap="searchCatalog">搜索</button>
-      </view>
-
-      <scroll-view scroll-x class="category-tabs">
-        <button class="{{categoryId === 0 ? 'active' : ''}}" data-id="0" bindtap="chooseCategory">全部</button>
-        <button
-          wx:for="{{categories}}"
-          wx:key="id"
-          class="{{categoryId === item.id ? 'active' : ''}}"
-          data-id="{{item.id}}"
-          bindtap="chooseCategory"
-        >
-          {{item.name}}
-        </button>
-      </scroll-view>
-
-      <view class="tray-heading">
-        <view>
-          <text>挑选珠子</text>
-          <text>点击珠子即可加入手串</text>
+      <block wx:if="{{!catalogInitialLoading}}">
+        <view class="bead-search">
+          <input value="{{keyword}}" bindinput="onKeywordInput" placeholder="搜索珠子" />
+          <button class="favorite-filter {{favoritesOnly ? 'active' : ''}}" bindtap="toggleFavoritesOnly">{{favoritesOnly ? '♥ 喜欢' : '♡ 喜欢'}}</button>
+          <button bindtap="searchCatalog">搜索</button>
         </view>
-        <button class="tray-toggle" loading="{{catalogLoading}}" disabled="{{catalogLoading}}" bindtap="toggleTrayExpanded">
-          <text wx:if="{{catalogLoading}}">正在加载…</text>
-          <text wx:elif="{{trayExpanded}}">收起全部珠子</text>
-          <text wx:else>展开全部珠子</text>
-        </button>
+
+        <scroll-view scroll-x class="category-tabs">
+          <button class="{{categoryId === 0 ? 'active' : ''}}" data-id="0" bindtap="chooseCategory">全部</button>
+          <button
+            wx:for="{{categories}}"
+            wx:key="id"
+            class="{{categoryId === item.id ? 'active' : ''}}"
+            data-id="{{item.id}}"
+            bindtap="chooseCategory"
+          >
+            {{item.name}}
+          </button>
+        </scroll-view>
+
+        <view class="tray-heading">
+          <view>
+            <text>挑选珠子</text>
+            <text>点击珠子即可加入手串</text>
+          </view>
+          <button class="tray-toggle" loading="{{catalogLoading}}" disabled="{{catalogLoading}}" bindtap="toggleTrayExpanded">
+            <text wx:if="{{catalogLoading}}">正在加载…</text>
+            <text wx:elif="{{trayExpanded}}">收起全部珠子</text>
+            <text wx:else>展开全部珠子</text>
+          </button>
+        </view>
+      </block>
+    </view>
+
+    <view wx:if="{{catalogInitialLoading}}" class="section-loading catalog-loading">
+      <view class="loading-ring" />
+      <text>加载中...</text>
+      <view class="catalog-loading-skeleton">
+        <view class="skeleton-card" />
+        <view class="skeleton-card" />
+        <view class="skeleton-card" />
+        <view class="skeleton-card" />
+        <view class="skeleton-card" />
+        <view class="skeleton-card" />
       </view>
     </view>
 
-    <view class="bead-list-content {{trayExpanded ? 'is-expanded' : ''}}">
+    <view wx:else class="bead-list-content {{trayExpanded ? 'is-expanded' : ''}}">
       <scroll-view wx:if="{{!trayExpanded}}" scroll-x class="bead-tray">
           <view
             wx:for="{{visibleCatalog}}"
@@ -127,8 +153,5 @@
       <button loading="{{checkingOut}}" disabled="{{saving}}" bindtap="goCheckout">{{priceText}} · 去下单</button>
     </view>
 
-    <cover-view wx:if="{{loading}}" class="loading-overlay">
-      <cover-view>正在加载 DIY 设计器…</cover-view>
-    </cover-view>
   </block>
 </view>

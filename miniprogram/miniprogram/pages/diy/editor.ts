@@ -189,6 +189,8 @@ Page({
     visibleCatalog: [] as CatalogItem[],
     trayExpanded: false,
     catalogLoading: false,
+    catalogInitialLoading: true,
+    compactPreviewUrl: '',
     favoritesOnly: false,
     categories: [] as Category[],
     categoryId: 0,
@@ -220,6 +222,10 @@ Page({
   canvasImageQueue: [] as CanvasImageLoadRequest[],
   activeCanvasImageLoads: 0,
   canvasRedrawTimer: null as ReturnType<typeof setTimeout> | null,
+  compactPreviewCaptureTimer: null as ReturnType<typeof setTimeout> | null,
+  compactPreviewCapturePromise: null as Promise<string> | null,
+  canvasRenderRevision: 0,
+  compactPreviewCapturedRevision: -1,
   editorActive: false,
   editorGeneration: 0,
   initialVisualLoading: false,
@@ -234,6 +240,7 @@ Page({
 
   onLoad(options: Record<string, string>) {
     this.cancelCanvasRedraw()
+    this.cancelCompactPreviewCapture()
     this.cancelPreviewTransition()
     this.editorActive = true
     this.editorGeneration += 1
@@ -245,7 +252,15 @@ Page({
     this.canvasImages = {}
     this.canvasImageQueue = []
     this.activeCanvasImageLoads = 0
+    this.compactPreviewCapturePromise = null
+    this.canvasRenderRevision = 0
+    this.compactPreviewCapturedRevision = -1
     this.initialVisualLoading = true
+    this.setData({
+      loading: true,
+      catalogInitialLoading: true,
+      compactPreviewUrl: '',
+    })
     this.currentPageScrollTop = 0
     this.previewAutoCollapseTriggered = false
     this.previewExpansionScrollResetting = false
@@ -284,6 +299,7 @@ Page({
 
   onUnload() {
     this.cancelCanvasRedraw()
+    this.cancelCompactPreviewCapture()
     this.cancelPreviewTransition()
     this.editorActive = false
     this.editorGeneration += 1
@@ -295,6 +311,9 @@ Page({
     this.canvasImages = {}
     this.canvasImageQueue = []
     this.activeCanvasImageLoads = 0
+    this.compactPreviewCapturePromise = null
+    this.canvasRenderRevision = 0
+    this.compactPreviewCapturedRevision = -1
     this.initialVisualLoading = false
     this.currentPageScrollTop = 0
     this.previewAutoCollapseTriggered = false
@@ -303,40 +322,56 @@ Page({
   },
 
   async bootstrap(options: Record<string, string>) {
-    this.setData({ loading: true, errorMessage: '' })
+    this.setData({
+      loading: true,
+      catalogInitialLoading: true,
+      errorMessage: '',
+    })
     try {
       const beadsPromise = options.source === 'ai'
         ? listAllPublicBeads()
         : listBeads({ page: 1, size: 30 }).then((page) => page.items)
-      const [config, categories, beads] = await Promise.all([
-        getDiyConfiguration(),
-        listCategories(),
-        beadsPromise,
-      ])
-      this.config = config
-      const favoriteIds = new Set(readFavoriteBeadIds())
-      const catalog = beads.map(toCatalogItem).map((item) => ({
-        ...item,
-        isFavorite: favoriteIds.has(item.id),
-      }))
-      const cordOptions = config.cordOptions.map(toCordOptionItem)
-      const wristOptions = buildWristOptions(
-        config.rule.minWristMm,
-        config.rule.maxWristMm,
-      )
-
-      this.setData({
-        categories,
-        catalog,
-        visibleCatalog: catalog,
-        cordOptions,
-        cordOptionNames: cordOptions.map((item) => item.name),
-        cordOptionId: cordOptions[0]?.id || this.data.cordOptionId,
-        cordOptionIndex: 0,
-        wristOptions,
-        wristOptionLabels: wristOptions.map(formatWristLabel),
-        wristOptionIndex: closestIndex(wristOptions, this.data.wristCircumferenceMm),
+      const configPromise = getDiyConfiguration().then((config) => {
+        this.config = config
+        const cordOptions = config.cordOptions.map(toCordOptionItem)
+        const wristOptions = buildWristOptions(
+          config.rule.minWristMm,
+          config.rule.maxWristMm,
+        )
+        this.setData({
+          cordOptions,
+          cordOptionNames: cordOptions.map((item) => item.name),
+          cordOptionId: cordOptions[0]?.id || this.data.cordOptionId,
+          cordOptionIndex: 0,
+          wristOptions,
+          wristOptionLabels: wristOptions.map(formatWristLabel),
+          wristOptionIndex: closestIndex(
+            wristOptions,
+            this.data.wristCircumferenceMm,
+          ),
+        })
+        return { cordOptions, wristOptions }
       })
+      void listCategories()
+        .then((categories) => this.setData({ categories }))
+        .catch(() => this.setData({ categories: [] }))
+      const catalogPromise = beadsPromise.then((beads) => {
+        const favoriteIds = new Set(readFavoriteBeadIds())
+        const catalog = beads.map(toCatalogItem).map((item) => ({
+          ...item,
+          isFavorite: favoriteIds.has(item.id),
+        }))
+        this.setData({
+          catalog,
+          visibleCatalog: catalog,
+          catalogInitialLoading: false,
+        })
+        return catalog
+      })
+      const [{ cordOptions, wristOptions }] = await Promise.all([
+        configPromise,
+        catalogPromise,
+      ])
 
       const initial = await this.resolveInitialDraft(options)
       this.setData({
@@ -365,12 +400,12 @@ Page({
     } catch (error) {
       this.initialVisualLoading = false
       this.setData({
+        loading: false,
+        catalogInitialLoading: false,
         errorMessage: error instanceof Error
           ? error.message
           : 'DIY 设计器加载失败，请稍后重试',
       })
-    } finally {
-      if (this.data.errorMessage) this.setData({ loading: false })
     }
   },
 
@@ -800,7 +835,6 @@ Page({
       && typeof wx.pageScrollTo === 'function'
     if (!canResetPageScroll) {
       this.setData({ previewExpanded: true }, () => {
-        this.resetCanvasForResize()
         this.drawBracelet()
       })
       return
@@ -816,7 +850,6 @@ Page({
       this.currentPageScrollTop = 0
       this.previewExpansionScrollResetting = false
       this.setData({ previewExpanded: true }, () => {
-        this.resetCanvasForResize()
         this.drawBracelet()
       })
     }, PREVIEW_TRANSITION_MS)
@@ -832,10 +865,20 @@ Page({
     this.previewAutoCollapseTriggered = true
     this.previewExpansionScrollResetting = false
     this.cancelPreviewTransition()
-    this.setData({ previewExpanded: false }, () => {
-      this.resetCanvasForResize()
-      this.drawBracelet()
-    })
+    const collapse = () => this.setData({ previewExpanded: false })
+    if (
+      !this.canvasNode
+      || (
+        this.data.compactPreviewUrl
+        && this.compactPreviewCapturedRevision === this.canvasRenderRevision
+      )
+    ) {
+      collapse()
+      return
+    }
+    void this.captureLatestCompactPreview()
+      .catch(() => '')
+      .finally(collapse)
   },
 
   onPageScroll(event: { scrollTop?: number }) {
@@ -1047,15 +1090,6 @@ Page({
     }
   },
 
-  resetCanvasForResize() {
-    this.cancelCanvasRedraw()
-    this.canvasNode = null
-    this.canvasContext = null
-    this.canvasLogicalWidth = 0
-    this.canvasLogicalHeight = 0
-    this.canvasQueryPending = false
-  },
-
   refreshCanvasLayout(width: number, height: number) {
     const catalogMap = this.catalogMap()
     this.layoutPoints = layoutBracelet(
@@ -1162,7 +1196,14 @@ Page({
       )
       return item ? this.resolveCanvasImage(canvas, item) : null
     })
+    this.canvasRenderRevision += 1
     this.finishInitialVisualLoading()
+    if (
+      this.canvasImageQueue.length === 0
+      && this.activeCanvasImageLoads === 0
+    ) {
+      this.scheduleCompactPreviewCapture()
+    }
   },
 
   finishInitialVisualLoading(force = false) {
@@ -1173,6 +1214,94 @@ Page({
     )) return
     this.initialVisualLoading = false
     this.setData({ loading: false })
+  },
+
+  captureCompactPreview(): Promise<string> {
+    if (this.compactPreviewCapturePromise) {
+      return this.compactPreviewCapturePromise
+    }
+    const canvas = this.canvasNode
+    if (!canvas) {
+      return Promise.reject(new Error('预览画布尚未就绪'))
+    }
+    const generation = this.editorGeneration
+    const revision = this.canvasRenderRevision
+    const capture = new Promise<string>((resolve, reject) => {
+      wx.canvasToTempFilePath({
+        canvas,
+        fileType: 'png',
+        quality: 0.9,
+        success: (response) => {
+          if (
+            this.editorActive
+            && generation === this.editorGeneration
+            && canvas === this.canvasNode
+            && revision === this.canvasRenderRevision
+          ) {
+            this.compactPreviewCapturedRevision = revision
+            this.setData({ compactPreviewUrl: response.tempFilePath })
+          }
+          resolve(response.tempFilePath)
+        },
+        fail: (error) => reject(new Error(error.errMsg)),
+      })
+    })
+    this.compactPreviewCapturePromise = capture
+    capture.then(
+      () => {
+        if (this.compactPreviewCapturePromise === capture) {
+          this.compactPreviewCapturePromise = null
+        }
+        if (
+          this.editorActive
+          && this.compactPreviewCapturedRevision !== this.canvasRenderRevision
+        ) {
+          this.scheduleCompactPreviewCapture()
+        }
+      },
+      () => {
+        if (this.compactPreviewCapturePromise === capture) {
+          this.compactPreviewCapturePromise = null
+        }
+      },
+    )
+    return capture
+  },
+
+  captureLatestCompactPreview(attempts = 2): Promise<string> {
+    return this.captureCompactPreview().then((filePath) => {
+      if (
+        this.compactPreviewCapturedRevision === this.canvasRenderRevision
+        || attempts <= 1
+      ) {
+        return filePath
+      }
+      return this.captureLatestCompactPreview(attempts - 1)
+    })
+  },
+
+  scheduleCompactPreviewCapture() {
+    if (
+      this.compactPreviewCaptureTimer !== null
+      || this.compactPreviewCapturePromise
+      || !this.canvasNode
+      || this.canvasImageQueue.length > 0
+      || this.activeCanvasImageLoads > 0
+      || this.compactPreviewCapturedRevision === this.canvasRenderRevision
+    ) {
+      return
+    }
+    this.compactPreviewCaptureTimer = setTimeout(() => {
+      this.compactPreviewCaptureTimer = null
+      if (!this.editorActive) return
+      void this.captureCompactPreview().catch(() => undefined)
+    }, CANVAS_REDRAW_FRAME_MS)
+  },
+
+  cancelCompactPreviewCapture() {
+    if (this.compactPreviewCaptureTimer === null) return
+    clearTimeout(this.compactPreviewCaptureTimer)
+    this.compactPreviewCaptureTimer = null
   },
 
   resolveCanvasImage(

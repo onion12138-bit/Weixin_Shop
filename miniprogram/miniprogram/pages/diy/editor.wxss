@@ -23,19 +23,35 @@ page {
   box-shadow: 0 12rpx 26rpx rgba(87, 54, 66, .06);
 }
 
-.loading-overlay {
-  position: fixed;
-  z-index: 20;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
+.section-loading {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: #8d8186;
+  color: #4b3b42;
   font-size: 26rpx;
-  background: #faf6f3;
+  font-weight: 600;
+  box-sizing: border-box;
+}
+
+.loading-ring {
+  width: 72rpx;
+  height: 72rpx;
+  border: 8rpx solid #ecdce2;
+  border-top-color: #87465e;
+  border-radius: 50%;
+  animation: loading-spin .85s linear infinite;
+  box-sizing: border-box;
+}
+
+.section-loading > text {
+  margin-top: 20rpx;
+}
+
+@keyframes loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .page-state {
@@ -74,6 +90,21 @@ page {
   border-radius: 34rpx;
   background: #fffdfb;
   box-shadow: 0 18rpx 50rpx rgba(87, 54, 66, .09);
+}
+
+.canvas-panel.is-loading .bracelet-canvas,
+.canvas-panel.is-loading .editor-summary {
+  visibility: hidden;
+}
+
+.board-loading {
+  position: absolute;
+  z-index: 11;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: #fffdfb;
 }
 
 .preview-toolbar {
@@ -136,9 +167,11 @@ page {
   height: 196rpx;
 }
 
-.canvas-panel.is-collapsed .bracelet-canvas {
+.compact-preview-image {
+  display: block;
   width: 226rpx;
   height: 196rpx;
+  background: #fffdfb;
 }
 
 .editor-summary {
@@ -281,6 +314,40 @@ page {
 .bead-list-content {
   min-height: 180rpx;
   box-sizing: border-box;
+}
+
+.catalog-loading {
+  position: relative;
+  min-height: 520rpx;
+  padding: 64rpx 0 28rpx;
+  justify-content: flex-start;
+  background: #faf6f3;
+}
+
+.catalog-loading-skeleton {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12rpx;
+  margin-top: 52rpx;
+  opacity: .5;
+}
+
+.skeleton-card {
+  height: 218rpx;
+  border-radius: 24rpx;
+  background: linear-gradient(100deg, #f0e9e6 20%, #fff 42%, #f0e9e6 64%);
+  background-size: 240% 100%;
+  animation: skeleton-shimmer 1.25s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
 }
 
 .bead-list-content.is-expanded {
