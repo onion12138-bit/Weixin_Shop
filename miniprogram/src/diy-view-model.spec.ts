@@ -1058,21 +1058,61 @@ describe('DIY published visual integration', () => {
     expect(canvasToTempFilePath).toHaveBeenCalledTimes(1)
   })
 
-  it('uses the color fallback after one bounded wait for stalled export images', async () => {
+  it('limits export-local image loading to four and advances on completion or failure', async () => {
+    const page = instantiate(loadEditorDefinition())
+    const catalog = Array.from({ length: 6 }, (_, index) => ({
+      id: 2001 + index,
+      name: `珠子 ${index + 1}`,
+      diameterMm: 8,
+      salePriceCents: 980,
+      colorHex: '#b895d8',
+      canvasImageUrl: `https://shop.test/bead-${index + 1}.webp`,
+      coverImageUrl: '',
+      visualVersion: 1,
+    }))
+    configureExportPage(page, catalog.map((item) => item.id), catalog)
+    const { canvas, images } = createExportCanvasMock()
+    const canvasToTempFilePath = jest.fn((options: {
+      success(response: { tempFilePath: string }): void
+    }) => options.success({ tempFilePath: '/tmp/export-limited.png' }))
+    ;(globalThis as any).wx = {
+      createOffscreenCanvas: jest.fn(() => canvas),
+      canvasToTempFilePath,
+    }
+
+    const exported = page.exportPreview()
+    await Promise.resolve()
+
+    expect(canvas.createImage).toHaveBeenCalledTimes(4)
+    expect(canvasToTempFilePath).not.toHaveBeenCalled()
+
+    images[0].onload()
+    expect(canvas.createImage).toHaveBeenCalledTimes(5)
+
+    images[1].onerror()
+    expect(canvas.createImage).toHaveBeenCalledTimes(6)
+
+    images.slice(2).forEach((image) => image.onload())
+    await expect(exported).resolves.toBe('/tmp/export-limited.png')
+    expect(canvasToTempFilePath).toHaveBeenCalledTimes(1)
+  })
+
+  it('cancels active and queued export images after one bounded wait', async () => {
     jest.useFakeTimers()
     try {
       const page = instantiate(loadEditorDefinition())
-      configureExportPage(page, [2001], [{
-        id: 2001,
-        name: '紫水晶',
+      const catalog = Array.from({ length: 5 }, (_, index) => ({
+        id: 2001 + index,
+        name: `珠子 ${index + 1}`,
         diameterMm: 8,
         salePriceCents: 1280,
         colorHex: '#b895d8',
-        canvasImageUrl: 'https://shop.test/stalled.webp',
-        coverImageUrl: '',
+        canvasImageUrl: `https://shop.test/stalled-${index + 1}.webp`,
+        coverImageUrl: `https://shop.test/stalled-cover-${index + 1}.png`,
         visualVersion: 2,
-      }])
-      const { canvas, context } = createExportCanvasMock()
+      }))
+      configureExportPage(page, catalog.map((item) => item.id), catalog)
+      const { canvas, context, images } = createExportCanvasMock()
       const canvasToTempFilePath = jest.fn((options: {
         success(response: { tempFilePath: string }): void
       }) => options.success({ tempFilePath: '/tmp/export-color.png' }))
@@ -1084,12 +1124,26 @@ describe('DIY published visual integration', () => {
       const exported = page.exportPreview()
       await Promise.resolve()
 
+      expect(canvas.createImage).toHaveBeenCalledTimes(4)
       expect(canvasToTempFilePath).not.toHaveBeenCalled()
+      const lateLoad = images[0].onload
+      const lateError = images[1].onerror
       jest.runOnlyPendingTimers()
       await expect(exported).resolves.toBe('/tmp/export-color.png')
+
+      expect(images).toHaveLength(4)
+      expect(images.every((image) => image.src === '')).toBe(true)
+      expect(images[0].onload).not.toBe(lateLoad)
+      expect(images[1].onerror).not.toBe(lateError)
       expect(context.drawImage).not.toHaveBeenCalled()
       expect(canvasToTempFilePath).toHaveBeenCalledTimes(1)
       expect(jest.getTimerCount()).toBe(0)
+
+      lateLoad()
+      lateError()
+      await Promise.resolve()
+      expect(canvas.createImage).toHaveBeenCalledTimes(4)
+      expect(canvasToTempFilePath).toHaveBeenCalledTimes(1)
     } finally {
       jest.useRealTimers()
     }

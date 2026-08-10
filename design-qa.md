@@ -89,6 +89,14 @@ final result: passed
   - `design-qa-evidence/diy-collapsed.png`
   - `design-qa-evidence/diy-favorites.png`
 - Full-view and focused comparison evidence: `design-qa-evidence/diy-comparison.png`
+- Evidence provenance: these native screenshots were captured from the same
+  user-opened Developer Tools window immediately before evidence commit
+  `a8d5867`; they remain the last available native layout evidence. The final
+  HEAD's active favorite-filter icon changed afterward from outline to the
+  local solid `heart-fill.svg` asset and is covered by the WXML visual-contract
+  test. The earlier window and automation endpoint had exited before final
+  review, so no replacement window was opened or restarted and the screenshots
+  are not represented as a fresh capture of that icon-only change.
 - Viewport: iPhone 12/13 (Pro) 模拟器，390 × 844 CSS px，`devicePixelRatio: 3`。
 - Pixel normalization: 原生开发者工具窗口中的手机画面以窗口 ID 直接截取，336 × 727 px 裁剪后等比归一为 390 × 844 px。参考稿由一张全屏图和三张局部图组成，因此对应区域在同一 `diy-comparison.png` 中并置，不宣称局部参考图与全屏实现是 1:1 像素尺寸。
 - States: 预览展开态、预览收起态、喜欢筛选态。截图使用临时的确定性页面数据初始化；所有临时 fixture 钩子在最终验证前已完全移除，未创建、未保留任何 mock 图片资产。
@@ -96,6 +104,7 @@ final result: passed
 ## Findings
 
 - 无剩余 P0、P1 或 P2 问题。最终原生窗口证据同时显示 Canvas 手串、“收起预览”、撤销/重做、尺寸摘要、右侧加减、三列珠子、爱心与“喜欢”筛选。
+- [Evidence timing] `diy-favorites.png` 与 `diy-comparison.png` 验证的是最终布局和喜欢筛选激活状态，但图中筛选心仍是当时的线框资源；最终 HEAD 的实心心由本地 SVG 资源与 WXML 契约测试验证。本限制不代表运行时功能缺陷，也不提升为 P0/P1/P2。
 - [P3] QA 确定性数据使用了页面已有的珠子颜色回退绘制，未代表生产 API 返回的每一张水晶图的清晰度。
   - Location: Canvas 珠子和 `.tray-bead` catalog 图片。
   - Evidence: 最终图中是真实 Canvas/DOM 回退渲染，参考稿是写实水晶图。
@@ -119,13 +128,16 @@ final result: passed
 2. Post-fix native-window pass — passed
    - 展开、收起和喜欢筛选三个状态在同一已打开的微信开发者工具窗口重新截取。
    - 未发现新的 P0/P1/P2；对比证据已更新为 `design-qa-evidence/diy-comparison.png`。
+3. Final icon-contract pass — passed with evidence timing noted
+   - 最终 HEAD 将喜欢筛选激活态切换为本地 `heart-fill.svg`，并由 `diy-editor-visual-contract.spec.ts` 锁定激活/未激活资源映射。
+   - 原窗口与 9430 automation endpoint 在最终复审时均已退出；遵循“不新开、不重启”要求，保留上一次原生布局证据并明确其时点。
 
 ## Interaction and Runtime Checks
 
 - 微信开发者工具当前基础库 3.16.2 与 `miniprogram-automator@0.12.1` 的页面级 RPC 不兼容：`Page.data`、`Page.callMethod` 和元素查询会挂起。验收改用已验证的顶层页面跳转、滚动与截图，不再等待超时 RPC。
 - SDK 自身的 screenshot 不包含原生 Canvas 层；最终证据使用同一时刻、同一已打开窗口的指定 window-ID 截图，所以可见 Canvas 与 DOM 同屏。
 - Jest 覆盖预览开关与 Canvas 重绘、爱心不加珠、本地喜欢存储、喜欢/分类/关键词组合筛选、珠子卡加珠和加减数量逻辑。
-- 最终自动化：22 个 Jest suites、137 个 tests 全部通过；`tsc -p tsconfig.runtime.json` 通过。
+- 最终自动化：22 个 Jest suites、148 个 tests 全部通过；`tsc -p tsconfig.runtime.json` 通过。
 
 ## Open Questions
 
@@ -139,6 +151,7 @@ final result: passed
 - [x] 三列下排珠子、爱心和搜索旁喜欢筛选已对齐。
 - [x] `#fff8fa` 全局浅粉背景、底部固定操作和安全区无冲突。
 - [x] 临时 fixture 与自动化钩子已移除，项目配置未改动。
+- [x] 最终 HEAD 的喜欢筛选激活态使用实心心，并由 WXML 视觉契约测试覆盖；旧原生证据的时点限制已明确记录。
 
 ## Follow-up Polish
 

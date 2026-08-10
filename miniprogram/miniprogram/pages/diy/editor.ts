@@ -1269,51 +1269,7 @@ Page({
     )
   },
 
-  loadExportImage(
-    canvas: CanvasNode,
-    item: Pick<CatalogItem, 'canvasImageUrl' | 'coverImageUrl'>,
-  ): Promise<CanvasImage | null> {
-    const imageUrls = Array.from(new Set(
-      [item.canvasImageUrl, item.coverImageUrl].filter(Boolean),
-    ))
-    if (!canvas.createImage || imageUrls.length === 0) {
-      return Promise.resolve(null)
-    }
-    return new Promise((resolve) => {
-      let finished = false
-      const tryNextUrl = (index: number) => {
-        if (finished) return
-        if (index >= imageUrls.length) {
-          finished = true
-          resolve(null)
-          return
-        }
-        let image: CanvasImage
-        try {
-          image = canvas.createImage!()
-        } catch {
-          tryNextUrl(index + 1)
-          return
-        }
-        let attemptFinished = false
-        image.onload = () => {
-          if (finished || attemptFinished) return
-          attemptFinished = true
-          finished = true
-          resolve(image)
-        }
-        image.onerror = () => {
-          if (finished || attemptFinished) return
-          attemptFinished = true
-          tryNextUrl(index + 1)
-        }
-        image.src = imageUrls[index]
-      }
-      tryNextUrl(0)
-    })
-  },
-
-  async loadExportImages(
+  loadExportImages(
     canvas: CanvasNode,
   ): Promise<Record<number, CanvasImage>> {
     const catalogMap = Object.fromEntries(
@@ -1323,19 +1279,107 @@ Page({
       .map((skuId) => catalogMap[skuId])
       .filter((item): item is CatalogItem => Boolean(item))
     const exportImages: Record<number, CanvasImage> = {}
-    if (!canvas.createImage || items.length === 0) return exportImages
+    if (!canvas.createImage || items.length === 0) {
+      return Promise.resolve(exportImages)
+    }
 
-    let timeoutId: ReturnType<typeof setTimeout> | null = null
-    const loading = Promise.all(items.map(async (item) => {
-      const image = await this.loadExportImage(canvas, item)
-      if (image) exportImages[item.id] = image
-    }))
-    const timeout = new Promise<void>((resolve) => {
-      timeoutId = setTimeout(resolve, EXPORT_IMAGE_WAIT_MS)
+    return new Promise((resolve) => {
+      let settled = false
+      let nextItemIndex = 0
+      let activeItems = 0
+      let completedItems = 0
+      let timeoutId: ReturnType<typeof setTimeout> | null = null
+      const activeImages = new Set<CanvasImage>()
+
+      const detachImage = (image: CanvasImage, abort: boolean) => {
+        image.onload = () => undefined
+        image.onerror = () => undefined
+        activeImages.delete(image)
+        if (!abort) return
+        try {
+          image.src = ''
+        } catch {
+          // Some Canvas implementations expose a read-only src after failure.
+        }
+      }
+
+      const finish = (abortActive: boolean) => {
+        if (settled) return
+        settled = true
+        if (timeoutId !== null) clearTimeout(timeoutId)
+        if (abortActive) {
+          Array.from(activeImages).forEach((image) => {
+            detachImage(image, true)
+          })
+        }
+        activeImages.clear()
+        resolve(exportImages)
+      }
+
+      const pump = () => {
+        while (
+          !settled
+          && activeItems < MAX_CONCURRENT_CANVAS_IMAGE_LOADS
+          && nextItemIndex < items.length
+        ) {
+          const item = items[nextItemIndex]
+          nextItemIndex += 1
+          activeItems += 1
+          const imageUrls = Array.from(new Set(
+            [item.canvasImageUrl, item.coverImageUrl].filter(Boolean),
+          ))
+
+          const completeItem = (image: CanvasImage | null) => {
+            if (settled) return
+            if (image) exportImages[item.id] = image
+            activeItems = Math.max(0, activeItems - 1)
+            completedItems += 1
+            if (completedItems === items.length) {
+              finish(false)
+              return
+            }
+            pump()
+          }
+
+          const tryNextUrl = (urlIndex: number) => {
+            if (settled) return
+            if (urlIndex >= imageUrls.length) {
+              completeItem(null)
+              return
+            }
+            let image: CanvasImage
+            try {
+              image = canvas.createImage!()
+            } catch {
+              tryNextUrl(urlIndex + 1)
+              return
+            }
+            activeImages.add(image)
+            let attemptFinished = false
+            image.onload = () => {
+              if (settled || attemptFinished) return
+              attemptFinished = true
+              detachImage(image, false)
+              completeItem(image)
+            }
+            image.onerror = () => {
+              if (settled || attemptFinished) return
+              attemptFinished = true
+              detachImage(image, false)
+              tryNextUrl(urlIndex + 1)
+            }
+            image.src = imageUrls[urlIndex]
+          }
+
+          tryNextUrl(0)
+        }
+      }
+
+      timeoutId = setTimeout(() => {
+        finish(true)
+      }, EXPORT_IMAGE_WAIT_MS)
+      pump()
     })
-    await Promise.race([loading, timeout])
-    if (timeoutId !== null) clearTimeout(timeoutId)
-    return exportImages
   },
 
   async exportPreview(): Promise<string> {
