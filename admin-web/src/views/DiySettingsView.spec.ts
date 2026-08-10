@@ -55,7 +55,7 @@ describe('DiySettingsView', () => {
       visualConfig: {
         canvasBackgroundColor: '#fffdfb',
         braceletShadowOpacity: 0.16,
-        beadShadowOpacity: 0.2,
+        beadShadowOpacity: 0.1,
         beadOverlapRatio: 0.06,
         configVersion: 1,
       },
@@ -76,11 +76,23 @@ describe('DiySettingsView', () => {
       visualConfig: {
         canvasBackgroundColor: '#fffdfb',
         braceletShadowOpacity: 0.16,
-        beadShadowOpacity: 0.2,
+        beadShadowOpacity: 0.1,
         beadOverlapRatio: 0.06,
         configVersion: 1,
       },
     })
+  })
+
+  it('starts with the lighter bead-shadow default while configuration loads', () => {
+    vi.mocked(getAdminDiyConfiguration).mockImplementation(
+      () => new Promise(() => undefined),
+    )
+    const wrapper = mount(DiySettingsView)
+    const visualInputs = wrapper
+      .findAll('section.settings-card')[1]
+      .findAll<HTMLInputElement>('input[type="number"]')
+
+    expect(visualInputs[1].element.value).toBe('0.1')
   })
 
   it('loads and saves sizing rules', async () => {
@@ -116,7 +128,7 @@ describe('DiySettingsView', () => {
     expect(saveDiyVisualConfig).toHaveBeenCalledWith({
       canvasBackgroundColor: '#fffdfb',
       braceletShadowOpacity: 0.16,
-      beadShadowOpacity: 0.2,
+      beadShadowOpacity: 0.1,
       beadOverlapRatio: 0.08,
     })
   })
