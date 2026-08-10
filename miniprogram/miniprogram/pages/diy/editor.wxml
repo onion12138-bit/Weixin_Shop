@@ -35,6 +35,12 @@
               src="{{compactPreviewUrl}}"
               mode="aspectFit"
             />
+            <cover-view hidden="{{loading}}" class="preview-toolbar">
+              <cover-view class="preview-toggle" bindtap="togglePreview" aria-label="{{previewExpanded ? '收起预览' : '展开预览'}}">
+                <cover-view class="preview-toggle-label">{{previewExpanded ? '收起预览' : '展开预览'}}</cover-view>
+                <cover-view class="preview-toggle-arrow">{{previewExpanded ? '⌃' : '⌄'}}</cover-view>
+              </cover-view>
+            </cover-view>
           </view>
           <view class="editor-summary">
             <text class="summary-primary">{{countText}}</text>
@@ -42,12 +48,6 @@
             <text class="summary-secondary">{{sizeText}}</text>
           </view>
         </view>
-        <cover-view wx:if="{{!loading}}" class="preview-toolbar">
-          <cover-view class="preview-toggle" bindtap="togglePreview" aria-label="{{previewExpanded ? '收起预览' : '展开预览'}}">
-            <cover-view class="preview-toggle-label">{{previewExpanded ? '收起预览' : '展开预览'}}</cover-view>
-            <cover-view class="preview-toggle-arrow">{{previewExpanded ? '⌃' : '⌄'}}</cover-view>
-          </cover-view>
-        </cover-view>
         <view wx:if="{{loading}}" class="section-loading board-loading">
           <view class="loading-ring" />
           <text>加载中...</text>
@@ -88,11 +88,6 @@
             <text>挑选珠子</text>
             <text>点击珠子即可加入手串</text>
           </view>
-          <button class="tray-toggle" loading="{{catalogLoading}}" disabled="{{catalogLoading}}" bindtap="toggleTrayExpanded">
-            <text wx:if="{{catalogLoading}}">正在加载…</text>
-            <text wx:elif="{{trayExpanded}}">收起全部珠子</text>
-            <text wx:else>展开全部珠子</text>
-          </button>
         </view>
       </block>
     </view>
@@ -110,23 +105,8 @@
       </view>
     </view>
 
-    <view wx:else class="bead-list-content {{trayExpanded ? 'is-expanded' : ''}}">
-      <scroll-view wx:if="{{!trayExpanded}}" scroll-x class="bead-tray">
-          <view
-            wx:for="{{visibleCatalog}}"
-            wx:key="id"
-            class="bead-card"
-          >
-            <button class="bead-add" data-id="{{item.id}}" bindtap="addCatalogBead">
-              <image wx:if="{{item.trayImageUrl}}" class="tray-bead tray-bead-image" src="{{item.trayImageUrl}}" mode="aspectFit" data-id="{{item.id}}" data-visual-key="{{item.visualVersion}}:{{item.trayImageUrl}}" binderror="onTrayImageError" />
-              <view wx:else class="tray-bead" style="background: {{item.colorHex}};" />
-              <text>{{item.name}}</text>
-            </button>
-            <button class="tray-heart {{item.isFavorite ? 'active' : ''}}" data-id="{{item.id}}" bindtap="toggleFavorite">{{item.isFavorite ? '♥' : '♡'}}</button>
-          </view>
-      </scroll-view>
-
-      <view wx:else class="bead-grid">
+    <view wx:else class="bead-list-content">
+      <view class="bead-grid">
           <view
             wx:for="{{visibleCatalog}}"
             wx:key="id"

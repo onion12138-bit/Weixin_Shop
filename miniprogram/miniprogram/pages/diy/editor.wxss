@@ -109,7 +109,7 @@ page {
 
 .preview-toolbar {
   position: absolute;
-  z-index: 10;
+  z-index: 30;
   top: 14rpx;
   right: 16rpx;
 }
@@ -147,6 +147,7 @@ page {
 }
 
 .bracelet-canvas-viewport {
+  position: relative;
   width: 100%;
   height: 660rpx;
   overflow: hidden;
@@ -306,11 +307,6 @@ page {
   background: #c65380;
 }
 
-.bead-tray {
-  padding: 4rpx 0 14rpx;
-  white-space: nowrap;
-}
-
 .bead-list-content {
   min-height: 180rpx;
   box-sizing: border-box;
@@ -350,10 +346,6 @@ page {
   }
 }
 
-.bead-list-content.is-expanded {
-  padding-bottom: 16rpx;
-}
-
 .tray-heading {
   display: flex;
   align-items: center;
@@ -375,21 +367,6 @@ page {
   margin-top: 5rpx;
   color: #a08c94;
   font-size: 19rpx;
-}
-
-.tray-heading button {
-  width: auto;
-  min-width: 194rpx;
-  height: 58rpx;
-  margin: 0;
-  padding: 0 22rpx;
-  border: 1rpx solid #dfbdc9;
-  border-radius: 29rpx;
-  color: #87465e;
-  font-size: 21rpx;
-  line-height: 58rpx;
-  white-space: nowrap;
-  background: #fff8fa;
 }
 
 .bead-grid {

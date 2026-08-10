@@ -2,7 +2,6 @@ import {
   getBead,
   getPackage,
   listAllPublicBeads,
-  listBeads,
   listCategories,
   type Category,
 } from '../../services/catalog'
@@ -187,7 +186,6 @@ Page({
     previewExpanded: true,
     catalog: [] as CatalogItem[],
     visibleCatalog: [] as CatalogItem[],
-    trayExpanded: false,
     catalogLoading: false,
     catalogInitialLoading: true,
     compactPreviewUrl: '',
@@ -328,9 +326,7 @@ Page({
       errorMessage: '',
     })
     try {
-      const beadsPromise = options.source === 'ai'
-        ? listAllPublicBeads()
-        : listBeads({ page: 1, size: 30 }).then((page) => page.items)
+      const beadsPromise = listAllPublicBeads()
       const configPromise = getDiyConfiguration().then((config) => {
         this.config = config
         const cordOptions = config.cordOptions.map(toCordOptionItem)
@@ -562,20 +558,12 @@ Page({
           keyword: this.data.keyword || undefined,
         })).filter((item) => favoriteIds.has(item.id))
         this.mergeCatalog(items.map(toCatalogItem), true)
-      } else if (this.data.trayExpanded) {
+      } else {
         const items = await listAllPublicBeads({
           categoryId: this.data.categoryId || undefined,
           keyword: this.data.keyword || undefined,
         })
         this.mergeCatalog(items.map(toCatalogItem), true)
-      } else {
-        const page = await listBeads({
-          page: 1,
-          size: 30,
-          categoryId: this.data.categoryId || undefined,
-          keyword: this.data.keyword || undefined,
-        })
-        this.mergeCatalog(page.items.map(toCatalogItem), true)
       }
     } catch (error) {
       wx.showToast({
@@ -805,13 +793,6 @@ Page({
     } finally {
       this.setData({ checkingOut: false })
     }
-  },
-
-  async toggleTrayExpanded() {
-    if (this.data.catalogLoading) return
-    const trayExpanded = !this.data.trayExpanded
-    this.setData({ trayExpanded })
-    if (trayExpanded) await this.searchCatalog()
   },
 
   togglePreview() {

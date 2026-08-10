@@ -96,7 +96,7 @@ describe('DIY preview controls', () => {
     const styles = readFileSync('miniprogram/pages/diy/editor.wxss', 'utf8')
 
     expect(template).toContain(
-      '<cover-view wx:if="{{!loading}}" class="preview-toolbar">',
+      '<cover-view hidden="{{loading}}" class="preview-toolbar">',
     )
     expect(template).toContain('<cover-view class="preview-toggle"')
     expect(template).toContain('bindtap="togglePreview"')
@@ -108,8 +108,13 @@ describe('DIY preview controls', () => {
       /\.preview-toolbar\s*{[^}]*position:\s*absolute;[^}]*right:\s*16rpx;/,
     )
     expect(styles).toMatch(
-      /\.preview-toolbar\s*{[^}]*z-index:\s*10;/,
+      /\.preview-toolbar\s*{[^}]*z-index:\s*30;/,
     )
+    const viewportStart = template.indexOf('class="bracelet-canvas-viewport"')
+    const toolbarStart = template.indexOf('class="preview-toolbar"')
+    const viewportEnd = template.indexOf('</view>', toolbarStart)
+    expect(toolbarStart).toBeGreaterThan(viewportStart)
+    expect(viewportEnd).toBeGreaterThan(toolbarStart)
   })
 
   it('collapses the upper preview immediately when its own control is tapped', () => {
@@ -230,21 +235,21 @@ describe('DIY preview controls', () => {
     expect(page.startPreviewCollapse).not.toHaveBeenCalled()
   })
 
-  it('keeps preview and bead-list controls independent', async () => {
+  it('always renders every bead in the expanded grid without a tray toggle', () => {
     const template = readFileSync('miniprogram/pages/diy/editor.wxml', 'utf8')
-    const page = instantiate(loadEditorDefinition())
-    page.data.trayExpanded = false
-    page.data.catalogLoading = false
-    page.searchCatalog = jest.fn().mockResolvedValue(undefined)
+    const source = readFileSync('miniprogram/pages/diy/editor.ts', 'utf8')
+    const definition = loadEditorDefinition()
 
-    await page.toggleTrayExpanded()
-
-    expect(page.data.trayExpanded).toBe(true)
-    expect(page.data.previewExpanded).toBe(true)
-    expect(page.searchCatalog).toHaveBeenCalledTimes(1)
-    expect(template).toContain('<text wx:elif="{{trayExpanded}}">收起全部珠子</text>')
-    expect(template).toContain('<text wx:else>展开全部珠子</text>')
-    expect(template).toContain('wx:else class="bead-grid"')
+    expect(definition.data).not.toHaveProperty('trayExpanded')
+    expect(definition.toggleTrayExpanded).toBeUndefined()
+    expect(template).toContain('<view class="bead-grid">')
+    expect(template).toContain('class="bead-card expanded"')
+    expect(template).not.toContain('class="bead-tray"')
+    expect(template).not.toContain('bindtap="toggleTrayExpanded"')
+    expect(template).not.toContain('展开全部珠子')
+    expect(template).not.toContain('收起全部珠子')
+    expect(source).toContain('const beadsPromise = listAllPublicBeads()')
+    expect(source).not.toContain('listBeads(')
   })
 })
 
