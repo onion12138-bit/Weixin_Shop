@@ -64,12 +64,12 @@
 
 ### 3.6 DeepSeek 多套库存材质推荐
 
-- 后台只维护 `id=1/provider=DEEPSEEK` 的单例配置，Base URL 固定官方 `https://api.deepseek.com`，模型固定 `deepseek-v4-flash`；管理员可配置推荐业务提示词和 1～5 套返回数量，默认 3 套。
-- API Key 使用 AES-256-GCM 密文存库，主密钥只来自 `AI_CONFIG_ENCRYPTION_KEY`；普通读取、日志和错误不回显 Key、Authorization 或上游完整响应，管理员只有显式点击眼睛按钮才能通过 no-store 接口临时查看。
+- 后台只维护 `id=1/provider=DEEPSEEK` 的单例配置，Base URL 固定官方 `https://api.deepseek.com`，模型固定 `deepseek-v4-flash`；管理员可配置推荐业务提示词、软偏好识别提示词、是否启用软偏好和 1～5 套返回数量，默认 3 套。
+- API Key 使用 AES-256-GCM 密文存库，主密钥只来自 `AI_CONFIG_ENCRYPTION_KEY`；普通读取、调优日志和错误不回显 Key 或 Authorization，管理员只有显式点击眼睛按钮才能通过 no-store 接口临时查看。
 - 未配置 Key 时状态为 `NOT_CONFIGURED`、POST 为 `AI_NOT_CONFIGURED`、文案为“AI 推荐暂未开放”；停用时对应 `DISABLED`、`AI_DISABLED`、“AI 推荐暂停使用”。
 - 系统没有规则、静态或本地降级，暂停和 Provider 故障不能返回伪成功。
-- 小程序 AI 表单只保留必填生日和选填期望；生日选定后由公开 Spring Boot 接口计算并展示星座、生肖和星座元素。正式推荐需要 guest JWT，生日、期望和原始模型响应不持久化、不写日志。
-- DeepSeek 只可选择服务端提供的当前已上架且有库存 SKU；输入候选只包含 `skuId/name/material`，不传成本、售价、手围、松紧、数量、排列或绳材。
+- 小程序 AI 表单只保留必填生日和选填期望；生日选定后由公开 Spring Boot 接口计算并展示星座、生肖和星座元素。正式推荐需要 guest JWT。生日、期望、提示词/候选快照、模型请求/原始响应与最终结果默认进入仅管理员可见且可单条删除的调优日志。
+- DeepSeek 只可选择服务端当次查询到的当前已上架且有库存 SKU；输入候选包含 `skuId/name/material/color/diameterMm/tags`，不传成本、售价、手围、松紧、数量、排列或绳材。明确的材质、颜色和标签偏好只做软优先，不做后端强制命中。
 - 后端严格解析后台配置套数的 JSON，每套限制 3～5 种不同珠子，并重新校验结构、SKU、当前库存和文案；响应包含当前名称、图片、选择理由和文化娱乐免责声明。
 - 格式、套数、SKU 或文案校验失败时，同一 DeepSeek 模型最多纠正一次；鉴权、限流、超时和上游故障不重试，不切换其他模型。
 - 小程序选择某套进入 DIY 时只一次性交给去重后的 SKU 类型，读取即删除；手围、松紧、绳材、数量、排列和价格继续使用 DIY 自己的默认值与权威规则。

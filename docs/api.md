@@ -72,6 +72,7 @@
 | GET/POST | `/beads` | 散珠分页/新增 |
 | GET/PUT | `/beads/{id}` | 散珠详情/修改 |
 | PATCH | `/beads/{id}/status` | 切换散珠状态 |
+| POST | `/beads/{id}/inventory` | 为单个商品新增可用库存并写入调整流水 |
 | GET | `/beads/import-template` | 下载当前分类对应的 `.xlsx` 导入模板 |
 | POST | `/beads/import` | `multipart/form-data` 上传 `.xlsx`，字段名为 `file` |
 | GET/POST | `/packages` | 套餐分页/新增 |
@@ -107,6 +108,15 @@
 ```
 
 `initialStock` 只属于新增 DTO，范围为非负整数；修改散珠时不接收该字段。新增商品、库存余额和非零库存的 `INIT` 流水在同一事务完成。
+
+已有商品通过 `POST /beads/{id}/inventory` 入库，请求中的 `quantity` 为 1～1000000 的整数，`note` 可选且最多 120 字。接口只增加可用库存，不覆盖预占和已售数量；余额更新和 `ADJUST` 流水在同一事务完成。示例：
+
+```json
+{
+  "quantity": 100,
+  "note": "到货入库"
+}
+```
 
 绳类或其他饰品沿用同一新增接口，但不传 `diameterMm`；后端会把非珠子直径保存为 `null`。珠子分类仍强制要求有效珠径。非珠子商品可在后台独立维护和查看库存，但不会出现在公共珠子目录、DIY、套餐珠子或 AI 推荐候选中。
 
@@ -303,12 +313,14 @@
   "timeoutSeconds": 30,
   "maxOutputTokens": 2048,
   "recommendationPrompt": "根据生日画像和期望推荐有区分的日常珠子材质搭配",
+  "preferencePrompt": "逐项查看候选珠子的名称、材质、颜色和标签，优先理解用户明确偏好",
+  "softPreferenceEnabled": true,
   "planCount": 3,
   "version": 0
 }
 ```
 
-Provider 固定为 `DEEPSEEK`，Base URL 只接受 DeepSeek 官方 HTTPS origin，模型固定为 `deepseek-v4-flash`。`recommendationPrompt` 必填且最多 4000 字，`planCount` 为 1～5、默认 3。Key 以 AES-GCM 密文保存，解密主密钥来自后端环境 `AI_CONFIG_ENCRYPTION_KEY`；该主密钥不进入数据库。
+Provider 固定为 `DEEPSEEK`，Base URL 只接受 DeepSeek 官方 HTTPS origin，模型固定为 `deepseek-v4-flash`。`recommendationPrompt` 必填且最多 4000 字；开启软偏好识别时 `preferencePrompt` 同样必填且最多 4000 字；`planCount` 为 1～5、默认 3。软偏好提示只指导模型优先考虑明确的颜色、材质和标签偏好，不构成“必须命中”的后端约束。Key 以 AES-GCM 密文保存，解密主密钥来自后端环境 `AI_CONFIG_ENCRYPTION_KEY`；该主密钥不进入数据库。
 
 ### 9.2 顾客推荐
 
@@ -329,13 +341,23 @@ Provider 固定为 `DEEPSEEK`，Base URL 只接受 DeepSeek 官方 HTTPS origin�
 }
 ```
 
-响应包含 `profile`、`plans` 和 `culturalDisclaimer`。`profile` 返回 `birthDate/constellation/zodiac/constellationElement`；每套 `plan` 包含 `schemeName/summary/items`，每套选择 3～5 种不同珠子，每项只返回服务端当前 `skuId/name/imageUrl` 与模型给出的 `reason`。模型输入只包含后台业务提示词、生日画像、可选期望和当前在售有库存珠子的 `skuId/name/material`，不包含成本、售价、手围、松紧、数量、排列或绳材。后端严格校验套数、结构、SKU、当前库存和文案，任一失败都不返回部分方案。
+响应包含 `profile`、`plans` 和 `culturalDisclaimer`。`profile` 返回 `birthDate/constellation/zodiac/constellationElement`；每套 `plan` 包含 `schemeName/summary/items`，每套选择 3～5 种不同珠子，每项只返回服务端当前 `skuId/name/imageUrl` 与模型给出的 `reason`。每次调用都会重新查询当前在售且有库存的珠子，并向模型发送 `skuId/name/material/color/diameterMm/tags`；不发送成本、售价、手围、松紧、数量、排列或绳材。因此后台新建或更新的珠子无需额外同步，但必须处于在售、有库存、珠子分类且颜色、直径和标签字段合法。后端继续严格校验套数、结构、SKU、当前库存和文案，任一失败都不返回部分方案；不会因为未命中某个颜色或材质偏好而拒绝模型结果。
 
-生日和期望只在本次请求内使用，不持久化、不写日志。小程序选择某套进入 DIY 时只一次性写入该套去重后的 SKU 类型；编辑器读取即删除，并使用 DIY 自己的默认手围、松紧和绳材，后续数量、排列与价格仍由既有 DIY 规则处理。
+生日、期望、当次提示词、候选快照、发给模型的请求、模型原始响应、偏好识别摘要和最终处理结果默认保存到管理员专用调优日志。日志支持列表筛选、详情查看和单条删除；API Key、`Authorization` 及其他认证头永不写入日志。小程序选择某套进入 DIY 时只一次性写入该套去重后的 SKU 类型；编辑器读取即删除，并使用 DIY 自己的默认手围、松紧和绳材，后续数量、排列与价格仍由既有 DIY 规则处理。
 
 无 Key 时状态精确为 `NOT_CONFIGURED`，POST 返回 HTTP 503 + `AI_NOT_CONFIGURED`，小程序文案为“AI 推荐暂未开放”；管理员停用时状态为 `DISABLED`，POST 返回 HTTP 503 + `AI_DISABLED`，文案为“AI 推荐暂停使用”。系统没有规则或本地降级，不会把暂停状态包装成成功。
 
 推荐错误按原因区分为 `AI_PROMPT_NOT_CONFIGURED`、`AI_UNAUTHORIZED`、`AI_MODEL_UNAVAILABLE`、`AI_RATE_LIMITED`、`AI_TIMEOUT`、`AI_UPSTREAM_ERROR`、`AI_RESPONSE_FORMAT_INVALID`、`AI_RESULT_COUNT_INVALID`、`AI_RESULT_ITEM_COUNT_INVALID`、`AI_RESULT_DUPLICATE_SKU`、`AI_RESULT_SKU_INVALID`、`AI_RESPONSE_CONTENT_UNSAFE`、`BIRTH_DATE_REQUIRED`、`BIRTH_DATE_INVALID` 和 `CATALOG_EMPTY`。只有格式、套数、单套珠子种类数、重复 SKU、无效 SKU 或文案校验失败时，后端允许同一模型纠正一次；鉴权、限流、超时和上游错误不重试，也没有本地或其他模型降级。错误响应不含上游完整响应体。
+
+### 9.3 管理员 AI 调优日志
+
+以下接口均要求管理员 JWT；顾客和匿名用户不能访问。日志详情中的 `preferenceAnalysis` 仅是模型给出的观察结果，用于提示词调优，不参与后端推荐合规判定。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/admin/ai/logs?page=1&size=20&status=SUCCEEDED&keyword=蓝色` | 按状态和关键词分页查询 |
+| GET | `/api/admin/ai/logs/{id}` | 查看原始输入、配置/候选快照、模型交互和最终结果 |
+| DELETE | `/api/admin/ai/logs/{id}` | 删除单条日志，删除后不可恢复 |
 
 ## 10. 健康检查与冒烟
 

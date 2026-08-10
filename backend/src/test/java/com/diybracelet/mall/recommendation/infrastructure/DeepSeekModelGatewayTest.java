@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.diybracelet.mall.recommendation.domain.AiModelConfig;
+import com.diybracelet.mall.recommendation.domain.AiModelExchange;
 import com.diybracelet.mall.recommendation.domain.ModelRecommendation;
 import com.diybracelet.mall.recommendation.domain.RecommendationCandidate;
 import com.diybracelet.mall.recommendation.domain.RecommendationProfile;
@@ -29,6 +30,7 @@ import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Flow;
 import java.util.stream.Stream;
@@ -206,6 +208,8 @@ class DeepSeekModelGatewayTest {
         );
         assertThat(prompt.path("businessPrompt").asText())
             .isEqualTo("生成日常材质搭配");
+        assertThat(prompt.path("preferencePrompt").asText())
+            .contains("颜色和标签");
         assertThat(prompt.path("requiredPlanCount").asInt()).isEqualTo(2);
         assertThat(prompt.path("repair").isMissingNode()).isTrue();
         assertThat(prompt.path("exactOutputExample").path("plans")).hasSize(2);
@@ -230,7 +234,14 @@ class DeepSeekModelGatewayTest {
         assertThat(prompt.path("customerProfile").path("wish").asText())
             .isEqualTo("private wish");
         assertThat(prompt.path("candidates").get(0).fieldNames()).toIterable()
-            .containsExactlyInAnyOrder("skuId", "name", "material");
+            .containsExactlyInAnyOrder(
+                "skuId", "name", "material", "color", "diameterMm", "tags"
+            );
+        assertThat(prompt.path("candidates").get(0).path("color").asText())
+            .isEqualTo("灰蓝");
+        assertThat(prompt.path("candidates").get(0).path("tags"))
+            .extracting(JsonNode::asText)
+            .containsExactly("日常");
         assertThat(requestBody(request))
             .doesNotContain(
                 "salePrice", "costPrice", "availableQty", "imageUrl",
@@ -239,6 +250,38 @@ class DeepSeekModelGatewayTest {
         assertThat(profile().toString())
             .doesNotContain("1992-01-20", "private wish")
             .contains("sensitiveFieldsRedacted=true");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void shouldCaptureRawExchangeAndParseOptionalPreferenceAnalysis() throws Exception {
+        HttpClient client = mock(HttpClient.class);
+        String content = validContent(2).replaceFirst(
+            "\\{",
+            "{\"preferenceAnalysis\":{\"summary\":\"蓝色系\","
+                + "\"matchedCandidateIds\":[2001,2002],"
+                + "\"evidence\":[\"2001：color=灰蓝\",\"2002：tags=日常\"]},"
+        );
+        HttpResponse<String> upstreamResponse = response(
+            200, chatEnvelope(content)
+        );
+        when(client.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+            .thenReturn(upstreamResponse);
+        List<AiModelExchange> exchanges = new ArrayList<>();
+
+        ModelRecommendation result = gateway(client).recommend(
+            config(17, 2), profile(), candidates(), null, exchanges::add
+        );
+
+        assertThat(result.preferenceAnalysis().summary()).isEqualTo("蓝色系");
+        assertThat(result.preferenceAnalysis().matchedCandidateIds())
+            .containsExactly(2001L, 2002L);
+        assertThat(exchanges).singleElement().satisfies(exchange -> {
+            assertThat(exchange.responseStatus()).isEqualTo(200);
+            assertThat(exchange.requestJson()).contains("preferencePrompt");
+            assertThat(exchange.responseBody()).contains("蓝色系");
+            assertThat(exchange.toString()).doesNotContain("private wish", SECRET);
+        });
     }
 
     @Test
@@ -511,6 +554,8 @@ class DeepSeekModelGatewayTest {
         config.setTimeoutSeconds(timeoutSeconds);
         config.setMaxOutputTokens(2048);
         config.setRecommendationPrompt("  生成日常材质搭配  ");
+        config.setPreferencePrompt("  优先识别颜色和标签偏好  ");
+        config.setSoftPreferenceEnabled(true);
         config.setPlanCount(planCount);
         config.setVersion(0L);
         return config;

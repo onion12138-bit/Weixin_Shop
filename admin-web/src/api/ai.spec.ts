@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   clearAiApiKey,
+  deleteAiRecommendationLog,
+  getAiRecommendationLog,
   getAiConfiguration,
+  listAiRecommendationLogs,
   revealAiApiKey,
   saveAiConfiguration,
   testAiConfiguration,
@@ -19,6 +22,8 @@ const payload: SaveAiConfigurationPayload = {
   timeoutSeconds: 30,
   maxOutputTokens: 2048,
   recommendationPrompt: '只返回满足尺寸和预算的完整手串推荐。',
+  preferencePrompt: '识别名称、材质、颜色和全部标签中的用户偏好。',
+  softPreferenceEnabled: true,
   planCount: 3,
   version: 7,
 }
@@ -65,5 +70,20 @@ describe('AI configuration API contract', () => {
       '/admin/ai/config/api-key?version=7',
       { method: 'DELETE' },
     )
+  })
+
+  it('lists, reads and deletes administrator recommendation logs', async () => {
+    await listAiRecommendationLogs(2, 20, 'SUCCEEDED', '蓝色')
+    expect(request).toHaveBeenCalledWith(
+      '/admin/ai/logs?page=2&size=20&status=SUCCEEDED&keyword=%E8%93%9D%E8%89%B2',
+    )
+
+    await getAiRecommendationLog(7)
+    expect(request).toHaveBeenCalledWith('/admin/ai/logs/7')
+
+    await deleteAiRecommendationLog(7)
+    expect(request).toHaveBeenCalledWith('/admin/ai/logs/7', {
+      method: 'DELETE',
+    })
   })
 })

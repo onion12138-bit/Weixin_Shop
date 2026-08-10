@@ -82,6 +82,8 @@ public class AiConfigurationService {
         replacement.setTimeoutSeconds(request.timeoutSeconds());
         replacement.setMaxOutputTokens(request.maxOutputTokens());
         replacement.setRecommendationPrompt(request.recommendationPrompt().trim());
+        replacement.setPreferencePrompt(request.preferencePrompt().trim());
+        replacement.setSoftPreferenceEnabled(request.softPreferenceEnabled());
         replacement.setPlanCount(request.planCount());
 
         if (configMapper.updateWithVersion(replacement, request.version()) != 1) {
@@ -210,6 +212,8 @@ public class AiConfigurationService {
             config.getTimeoutSeconds(),
             config.getMaxOutputTokens(),
             config.getRecommendationPrompt(),
+            config.getPreferencePrompt(),
+            Boolean.TRUE.equals(config.getSoftPreferenceEnabled()),
             config.getPlanCount(),
             config.getVersion()
         );

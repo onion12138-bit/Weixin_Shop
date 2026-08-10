@@ -4,7 +4,9 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.diybracelet.mall.catalog.api.dto.AdminPackageDetail;
 import com.diybracelet.mall.catalog.api.dto.AdminPackageItem;
 import com.diybracelet.mall.catalog.api.dto.AdminBeadSkuView;
+import com.diybracelet.mall.catalog.api.dto.AddInventoryRequest;
 import com.diybracelet.mall.catalog.api.dto.CreateBeadSkuRequest;
+import com.diybracelet.mall.catalog.api.dto.InventoryAdjustmentView;
 import com.diybracelet.mall.catalog.api.dto.PageResponse;
 import com.diybracelet.mall.catalog.api.dto.SaveBeadSkuRequest;
 import com.diybracelet.mall.catalog.api.dto.SaveCategoryRequest;
@@ -224,6 +226,65 @@ public class AdminCatalogService {
         bead.setStatus(status);
         beadSkuMapper.updateById(bead);
         return bead;
+    }
+
+    /**
+     * 为商品追加可用库存，并保留完整调整流水。
+     *
+     * <p>先锁定余额行，再计算调整后的数量，避免两个管理员同时入库时丢失更新。
+     * 该操作不会修改预占和已售数量。</p>
+     */
+    @Transactional
+    public InventoryAdjustmentView addBeadInventory(
+            Long id,
+            AddInventoryRequest request
+    ) {
+        requireBead(id);
+        InventoryBalance balance = inventoryBalanceMapper
+                .selectBySkuForUpdate(id);
+        if (balance == null) {
+            throw new BusinessException(
+                    ErrorCode.COMMON_CONFLICT,
+                    "商品库存余额不存在，请联系管理员修复"
+            );
+        }
+        long afterAvailable = (long) balance.getAvailableQty()
+                + request.quantity();
+        if (afterAvailable > Integer.MAX_VALUE) {
+            throw new BusinessException(
+                    ErrorCode.COMMON_CONFLICT,
+                    "新增后库存数量超过系统上限"
+            );
+        }
+        if (inventoryBalanceMapper.addAvailable(id, request.quantity()) != 1) {
+            throw new BusinessException(
+                    ErrorCode.COMMON_CONFLICT,
+                    "新增库存失败，请刷新后重试"
+            );
+        }
+
+        InventoryLedger ledger = new InventoryLedger();
+        ledger.setBeadSkuId(id);
+        ledger.setChangeType("ADJUST");
+        ledger.setQuantity(request.quantity());
+        ledger.setBeforeAvailableQty(balance.getAvailableQty());
+        ledger.setAfterAvailableQty((int) afterAvailable);
+        ledger.setBeforeReservedQty(balance.getReservedQty());
+        ledger.setAfterReservedQty(balance.getReservedQty());
+        ledger.setBeforeSoldQty(balance.getSoldQty());
+        ledger.setAfterSoldQty(balance.getSoldQty());
+        ledger.setNote(request.note() == null || request.note().isBlank()
+                ? "后台手动新增库存"
+                : request.note().trim());
+        inventoryLedgerMapper.insert(ledger);
+
+        return new InventoryAdjustmentView(
+                id,
+                request.quantity(),
+                (int) afterAvailable,
+                balance.getReservedQty(),
+                balance.getSoldQty()
+        );
     }
 
     @Transactional(readOnly = true)

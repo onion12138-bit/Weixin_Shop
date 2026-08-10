@@ -38,6 +38,8 @@ class AiConfigurationServiceTest {
             30,
             2048,
             "生成日常材质搭配",
+            "识别颜色和标签偏好",
+            true,
             3,
             2
         )))

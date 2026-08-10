@@ -22,6 +22,7 @@ timeout_seconds="${RECOMMENDATION_TIMEOUT_SECONDS:-30}"
 max_output_tokens="${RECOMMENDATION_MAX_OUTPUT_TOKENS:-2048}"
 plan_count="${RECOMMENDATION_PLAN_COUNT:-3}"
 recommendation_prompt='根据生日画像与顾客期望，从候选库存珠子中给出风格有区分的日常材质搭配，并说明每种材质的选择理由。'
+preference_prompt='逐项查看候选珠子的名称、材质、颜色和全部标签，优先理解顾客明确提出的偏好；存在匹配候选时尽量在多个方案中体现，但不作为强制约束。'
 catalog_page_size=100
 
 if [[ ! "$timeout_seconds" =~ ^[0-9]+$ ]] \
@@ -85,7 +86,7 @@ validate_live_recommendation() {
         (.skuId | type == "number" and floor == . and . > 0)
         and (.name | type == "string" and length > 0)
         and (.imageUrl | type == "string" and length > 0)
-        and (.reason | type == "string" and length > 0))))
+        and (.reason | type == "string" and length > 0)))))
     and (.data.culturalDisclaimer | type == "string" and length > 0)
   ' >/dev/null 2>&1 <<< "$recommendation_json"
 }
@@ -108,6 +109,7 @@ build_payload() {
         SMOKE_MAX_OUTPUT_TOKENS="$max_output_tokens" \
         SMOKE_PLAN_COUNT="$plan_count" \
         SMOKE_RECOMMENDATION_PROMPT="$recommendation_prompt" \
+        SMOKE_PREFERENCE_PROMPT="$preference_prompt" \
         jq -cn '{
           baseUrl:"https://api.deepseek.com",
           modelName:"deepseek-v4-flash",
@@ -116,6 +118,8 @@ build_payload() {
           timeoutSeconds:(env.SMOKE_TIMEOUT_SECONDS | tonumber),
           maxOutputTokens:(env.SMOKE_MAX_OUTPUT_TOKENS | tonumber),
           recommendationPrompt:env.SMOKE_RECOMMENDATION_PROMPT,
+          preferencePrompt:env.SMOKE_PREFERENCE_PROMPT,
+          softPreferenceEnabled:true,
           planCount:(env.SMOKE_PLAN_COUNT | tonumber),
           version:(env.SMOKE_CONFIG_VERSION | tonumber)
         }'
@@ -329,7 +333,8 @@ if ! jq -e \
   --argjson timeout "$timeout_seconds" \
   --argjson maxTokens "$max_output_tokens" \
   --argjson planCount "$plan_count" \
-  --arg prompt "$recommendation_prompt" '
+  --arg prompt "$recommendation_prompt" \
+  --arg preferencePrompt "$preference_prompt" '
     .data.provider == "DEEPSEEK"
     and .data.baseUrl == "https://api.deepseek.com"
     and .data.modelName == "deepseek-v4-flash"
@@ -338,6 +343,8 @@ if ! jq -e \
     and .data.timeoutSeconds == $timeout
     and .data.maxOutputTokens == $maxTokens
     and .data.recommendationPrompt == $prompt
+    and .data.preferencePrompt == $preferencePrompt
+    and .data.softPreferenceEnabled == true
     and .data.planCount == $planCount
   ' >/dev/null 2>&1 <<< "$RESPONSE_BODY"; then
   printf 'ERROR: saved AI configuration did not match the requested safe contract\n' >&2

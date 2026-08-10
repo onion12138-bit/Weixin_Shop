@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useAuthStore } from './stores/auth'
 import AiConfigurationView from './views/AiConfigurationView.vue'
+import AiRecommendationLogsView from './views/AiRecommendationLogsView.vue'
 import CatalogView from './views/CatalogView.vue'
 import CustomerBenefitsView from './views/CustomerBenefitsView.vue'
 import DiySettingsView from './views/DiySettingsView.vue'
@@ -9,7 +10,7 @@ import LoginView from './views/LoginView.vue'
 import OrderView from './views/OrderView.vue'
 
 const auth = useAuthStore()
-type AdminView = 'catalog' | 'diy' | 'orders' | 'customers' | 'ai'
+type AdminView = 'catalog' | 'diy' | 'orders' | 'customers' | 'ai' | 'ai-logs'
 const activeView = ref<AdminView>('catalog')
 </script>
 
@@ -70,6 +71,14 @@ const activeView = ref<AdminView>('catalog')
           AI 模型
           <small>DeepSeek / 连接配置</small>
         </button>
+        <button
+          :class="{ active: activeView === 'ai-logs' }"
+          @click="activeView = 'ai-logs'"
+        >
+          <span>◫</span>
+          AI 调用日志
+          <small>输入 / 处理 / 输出</small>
+        </button>
       </nav>
 
       <div class="sidebar-footer">
@@ -89,7 +98,8 @@ const activeView = ref<AdminView>('catalog')
       <DiySettingsView v-else-if="activeView === 'diy'" />
       <OrderView v-else-if="activeView === 'orders'" />
       <CustomerBenefitsView v-else-if="activeView === 'customers'" />
-      <AiConfigurationView v-else />
+      <AiConfigurationView v-else-if="activeView === 'ai'" />
+      <AiRecommendationLogsView v-else />
     </main>
   </div>
 </template>

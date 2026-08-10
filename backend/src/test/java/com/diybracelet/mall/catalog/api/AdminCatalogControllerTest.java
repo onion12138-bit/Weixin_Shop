@@ -188,6 +188,80 @@ class AdminCatalogControllerTest extends MySqlIntegrationTest {
     }
 
     @Test
+    void shouldAddAvailableInventoryAndWriteAdjustmentLedger()
+            throws Exception {
+        String token = loginAsAdmin();
+        InventoryBalance before = inventoryBalanceMapper.selectOne(
+                new LambdaQueryWrapper<InventoryBalance>()
+                        .eq(InventoryBalance::getBeadSkuId, 2001L)
+        );
+
+        mockMvc.perform(post("/api/admin/catalog/beads/2001/inventory")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "quantity": 100,
+                                  "note": "集成测试入库"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("OK"))
+                .andExpect(jsonPath("$.data.beadSkuId").value(2001))
+                .andExpect(jsonPath("$.data.addedQuantity").value(100))
+                .andExpect(jsonPath("$.data.availableQty")
+                        .value(before.getAvailableQty() + 100))
+                .andExpect(jsonPath("$.data.reservedQty")
+                        .value(before.getReservedQty()))
+                .andExpect(jsonPath("$.data.soldQty")
+                        .value(before.getSoldQty()));
+
+        InventoryBalance after = inventoryBalanceMapper.selectOne(
+                new LambdaQueryWrapper<InventoryBalance>()
+                        .eq(InventoryBalance::getBeadSkuId, 2001L)
+        );
+        InventoryLedger ledger = inventoryLedgerMapper.selectOne(
+                new LambdaQueryWrapper<InventoryLedger>()
+                        .eq(InventoryLedger::getBeadSkuId, 2001L)
+                        .eq(InventoryLedger::getChangeType, "ADJUST")
+                        .eq(InventoryLedger::getNote, "集成测试入库")
+        );
+
+        assertThat(after.getAvailableQty())
+                .isEqualTo(before.getAvailableQty() + 100);
+        assertThat(after.getReservedQty()).isEqualTo(before.getReservedQty());
+        assertThat(after.getSoldQty()).isEqualTo(before.getSoldQty());
+        assertThat(ledger).isNotNull();
+        assertThat(ledger.getQuantity()).isEqualTo(100);
+        assertThat(ledger.getBeforeAvailableQty())
+                .isEqualTo(before.getAvailableQty());
+        assertThat(ledger.getAfterAvailableQty())
+                .isEqualTo(before.getAvailableQty() + 100);
+    }
+
+    @Test
+    void shouldRejectNonPositiveInventoryAdjustment() throws Exception {
+        String token = loginAsAdmin();
+        InventoryBalance before = inventoryBalanceMapper.selectOne(
+                new LambdaQueryWrapper<InventoryBalance>()
+                        .eq(InventoryBalance::getBeadSkuId, 2001L)
+        );
+
+        mockMvc.perform(post("/api/admin/catalog/beads/2001/inventory")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"quantity\":0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_BAD_REQUEST"));
+
+        InventoryBalance after = inventoryBalanceMapper.selectOne(
+                new LambdaQueryWrapper<InventoryBalance>()
+                        .eq(InventoryBalance::getBeadSkuId, 2001L)
+        );
+        assertThat(after.getAvailableQty()).isEqualTo(before.getAvailableQty());
+    }
+
+    @Test
     void shouldFilterBeadsAndReturnTheUploadedCoverUrl() throws Exception {
         String token = loginAsAdmin();
         jdbcTemplate.update(

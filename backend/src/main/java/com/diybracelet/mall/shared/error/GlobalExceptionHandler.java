@@ -39,7 +39,9 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleBusinessException(
         BusinessException exception
     ) {
-        String traceId = UUID.randomUUID().toString();
+        String traceId = exception.traceId() == null
+            ? UUID.randomUUID().toString()
+            : exception.traceId();
         return ResponseEntity
             .status(exception.errorCode().status())
             .body(ApiResponse.failure(

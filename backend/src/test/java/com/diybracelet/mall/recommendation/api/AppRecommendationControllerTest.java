@@ -21,6 +21,7 @@ import com.diybracelet.mall.recommendation.api.dto.BirthProfileResponse;
 import com.diybracelet.mall.recommendation.api.dto.RecommendationResponse;
 import com.diybracelet.mall.recommendation.api.dto.RecommendationStatusResponse;
 import com.diybracelet.mall.recommendation.application.RecommendationService;
+import com.diybracelet.mall.recommendation.application.RecommendationExecution;
 import com.diybracelet.mall.shared.error.BusinessException;
 import com.diybracelet.mall.shared.error.ErrorCode;
 import com.diybracelet.mall.shared.error.GlobalExceptionHandler;
@@ -86,7 +87,7 @@ class AppRecommendationControllerTest {
             .andExpect(jsonPath("$.code").value("COMMON_UNAUTHORIZED"));
 
         verify(service, never()).status();
-        verify(service, never()).recommend(any());
+        verify(service, never()).recommendWithTrace(any());
     }
 
     @Test
@@ -160,7 +161,9 @@ class AppRecommendationControllerTest {
     @Test
     void shouldReturnBirthdayProfileAndMultipleMaterialPlansWithoutPricing()
             throws Exception {
-        when(service.recommend(any())).thenReturn(response());
+        when(service.recommendWithTrace(any())).thenReturn(
+            new RecommendationExecution("trace-recommend-1", response())
+        );
 
         String body = mockMvc.perform(post("/api/app/recommendations")
                 .header("Authorization", customerAuthorization())
@@ -179,6 +182,7 @@ class AppRecommendationControllerTest {
             .andExpect(jsonPath("$.data.totalAmount").doesNotExist())
             .andExpect(jsonPath("$.data.sequence").doesNotExist())
             .andExpect(jsonPath("$.data.cordOption").doesNotExist())
+            .andExpect(jsonPath("$.traceId").value("trace-recommend-1"))
             .andReturn().getResponse().getContentAsString();
 
         org.assertj.core.api.Assertions.assertThat(body)
@@ -199,7 +203,7 @@ class AppRecommendationControllerTest {
             .andExpect(jsonPath("$.code").value("COMMON_BAD_REQUEST"))
             .andExpect(content().string(not(containsString(sensitiveWish))));
 
-        verify(service, never()).recommend(any());
+        verify(service, never()).recommendWithTrace(any());
     }
 
     @ParameterizedTest(name = "recommendation error {0}")
@@ -207,7 +211,7 @@ class AppRecommendationControllerTest {
     void shouldReturnDistinctRecommendationErrorsWithoutPartialData(
             ErrorCode errorCode
     ) throws Exception {
-        when(service.recommend(any())).thenThrow(
+        when(service.recommendWithTrace(any())).thenThrow(
             new BusinessException(errorCode, "AI 推荐不可用")
         );
 

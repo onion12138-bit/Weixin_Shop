@@ -42,7 +42,7 @@ bash -n "${project_root}/scripts/recommendation-smoke.sh"
 bash "${project_root}/scripts/recommendation-smoke.test.sh"
 grep -Fq 'DEEPSEEK_API_KEY' "${project_root}/scripts/recommendation-smoke.sh"
 grep -Fq 'AI_CONFIG_ENCRYPTION_KEY' "${project_root}/scripts/recommendation-smoke.sh"
-grep -Fq '/api/app/recommendations/status' "${project_root}/scripts/recommendation-smoke.sh"
+grep -Fq '/api/public/recommendations/status' "${project_root}/scripts/recommendation-smoke.sh"
 grep -Fq '/api/app/recommendations' "${project_root}/scripts/recommendation-smoke.sh"
 grep -Fq '/api/admin/ai/config/test' "${project_root}/scripts/recommendation-smoke.sh"
 grep -Fq '/api/public/catalog/beads?page=$catalog_page&size=$catalog_page_size' \

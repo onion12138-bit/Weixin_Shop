@@ -3,9 +3,29 @@ package com.diybracelet.mall.recommendation.domain;
 import java.util.List;
 
 /** Strict provider result containing material choices but no size or price. */
-public record ModelRecommendation(List<Plan> plans) {
+public record ModelRecommendation(
+    PreferenceAnalysis preferenceAnalysis,
+    List<Plan> plans
+) {
+    public ModelRecommendation(List<Plan> plans) {
+        this(null, plans);
+    }
+
     public ModelRecommendation {
         plans = plans == null ? null : List.copyOf(plans);
+    }
+
+    /** Optional, non-enforcing explanation used only by the admin call log. */
+    public record PreferenceAnalysis(
+        String summary,
+        List<Long> matchedCandidateIds,
+        List<String> evidence
+    ) {
+        public PreferenceAnalysis {
+            matchedCandidateIds = matchedCandidateIds == null
+                ? List.of() : List.copyOf(matchedCandidateIds);
+            evidence = evidence == null ? List.of() : List.copyOf(evidence);
+        }
     }
 
     public record Plan(String schemeName, String summary, List<Item> items) {

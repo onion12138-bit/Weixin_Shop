@@ -1,6 +1,6 @@
 # 数据模型
 
-最后更新：2026-07-19
+最后更新：2026-08-09
 
 本文件只记录已经通过 Flyway 落地的表。当前迁移：
 
@@ -12,6 +12,7 @@
 - `V6__ai_model_config.sql`：唯一一行 DeepSeek 配置、默认模型和密钥密文列。
 - `V7__ai_recommendation_preferences.sql`：后台推荐提示词与推荐套数。
 - `V8__catalog_product_types_and_inventory_warning.sql`：分类商品类型、绳类/其他饰品分类和可空的非珠子直径。
+- `V15__ai_recommendation_observability.sql`：软偏好提示配置和管理员 AI 推荐调优日志。
 
 ## 1. 关系
 
@@ -27,7 +28,8 @@ customer_order 1 ── 1 payment_record
 customer_order 1 ── 1 fulfillment_task
 diy_rule_config 1 ── 当前全局 DIY 规则
 craft_fee_rule n ── 按珠数区间匹配工艺费
-ai_model_config 1 ── 全局唯一 DeepSeek 配置（推荐结果不持久化）
+ai_model_config 1 ── 全局唯一 DeepSeek 配置
+ai_recommendation_log n ── 管理员可见的推荐输入、处理与输出快照
 ```
 
 ## 2. 商品与素材表
@@ -157,12 +159,22 @@ SKU `2001`～`2004` 各初始化 200 个可用库存，并写入 `INIT` 流水�
 
 ### `ai_model_config`
 
-Flyway V6 固定创建 `id=1`、`provider=DEEPSEEK` 的单例行；V7 新增非空 `recommendation_prompt` 和默认值为 3、限制 1～5 的 `plan_count`。其余字段包括官方 `base_url`、固定 `model_name=deepseek-v4-flash`、`encrypted_api_key`、启停状态、请求超时、最大输出 Token、乐观锁 `version` 和审计时间。
+Flyway V6 固定创建 `id=1`、`provider=DEEPSEEK` 的单例行；V7 新增非空 `recommendation_prompt` 和默认值为 3、限制 1～5 的 `plan_count`；V15 新增 `preference_prompt` 与 `soft_preference_enabled`。其余字段包括官方 `base_url`、固定 `model_name=deepseek-v4-flash`、`encrypted_api_key`、启停状态、请求超时、最大输出 Token、乐观锁 `version` 和审计时间。
 
 - API Key 使用 AES-256-GCM，每次保存生成随机 12-byte nonce，数据库只保存 `base64(nonce + ciphertext + tag)`。
 - `AI_CONFIG_ENCRYPTION_KEY` 是 Base64 编码的 32 字节主密钥，只来自后端运行环境，不保存到数据库或仓库。
 - 后台普通读取只返回 `apiKeyConfigured`；显式密钥查看接口要求管理员 JWT 且禁止缓存，空 Key 保存会保留已有密钥。
-- 推荐请求、生日、期望、模型原始响应和推荐结果均不落库。最终方案只有在顾客选择某套进入 DIY 并主动保存后才按既有 `diy_scheme` 模型持久化。
+- 软偏好提示指导模型根据候选 `name/material/color/tags` 理解明确偏好，但不形成后端强制命中约束。
+- API Key 只存在于 `ai_model_config.encrypted_api_key`，不会复制到调优日志；模型请求日志也不记录 `Authorization` 或任何认证头。
+
+### `ai_recommendation_log`
+
+每次顾客推荐默认创建一条 `trace_id` 唯一的日志。概要字段保存状态、模型、期望摘要、偏好摘要、候选/匹配/方案/尝试数量、耗时和错误；长文本字段保存原始请求、当次无密钥配置快照、候选珠子的 `skuId/name/material/color/diameterMm/tags`、各次模型请求与原始响应、可选偏好分析和最终返回结果。
+
+- 状态只允许 `PROCESSING`、`SUCCEEDED`、`FAILED`。
+- `/api/admin/ai/logs` 受管理员 JWT 保护，支持筛选、详情和单条删除。
+- 日志用于提示词调优，会保存生日与自由描述等顾客输入；正式环境需要在隐私政策中披露，并按业务需要制定保留周期。
+- 表结构不含 API Key、密钥密文或认证头字段。
 
 ### 3 款图片演示散珠导入
 

@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import CatalogView from './CatalogView.vue'
 import {
+  addAdminBeadInventory,
   changeBeadStatus,
   changePackageRecommendation,
   createAdminBead,
@@ -20,6 +21,7 @@ import {
 } from '../api/catalog'
 
 vi.mock('../api/catalog', () => ({
+  addAdminBeadInventory: vi.fn(),
   listAdminBeads: vi.fn(),
   listAdminCategories: vi.fn(),
   listAdminPackages: vi.fn(),
@@ -144,6 +146,13 @@ describe('CatalogView', () => {
     vi.mocked(listBeadVisuals).mockResolvedValue({
       publishedVisualVersionId: null,
       versions: [],
+    })
+    vi.mocked(addAdminBeadInventory).mockResolvedValue({
+      beadSkuId: 2001,
+      addedQuantity: 125,
+      availableQty: 325,
+      reservedQty: 0,
+      soldQty: 0,
     })
   })
 
@@ -361,6 +370,31 @@ describe('CatalogView', () => {
     expect(wrapper.text()).toContain('预占 3 · 已售 177')
     expect(wrapper.get('[data-test="stock-warning-status"]').text())
       .toBe('补货')
+  })
+
+  it('adds an editable inventory quantity from the row action', async () => {
+    const wrapper = mount(CatalogView)
+    await flushPromises()
+
+    await wrapper.get('[data-test="add-inventory-2001"]').trigger('click')
+    expect(wrapper.text()).toContain('当前可用库存 200')
+    expect(wrapper.get<HTMLInputElement>('[data-test="inventory-quantity"]')
+      .element.value).toBe('100')
+
+    await wrapper.get('[data-test="inventory-quantity"]').setValue(125)
+    await wrapper.get('[data-test="inventory-note"]').setValue('到货入库')
+    await wrapper.get('.compact-drawer form').trigger('submit')
+    await flushPromises()
+
+    expect(addAdminBeadInventory).toHaveBeenCalledWith(
+      2001,
+      125,
+      '到货入库',
+    )
+    expect(wrapper.get('[data-test="available-stock"]').text()).toBe('325')
+    expect(wrapper.text()).toContain('新增 125 个库存')
+    expect(wrapper.find('[data-test="inventory-quantity"]').exists())
+      .toBe(false)
   })
 
   it('loads the selected package maintenance panel through the API module', async () => {

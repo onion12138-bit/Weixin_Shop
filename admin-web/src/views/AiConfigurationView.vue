@@ -39,6 +39,8 @@ const configuration = reactive<AiConfiguration>({
   timeoutSeconds: 30,
   maxOutputTokens: 2048,
   recommendationPrompt: '',
+  preferencePrompt: '',
+  softPreferenceEnabled: true,
   planCount: 3,
   version: 0,
 })
@@ -55,6 +57,8 @@ const hasUnsavedChanges = computed(() => {
     || Number(configuration.timeoutSeconds) !== saved.timeoutSeconds
     || Number(configuration.maxOutputTokens) !== saved.maxOutputTokens
     || configuration.recommendationPrompt !== saved.recommendationPrompt
+    || configuration.preferencePrompt !== saved.preferencePrompt
+    || configuration.softPreferenceEnabled !== saved.softPreferenceEnabled
     || Number(configuration.planCount) !== saved.planCount
 })
 
@@ -121,9 +125,11 @@ function savePayload(): SaveAiConfigurationPayload {
   const baseUrl = configuration.baseUrl.trim()
   const modelName = configuration.modelName.trim()
   const recommendationPrompt = configuration.recommendationPrompt.trim()
+  const preferencePrompt = configuration.preferencePrompt.trim()
   if (!baseUrl) throw new Error('Base URL 不能为空')
   if (!modelName) throw new Error('模型名称不能为空')
   if (!recommendationPrompt) throw new Error('推荐提示词不能为空')
+  if (!preferencePrompt) throw new Error('偏好识别提示词不能为空')
 
   return {
     baseUrl,
@@ -145,6 +151,8 @@ function savePayload(): SaveAiConfigurationPayload {
       '最大输出 Token',
     ),
     recommendationPrompt,
+    preferencePrompt,
+    softPreferenceEnabled: configuration.softPreferenceEnabled,
     planCount: integerInRange(
       configuration.planCount,
       1,
@@ -425,6 +433,18 @@ onMounted(loadConfiguration)
               />
               <small>每次生成 1–5 套推荐，实际默认值由后端配置返回。</small>
             </label>
+            <label class="switch-field ai-soft-preference-field">
+              <span>软性偏好引导</span>
+              <span class="switch-control">
+                <input
+                  v-model="configuration.softPreferenceEnabled"
+                  data-test="soft-preference-enabled"
+                  type="checkbox"
+                />
+                <span>{{ configuration.softPreferenceEnabled ? '已启用' : '已停用' }}</span>
+              </span>
+              <small>仅引导模型优先考虑明确偏好，不会强制拦截推荐结果。</small>
+            </label>
             <label class="ai-prompt-field">
               <span>推荐提示词</span>
               <textarea
@@ -435,8 +455,25 @@ onMounted(loadConfiguration)
                 required
                 placeholder="请输入用于生成手串推荐方案的提示词"
               ></textarea>
-              <small>保存后会与顾客生日画像、当前库存珠子名称及材质一起提交给模型；输出格式和安全边界由后端统一控制。</small>
+              <small>保存后会与顾客画像及当前候选珠子一起提交给模型；输出格式和安全边界由后端统一控制。</small>
             </label>
+            <label class="ai-prompt-field">
+              <span>偏好识别提示词</span>
+              <textarea
+                v-model="configuration.preferencePrompt"
+                data-test="preference-prompt"
+                rows="7"
+                maxlength="4000"
+                required
+                placeholder="请输入用于识别颜色、材质和标签偏好的提示词"
+              ></textarea>
+              <small>识别结果只用于日志观察和软性选材引导，不作为结果放行条件。</small>
+            </label>
+          </div>
+          <div class="ai-model-input-note" data-test="candidate-input-fields">
+            <strong>每次发送给模型的珠子字段</strong>
+            <span>SKU ID、名称、材质、颜色描述、珠径、全部标签</span>
+            <small>售价、成本、库存数量、图片地址和 API Key 不会进入推荐提示。</small>
           </div>
         </section>
 

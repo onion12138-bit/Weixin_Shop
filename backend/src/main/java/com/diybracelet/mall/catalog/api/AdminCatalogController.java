@@ -2,10 +2,12 @@ package com.diybracelet.mall.catalog.api;
 
 import com.diybracelet.mall.catalog.api.dto.ChangeCatalogStatusRequest;
 import com.diybracelet.mall.catalog.api.dto.ChangePackageRecommendationRequest;
+import com.diybracelet.mall.catalog.api.dto.AddInventoryRequest;
 import com.diybracelet.mall.catalog.api.dto.CreateBeadSkuRequest;
 import com.diybracelet.mall.catalog.api.dto.AdminBeadSkuView;
 import com.diybracelet.mall.catalog.api.dto.AdminPackageDetail;
 import com.diybracelet.mall.catalog.api.dto.CatalogImportResult;
+import com.diybracelet.mall.catalog.api.dto.InventoryAdjustmentView;
 import com.diybracelet.mall.catalog.api.dto.PageResponse;
 import com.diybracelet.mall.catalog.api.dto.SaveBeadSkuRequest;
 import com.diybracelet.mall.catalog.api.dto.SaveCategoryRequest;
@@ -179,6 +181,14 @@ public class AdminCatalogController {
                 id,
                 request.status()
         ));
+    }
+
+    @PostMapping("/beads/{id}/inventory")
+    public ApiResponse<InventoryAdjustmentView> addBeadInventory(
+            @PathVariable @Min(1) Long id,
+            @Valid @RequestBody AddInventoryRequest request
+    ) {
+        return success(adminCatalogService.addBeadInventory(id, request));
     }
 
     @GetMapping("/packages")

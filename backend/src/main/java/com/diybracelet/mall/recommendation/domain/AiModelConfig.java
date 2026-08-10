@@ -32,6 +32,10 @@ public class AiModelConfig {
 
     private String recommendationPrompt;
 
+    private String preferencePrompt;
+
+    private Boolean softPreferenceEnabled;
+
     private Integer planCount;
 
     private Long version;
@@ -113,6 +117,22 @@ public class AiModelConfig {
 
     public void setRecommendationPrompt(String recommendationPrompt) {
         this.recommendationPrompt = recommendationPrompt;
+    }
+
+    public String getPreferencePrompt() {
+        return preferencePrompt;
+    }
+
+    public void setPreferencePrompt(String preferencePrompt) {
+        this.preferencePrompt = preferencePrompt;
+    }
+
+    public Boolean getSoftPreferenceEnabled() {
+        return softPreferenceEnabled;
+    }
+
+    public void setSoftPreferenceEnabled(Boolean softPreferenceEnabled) {
+        this.softPreferenceEnabled = softPreferenceEnabled;
     }
 
     public Integer getPlanCount() {

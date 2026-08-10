@@ -26,6 +26,20 @@ public interface InventoryBalanceMapper
     InventoryBalance selectBySkuForUpdate(@Param("skuId") Long skuId);
 
     /**
+     * 管理后台入库时只增加可用库存，预占和已售库存保持不变。
+     */
+    @Update("""
+            update inventory_balance
+            set available_qty = available_qty + #{quantity},
+                version = version + 1
+            where bead_sku_id = #{skuId}
+            """)
+    int addAvailable(
+            @Param("skuId") Long skuId,
+            @Param("quantity") Integer quantity
+    );
+
+    /**
      * 把可用库存转为预占库存。
      */
     @Update("""

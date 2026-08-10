@@ -4,6 +4,7 @@ import { ApiError, resolveApiResourceUrl } from '../api/http'
 import BeadVisualPanel from '../components/BeadVisualPanel.vue'
 import { generateCatalogSku } from '../catalog/generate-sku'
 import {
+  addAdminBeadInventory,
   changeBeadStatus,
   createAdminBead,
   downloadBeadImportTemplate,
@@ -40,6 +41,11 @@ const importResult = ref<CatalogImportResult | null>(null)
 const editingBeadId = ref<number | null>(null)
 const enlargedCoverUrl = ref('')
 const visualBead = ref<BeadSku | null>(null)
+const inventoryBead = ref<BeadSku | null>(null)
+const inventoryQuantity = ref(100)
+const inventoryNote = ref('')
+const inventorySaving = ref(false)
+const inventoryErrorMessage = ref('')
 const MAX_COVER_SIZE_BYTES = 5_000_000
 const MAX_IMPORT_SIZE_BYTES = 10_000_000
 const ACCEPTED_COVER_TYPES = new Set([
@@ -241,6 +247,59 @@ function openEditForm(bead: BeadSku): void {
 
 function openVisualPanel(bead: BeadSku): void {
   visualBead.value = bead
+}
+
+function openInventoryDialog(bead: BeadSku): void {
+  inventoryBead.value = bead
+  inventoryQuantity.value = 100
+  inventoryNote.value = ''
+  inventoryErrorMessage.value = ''
+}
+
+function closeInventoryDialog(): void {
+  if (inventorySaving.value) return
+  inventoryBead.value = null
+  inventoryErrorMessage.value = ''
+}
+
+async function submitInventory(): Promise<void> {
+  const bead = inventoryBead.value
+  const quantity = Number(inventoryQuantity.value)
+  if (!bead) return
+  if (!Number.isInteger(quantity) || quantity <= 0 || quantity > 1_000_000) {
+    inventoryErrorMessage.value = '新增数量必须是 1 到 1000000 之间的整数'
+    return
+  }
+  inventorySaving.value = true
+  inventoryErrorMessage.value = ''
+  errorMessage.value = ''
+  successMessage.value = ''
+  try {
+    const adjusted = await addAdminBeadInventory(
+      bead.id,
+      quantity,
+      inventoryNote.value,
+    )
+    beads.value = beads.value.map((item) => (
+      item.id === bead.id
+        ? {
+            ...item,
+            availableQty: adjusted.availableQty,
+            reservedQty: adjusted.reservedQty,
+            soldQty: adjusted.soldQty,
+            stockWarningStatus: adjusted.availableQty <= item.stockAlertThreshold
+              ? 'RESTOCK'
+              : 'NORMAL',
+          }
+        : item
+    ))
+    successMessage.value = `已为“${bead.name}”新增 ${adjusted.addedQuantity} 个库存`
+    inventoryBead.value = null
+  } catch (error) {
+    inventoryErrorMessage.value = readableError(error)
+  } finally {
+    inventorySaving.value = false
+  }
 }
 
 function handleVisualPublished(): void {
@@ -604,6 +663,13 @@ onMounted(loadCatalog)
                 </button>
                 <button
                   class="text-button"
+                  :data-test="`add-inventory-${bead.id}`"
+                  @click="openInventoryDialog(bead)"
+                >
+                  新增库存
+                </button>
+                <button
+                  class="text-button"
                   :data-test="`manage-bead-visual-${bead.id}`"
                   @click="openVisualPanel(bead)"
                 >
@@ -640,6 +706,77 @@ onMounted(loadCatalog)
         </button>
       </footer>
     </section>
+
+    <div
+      v-if="inventoryBead"
+      class="modal-backdrop centered-modal-backdrop"
+      @click.self="closeInventoryDialog"
+    >
+      <section
+        class="drawer import-drawer compact-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="add-inventory-title"
+      >
+        <header>
+          <div>
+            <p class="section-kicker">CATALOG / INVENTORY</p>
+            <h2 id="add-inventory-title">新增库存</h2>
+          </div>
+          <button
+            class="icon-button"
+            type="button"
+            aria-label="关闭新增库存"
+            :disabled="inventorySaving"
+            @click="closeInventoryDialog"
+          >×</button>
+        </header>
+
+        <form class="catalog-form" @submit.prevent="submitInventory">
+          <p class="muted">
+            {{ inventoryBead.name }} · 当前可用库存 {{ inventoryBead.availableQty }}
+          </p>
+          <label>
+            <span>新增数量</span>
+            <input
+              v-model.number="inventoryQuantity"
+              data-test="inventory-quantity"
+              type="number"
+              min="1"
+              max="1000000"
+              step="1"
+              required
+            />
+          </label>
+          <label>
+            <span>备注（选填）</span>
+            <input
+              v-model="inventoryNote"
+              data-test="inventory-note"
+              maxlength="120"
+              placeholder="例如：到货入库"
+            />
+          </label>
+          <div v-if="inventoryErrorMessage" class="notice error-notice" role="alert">
+            {{ inventoryErrorMessage }}
+          </div>
+          <footer>
+            <button
+              type="button"
+              class="secondary-button"
+              :disabled="inventorySaving"
+              @click="closeInventoryDialog"
+            >取消</button>
+            <button
+              type="submit"
+              class="primary-button"
+              data-test="submit-inventory"
+              :disabled="inventorySaving"
+            >{{ inventorySaving ? '正在入库…' : '确认新增' }}</button>
+          </footer>
+        </form>
+      </section>
+    </div>
 
     <div
       v-if="showImportDialog"

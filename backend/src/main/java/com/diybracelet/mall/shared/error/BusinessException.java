@@ -11,6 +11,7 @@ import java.util.Objects;
 public class BusinessException extends RuntimeException {
 
     private final ErrorCode errorCode;
+    private final String traceId;
 
     /**
      * 创建业务异常。
@@ -19,11 +20,17 @@ public class BusinessException extends RuntimeException {
      * @param message 面向调用方的错误说明
      */
     public BusinessException(ErrorCode errorCode, String message) {
+        this(errorCode, message, null);
+    }
+
+    /** Creates a business failure already associated with a persisted request trace. */
+    public BusinessException(ErrorCode errorCode, String message, String traceId) {
         super(message);
         this.errorCode = Objects.requireNonNull(
             errorCode,
             "errorCode must not be null"
         );
+        this.traceId = traceId;
     }
 
     /**
@@ -33,5 +40,9 @@ public class BusinessException extends RuntimeException {
      */
     public ErrorCode errorCode() {
         return errorCode;
+    }
+
+    public String traceId() {
+        return traceId;
     }
 }

@@ -10,6 +10,8 @@ public record AiConfigurationView(
     int timeoutSeconds,
     int maxOutputTokens,
     String recommendationPrompt,
+    String preferencePrompt,
+    boolean softPreferenceEnabled,
     int planCount,
     long version
 ) {

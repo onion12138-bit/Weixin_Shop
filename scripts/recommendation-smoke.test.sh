@@ -38,18 +38,37 @@ for ((iteration = 1; iteration <= 512; iteration += 1)); do
   }
 done
 
-catalog_ids='[2001,2002]'
+plan_count=2
+catalog_ids='[2001,2002,2003]'
 valid_recommendation='{
   "code":"OK",
   "data":{
-    "sequence":[2001,2002,2001],
-    "quantities":{"2001":2,"2002":1},
-    "items":[
-      {"skuId":2001,"imageUrl":"http://localhost:8081/api/files/1"},
-      {"skuId":2002,"imageUrl":"http://localhost:8081/api/files/2"}
+    "profile":{
+      "birthDate":"1992-01-20",
+      "constellation":"水瓶座",
+      "zodiac":"猴",
+      "constellationElement":"风象"
+    },
+    "plans":[
+      {
+        "schemeName":"蓝光启程",
+        "summary":"蓝色点缀",
+        "items":[
+          {"skuId":2001,"name":"青金石","imageUrl":"http://localhost:8081/api/files/1","reason":"深蓝层次"},
+          {"skuId":2002,"name":"月光石","imageUrl":"http://localhost:8081/api/files/2","reason":"清透过渡"},
+          {"skuId":2003,"name":"拉长石","imageUrl":"http://localhost:8081/api/files/3","reason":"灰蓝衔接"}
+        ]
+      },
+      {
+        "schemeName":"自然焕新",
+        "summary":"日常清爽",
+        "items":[
+          {"skuId":2003,"name":"拉长石","imageUrl":"http://localhost:8081/api/files/3","reason":"沉稳基调"},
+          {"skuId":2001,"name":"青金石","imageUrl":"http://localhost:8081/api/files/1","reason":"蓝色点睛"},
+          {"skuId":2002,"name":"月光石","imageUrl":"http://localhost:8081/api/files/2","reason":"柔和收束"}
+        ]
+      }
     ],
-    "totalAmount":29.1,
-    "quoteFingerprint":"quote-1",
     "culturalDisclaimer":"仅供文化娱乐参考"
   }
 }'
@@ -58,19 +77,19 @@ validate_live_recommendation "$valid_recommendation" "$catalog_ids" || {
   exit 1
 }
 
-extra_item_recommendation="$(jq -c \
-  '.data.items += [{"skuId":9999,"imageUrl":"http://localhost:8081/api/files/9999"}]' \
+foreign_sku_recommendation="$(jq -c \
+  '.data.plans[0].items[2].skuId = 9999' \
   <<< "$valid_recommendation")"
-if validate_live_recommendation "$extra_item_recommendation" "$catalog_ids"; then
-  printf 'FAIL: recommendation accepted an item SKU absent from sequence/catalog\n' >&2
+if validate_live_recommendation "$foreign_sku_recommendation" "$catalog_ids"; then
+  printf 'FAIL: recommendation accepted an item SKU absent from the catalog\n' >&2
   exit 1
 fi
 
-foreign_quantity_recommendation="$(jq -c \
-  '.data.quantities["9999"] = 1' \
+duplicate_sku_recommendation="$(jq -c \
+  '.data.plans[0].items[2].skuId = 2001' \
   <<< "$valid_recommendation")"
-if validate_live_recommendation "$foreign_quantity_recommendation" "$catalog_ids"; then
-  printf 'FAIL: recommendation accepted a quantity SKU absent from sequence/catalog\n' >&2
+if validate_live_recommendation "$duplicate_sku_recommendation" "$catalog_ids"; then
+  printf 'FAIL: recommendation accepted a duplicate SKU in one plan\n' >&2
   exit 1
 fi
 
@@ -83,4 +102,4 @@ grep -Fq -- '--max-time' "$smoke_script" || {
   exit 1
 }
 
-printf 'PASS: UUID, returned-SKU, quantity, and curl-timeout contracts are enforced\n'
+printf 'PASS: UUID, multi-plan SKU, duplicate, and curl-timeout contracts are enforced\n'

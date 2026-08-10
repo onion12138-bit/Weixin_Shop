@@ -31,6 +31,8 @@ function configuration(
     timeoutSeconds: 30,
     maxOutputTokens: 2048,
     recommendationPrompt: '请根据用户偏好生成可制作、可报价的手串方案。',
+    preferencePrompt: '识别名称、材质、颜色和全部标签中的用户偏好。',
+    softPreferenceEnabled: true,
     planCount: 1,
     version: 5,
     ...overrides,
@@ -130,6 +132,12 @@ describe('AiConfigurationView', () => {
       .element.value).toBe('请根据用户偏好生成可制作、可报价的手串方案。')
     expect(wrapper.get<HTMLInputElement>('[data-test="plan-count"]')
       .element.value).toBe('1')
+    expect(wrapper.get<HTMLTextAreaElement>('[data-test="preference-prompt"]')
+      .element.value).toContain('名称、材质、颜色和全部标签')
+    expect(wrapper.get('[data-test="candidate-input-fields"]').text())
+      .toContain('颜色描述、珠径、全部标签')
+    expect(wrapper.get('[data-test="candidate-input-fields"]').text())
+      .toContain('API Key 不会进入推荐提示')
     expect(revealAiApiKey).not.toHaveBeenCalled()
   })
 
@@ -213,6 +221,8 @@ describe('AiConfigurationView', () => {
       timeoutSeconds: 30,
       maxOutputTokens: 2048,
       recommendationPrompt: '请根据用户偏好生成可制作、可报价的手串方案。',
+      preferencePrompt: '识别名称、材质、颜色和全部标签中的用户偏好。',
+      softPreferenceEnabled: true,
       planCount: 1,
       version: 5,
     })
@@ -251,6 +261,24 @@ describe('AiConfigurationView', () => {
       expect.objectContaining({
         recommendationPrompt: '只返回满足尺寸和预算的完整方案。',
         planCount: 3,
+      }),
+    )
+  })
+
+  it('saves a trimmed soft preference prompt without making it a hard rule', async () => {
+    const wrapper = mount(AiConfigurationView)
+    await flushPromises()
+
+    await wrapper.get('[data-test="preference-prompt"]')
+      .setValue('  优先匹配颜色和全部标签，但不要强制拦截结果。  ')
+    await wrapper.get('[data-test="soft-preference-enabled"]').setValue(false)
+    await wrapper.get('[data-test="configuration-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(saveAiConfiguration).toHaveBeenCalledWith(
+      expect.objectContaining({
+        preferencePrompt: '优先匹配颜色和全部标签，但不要强制拦截结果。',
+        softPreferenceEnabled: false,
       }),
     )
   })

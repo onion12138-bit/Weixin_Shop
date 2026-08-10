@@ -5,6 +5,7 @@ import com.diybracelet.mall.recommendation.api.dto.RecommendationRequest;
 import com.diybracelet.mall.recommendation.api.dto.RecommendationResponse;
 import com.diybracelet.mall.recommendation.api.dto.RecommendationStatusResponse;
 import com.diybracelet.mall.recommendation.domain.AiModelConfig;
+import com.diybracelet.mall.recommendation.domain.AiModelExchange;
 import com.diybracelet.mall.recommendation.domain.AiModelGateway;
 import com.diybracelet.mall.recommendation.domain.ModelRecommendation;
 import com.diybracelet.mall.recommendation.domain.RecommendationCandidate;
@@ -22,6 +23,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 /** Builds birthday-derived, inventory-backed material recommendations without pricing. */
@@ -51,15 +53,18 @@ public class RecommendationService {
     private final AiModelConfigMapper configMapper;
     private final RecommendationCandidateMapper candidateMapper;
     private final AiModelGateway modelGateway;
+    private final AiRecommendationLogService logService;
 
     public RecommendationService(
             AiModelConfigMapper configMapper,
             RecommendationCandidateMapper candidateMapper,
-            AiModelGateway modelGateway
+            AiModelGateway modelGateway,
+            AiRecommendationLogService logService
     ) {
         this.configMapper = configMapper;
         this.candidateMapper = candidateMapper;
         this.modelGateway = modelGateway;
+        this.logService = logService;
     }
 
     public RecommendationStatusResponse status() {
@@ -86,39 +91,77 @@ public class RecommendationService {
     }
 
     public RecommendationResponse recommend(RecommendationRequest request) {
-        AiModelConfig config = requireAvailableConfiguration();
-        BirthProfileResponse birthProfile = birthProfile(request.birthDate());
-        RecommendationProfile profile = new RecommendationProfile(
-            birthProfile.birthDate(),
-            birthProfile.constellation(),
-            birthProfile.zodiac(),
-            birthProfile.constellationElement(),
-            normalizedWishInspiration(request.wishInspiration()),
-            normalized(request.wish())
-        );
-        List<RecommendationCandidate> candidates = availableCandidates();
-        RecommendationRepairFeedback feedback = null;
+        return recommendWithTrace(request).response();
+    }
 
-        for (int attempt = 1; attempt <= MAX_MODEL_ATTEMPTS; attempt++) {
-            try {
-                ModelRecommendation model = modelGateway.recommend(
-                    config, profile, candidates, feedback
-                );
-                return validateAndBuild(model, birthProfile, config, candidates);
-            } catch (BusinessException error) {
-                if (attempt >= MAX_MODEL_ATTEMPTS
-                        || !REPAIRABLE_MODEL_ERRORS.contains(error.errorCode())) {
-                    throw error;
+    /** Runs a recommendation and reuses its persisted trace in the HTTP response. */
+    public RecommendationExecution recommendWithTrace(RecommendationRequest request) {
+        String traceId = UUID.randomUUID().toString();
+        long startedAt = System.nanoTime();
+        long logId = logService.start(traceId, request);
+        AiModelConfig config = null;
+        List<RecommendationCandidate> candidates = List.of();
+        List<AiModelExchange> exchanges = new ArrayList<>();
+        try {
+            config = requireAvailableConfiguration();
+            BirthProfileResponse birthProfile = birthProfile(request.birthDate());
+            RecommendationProfile profile = new RecommendationProfile(
+                birthProfile.birthDate(),
+                birthProfile.constellation(),
+                birthProfile.zodiac(),
+                birthProfile.constellationElement(),
+                normalizedWishInspiration(request.wishInspiration()),
+                normalized(request.wish())
+            );
+            candidates = availableCandidates();
+            logService.captureContext(logId, config, candidates);
+            RecommendationRepairFeedback feedback = null;
+
+            for (int attempt = 1; attempt <= MAX_MODEL_ATTEMPTS; attempt++) {
+                try {
+                    ModelRecommendation model = modelGateway.recommend(
+                        config, profile, candidates, feedback, exchanges::add
+                    );
+                    RecommendationResponse response = validateAndBuild(
+                        model, birthProfile, config, candidates
+                    );
+                    logService.complete(
+                        logId,
+                        config,
+                        candidates,
+                        exchanges,
+                        model,
+                        response,
+                        elapsedMillis(startedAt)
+                    );
+                    return new RecommendationExecution(traceId, response);
+                } catch (BusinessException error) {
+                    if (attempt >= MAX_MODEL_ATTEMPTS
+                            || !REPAIRABLE_MODEL_ERRORS.contains(error.errorCode())) {
+                        throw error;
+                    }
+                    if (error.errorCode() == ErrorCode.AI_RESULT_SKU_INVALID) {
+                        candidates = availableCandidates();
+                    }
+                    feedback = new RecommendationRepairFeedback(
+                        error.errorCode().name()
+                    );
                 }
-                if (error.errorCode() == ErrorCode.AI_RESULT_SKU_INVALID) {
-                    candidates = availableCandidates();
-                }
-                feedback = new RecommendationRepairFeedback(
-                    error.errorCode().name()
-                );
             }
+            throw responseFormatInvalid();
+        } catch (BusinessException error) {
+            logService.fail(
+                logId,
+                config,
+                candidates,
+                exchanges,
+                error,
+                elapsedMillis(startedAt)
+            );
+            throw new BusinessException(
+                error.errorCode(), error.getMessage(), traceId
+            );
         }
-        throw responseFormatInvalid();
     }
 
     private RecommendationResponse validateAndBuild(
@@ -317,7 +360,10 @@ public class RecommendationService {
     private boolean hasPrompt(AiModelConfig config) {
         return config != null
             && config.getRecommendationPrompt() != null
-            && !config.getRecommendationPrompt().isBlank();
+            && !config.getRecommendationPrompt().isBlank()
+            && (!Boolean.TRUE.equals(config.getSoftPreferenceEnabled())
+                || (config.getPreferencePrompt() != null
+                    && !config.getPreferencePrompt().isBlank()));
     }
 
     private boolean validPlanCount(AiModelConfig config) {
@@ -378,5 +424,9 @@ public class RecommendationService {
             ErrorCode.AI_RESPONSE_CONTENT_UNSAFE,
             "AI 推荐文案包含不允许的效果承诺"
         );
+    }
+
+    private long elapsedMillis(long startedAt) {
+        return Math.max(0L, (System.nanoTime() - startedAt) / 1_000_000L);
     }
 }

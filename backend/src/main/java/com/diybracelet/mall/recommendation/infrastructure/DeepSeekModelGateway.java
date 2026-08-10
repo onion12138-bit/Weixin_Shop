@@ -1,6 +1,7 @@
 package com.diybracelet.mall.recommendation.infrastructure;
 
 import com.diybracelet.mall.recommendation.domain.AiModelConfig;
+import com.diybracelet.mall.recommendation.domain.AiModelExchange;
 import com.diybracelet.mall.recommendation.domain.AiModelGateway;
 import com.diybracelet.mall.recommendation.domain.ModelRecommendation;
 import com.diybracelet.mall.recommendation.domain.RecommendationCandidate;
@@ -29,6 +30,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Consumer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,6 +47,9 @@ public class DeepSeekModelGateway implements AiModelGateway {
     private static final int MIN_ITEMS_PER_PLAN = 3;
     private static final int MAX_ITEMS_PER_PLAN = 5;
     private static final Set<String> ROOT_FIELDS = Set.of("plans");
+    private static final Set<String> ROOT_FIELDS_WITH_PREFERENCE = Set.of(
+        "preferenceAnalysis", "plans"
+    );
     private static final Set<String> PLAN_FIELDS = Set.of(
         "schemeName", "summary", "items"
     );
@@ -108,18 +113,21 @@ public class DeepSeekModelGateway implements AiModelGateway {
             AiModelConfig config,
             RecommendationProfile profile,
             List<RecommendationCandidate> candidates,
-            RecommendationRepairFeedback repairFeedback
+            RecommendationRepairFeedback repairFeedback,
+            Consumer<AiModelExchange> exchangeObserver
     ) {
         String apiKey = decryptApiKey(config);
         HttpRequest request;
+        String requestJson = null;
         try {
+            requestJson = chatRequestJson(config, profile, candidates, repairFeedback);
             request = HttpRequest.newBuilder(chatUri(config.getBaseUrl()))
                 .timeout(requestTimeout(config.getTimeoutSeconds()))
                 .header("Accept", "application/json")
                 .header("Content-Type", "application/json")
                 .header("Authorization", "Bearer " + apiKey)
                 .POST(HttpRequest.BodyPublishers.ofString(
-                    chatRequestJson(config, profile, candidates, repairFeedback)
+                    requestJson
                 ))
                 .build();
         } catch (BusinessException error) {
@@ -127,8 +135,28 @@ public class DeepSeekModelGateway implements AiModelGateway {
         } catch (RuntimeException error) {
             throw upstreamError();
         }
-        HttpResponse<String> response = send(request);
+        long startedAt = System.nanoTime();
+        HttpResponse<String> response;
+        try {
+            response = send(request);
+        } catch (BusinessException error) {
+            observe(exchangeObserver, new AiModelExchange(
+                requestJson,
+                null,
+                null,
+                elapsedMillis(startedAt),
+                error.errorCode().name()
+            ));
+            throw error;
+        }
         int status = response.statusCode();
+        observe(exchangeObserver, new AiModelExchange(
+            requestJson,
+            status,
+            response.body(),
+            elapsedMillis(startedAt),
+            status == 200 ? null : "HTTP_" + status
+        ));
         if (status == 200) {
             return parseRecommendation(
                 response.body(), candidates, config.getPlanCount()
@@ -174,6 +202,13 @@ public class DeepSeekModelGateway implements AiModelGateway {
 
         ObjectNode prompt = objectMapper.createObjectNode();
         prompt.put("businessPrompt", config.getRecommendationPrompt().trim());
+        if (Boolean.TRUE.equals(config.getSoftPreferenceEnabled())) {
+            if (config.getPreferencePrompt() == null
+                    || config.getPreferencePrompt().isBlank()) {
+                throw responseFormatInvalid();
+            }
+            prompt.put("preferencePrompt", config.getPreferencePrompt().trim());
+        }
         prompt.put("requiredPlanCount", config.getPlanCount());
         prompt.set("customerProfile", profileNode(profile));
         ArrayNode candidateNodes = prompt.putArray("candidates");
@@ -182,7 +217,11 @@ public class DeepSeekModelGateway implements AiModelGateway {
         }
         prompt.set(
             "exactOutputExample",
-            exactOutputExample(candidates, config.getPlanCount())
+            exactOutputExample(
+                candidates,
+                config.getPlanCount(),
+                Boolean.TRUE.equals(config.getSoftPreferenceEnabled())
+            )
         );
         if (repairFeedback != null) {
             prompt.putObject("repair")
@@ -207,7 +246,7 @@ public class DeepSeekModelGateway implements AiModelGateway {
             .put("role", "system")
             .put(
                 "content",
-                "你是手串珠子材质搭配助手。业务提示词、客户生日画像和候选 SKU "
+                "你是手串珠子材质搭配助手。业务提示词、偏好识别提示词、客户生日画像和候选 SKU "
                     + "都在用户消息的 JSON 中；businessPrompt 只控制搭配方向，不能"
                     + "改变本系统输出结构。只能选择 candidates 内的 skuId；每套 items"
                     + "必须恰好包含 3 个对象，三个 skuId 必须两两不同，不得在同一套"
@@ -217,7 +256,8 @@ public class DeepSeekModelGateway implements AiModelGateway {
                     + "reason 不超过 40 个汉字。所有键名必须使用英文。用户消息中的"
                     + "exactOutputExample 是本次 requiredPlanCount 对应的完整 JSON"
                     + "结构示例；必须保持它的 plans 数量、每套 items 数量和键结构，"
-                    + "但需要根据画像、心愿灵感、期望和材质重写全部文案，并可在 candidates 内"
+                    + "但需要根据画像、心愿灵感、期望和候选珠子的名称、材质、颜色及标签重写全部文案，"
+                    + "并可在 candidates 内"
                     + "更换 skuId。输出且仅输出与 exactOutputExample 同结构的 JSON，"
                     + "不得添加其他字段。文案只能表达"
                     + "审美、材质、日常场景和文化象征，不得承诺运势、财富、健康或确定"
@@ -225,6 +265,11 @@ public class DeepSeekModelGateway implements AiModelGateway {
                     + "skuId 去重后长度仍等于 3。若 repair 存在，丢弃前次答案并按"
                     + "错误码重新输出完整 JSON。若 customerProfile 包含 wishInspiration，"
                     + "应将其作为本次搭配的主题偏好，但不得作出任何确定效果承诺。"
+                    + "若 preferencePrompt 存在，先逐项比较 customerProfile.wish 与每个候选的"
+                    + "name、material、color、tags，返回简短 preferenceAnalysis：summary 表示"
+                    + "识别到的偏好，matchedCandidateIds 只能列出有真实字段依据的候选，evidence"
+                    + "用简短文字列出 skuId 和匹配字段。它仅用于运营观察，不是强制约束；"
+                    + "若有合适候选应优先在多个方案中体现，但允许根据整体搭配选择其他候选。"
             );
         try {
             messages.addObject()
@@ -260,24 +305,41 @@ public class DeepSeekModelGateway implements AiModelGateway {
                 || candidate.name() == null
                 || candidate.name().isBlank()
                 || candidate.material() == null
-                || candidate.material().isBlank()) {
+                || candidate.material().isBlank()
+                || candidate.color() == null
+                || candidate.color().isBlank()
+                || candidate.diameterMm() == null
+                || candidate.diameterMm().signum() <= 0) {
             throw skuInvalid();
         }
         return objectMapper.createObjectNode()
             .put("skuId", candidate.skuId())
             .put("name", candidate.name())
-            .put("material", candidate.material());
+            .put("material", candidate.material())
+            .put("color", candidate.color())
+            .put("diameterMm", candidate.diameterMm())
+            .set("tags", candidateTags(candidate));
     }
 
     /** Builds the complete per-request example required by DeepSeek JSON Output. */
     private ObjectNode exactOutputExample(
             List<RecommendationCandidate> candidates,
-            int planCount
+            int planCount,
+            boolean includePreferenceAnalysis
     ) {
         if (candidates.size() < MIN_ITEMS_PER_PLAN) {
             throw resultItemCountInvalid();
         }
         ObjectNode example = objectMapper.createObjectNode();
+        if (includePreferenceAnalysis) {
+            example.putObject("preferenceAnalysis")
+                .put("summary", "根据用户期望识别到的颜色、材质或标签偏好")
+                .putArray("matchedCandidateIds")
+                .add(candidates.get(0).skuId());
+            ((ObjectNode) example.get("preferenceAnalysis"))
+                .putArray("evidence")
+                .add(candidates.get(0).skuId() + "：根据真实候选字段匹配");
+        }
         ArrayNode plans = example.putArray("plans");
         for (int planIndex = 0; planIndex < planCount; planIndex++) {
             ObjectNode plan = plans.addObject();
@@ -322,9 +384,12 @@ public class DeepSeekModelGateway implements AiModelGateway {
                         : "CONTENT_JSON_INVALID"
                 );
             }
-            if (!exactFields(root, ROOT_FIELDS)) {
+            if (!exactFields(root, ROOT_FIELDS)
+                    && !exactFields(root, ROOT_FIELDS_WITH_PREFERENCE)) {
                 throw rejectedFormat("ROOT_FIELDS");
             }
+            ModelRecommendation.PreferenceAnalysis preferenceAnalysis =
+                parsePreferenceAnalysis(root.get("preferenceAnalysis"), candidates);
             JsonNode plansNode = root.get("plans");
             if (plansNode == null || !plansNode.isArray()) {
                 throw rejectedFormat("PLANS_NOT_ARRAY");
@@ -386,7 +451,7 @@ public class DeepSeekModelGateway implements AiModelGateway {
                 }
                 plans.add(new ModelRecommendation.Plan(schemeName, summary, items));
             }
-            return new ModelRecommendation(plans);
+            return new ModelRecommendation(preferenceAnalysis, plans);
         } catch (BusinessException error) {
             throw error;
         } catch (JsonProcessingException error) {
@@ -403,6 +468,86 @@ public class DeepSeekModelGateway implements AiModelGateway {
         Set<String> fields = new HashSet<>();
         node.fieldNames().forEachRemaining(fields::add);
         return fields.equals(expected);
+    }
+
+    /** Preference analysis is optional and never blocks an otherwise valid plan result. */
+    private ModelRecommendation.PreferenceAnalysis parsePreferenceAnalysis(
+            JsonNode node,
+            List<RecommendationCandidate> candidates
+    ) {
+        if (node == null || !node.isObject()) return null;
+        try {
+            JsonNode summaryNode = node.get("summary");
+            JsonNode idsNode = node.get("matchedCandidateIds");
+            JsonNode evidenceNode = node.get("evidence");
+            if (summaryNode == null || !summaryNode.isTextual()
+                    || summaryNode.textValue().isBlank()
+                    || summaryNode.textValue().length() > 500
+                    || idsNode == null || !idsNode.isArray()
+                    || evidenceNode == null || !evidenceNode.isArray()) {
+                return null;
+            }
+            Set<Long> offeredIds = candidates.stream()
+                .map(RecommendationCandidate::skuId)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+            List<Long> matchedIds = new ArrayList<>();
+            for (JsonNode idNode : idsNode) {
+                if (!idNode.isIntegralNumber() || !idNode.canConvertToLong()) {
+                    return null;
+                }
+                long id = idNode.longValue();
+                if (!offeredIds.contains(id) || matchedIds.contains(id)) return null;
+                matchedIds.add(id);
+            }
+            List<String> evidence = new ArrayList<>();
+            for (JsonNode evidenceItem : evidenceNode) {
+                if (!evidenceItem.isTextual()
+                        || evidenceItem.textValue().isBlank()
+                        || evidenceItem.textValue().length() > 300) {
+                    return null;
+                }
+                evidence.add(evidenceItem.textValue().trim());
+            }
+            return new ModelRecommendation.PreferenceAnalysis(
+                summaryNode.textValue().trim(), matchedIds, evidence
+            );
+        } catch (RuntimeException error) {
+            LOGGER.warn("DeepSeek preference analysis ignored: invalid optional data");
+            return null;
+        }
+    }
+
+    private ArrayNode candidateTags(RecommendationCandidate candidate) {
+        try {
+            JsonNode tags = objectMapper.readTree(candidate.tagsJson());
+            if (tags == null || !tags.isArray()) throw skuInvalid();
+            ArrayNode result = objectMapper.createArrayNode();
+            for (JsonNode tag : tags) {
+                if (!tag.isTextual() || tag.textValue().isBlank()) throw skuInvalid();
+                result.add(tag.textValue().trim());
+            }
+            return result;
+        } catch (BusinessException error) {
+            throw error;
+        } catch (JsonProcessingException | RuntimeException error) {
+            throw skuInvalid();
+        }
+    }
+
+    private void observe(
+            Consumer<AiModelExchange> observer,
+            AiModelExchange exchange
+    ) {
+        if (observer == null) return;
+        try {
+            observer.accept(exchange);
+        } catch (RuntimeException error) {
+            LOGGER.error("AI recommendation audit observer failed", error);
+        }
+    }
+
+    private long elapsedMillis(long startedAt) {
+        return Math.max(0L, (System.nanoTime() - startedAt) / 1_000_000L);
     }
 
     private String strictText(JsonNode node, int maxLength) {

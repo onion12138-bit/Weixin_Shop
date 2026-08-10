@@ -3,6 +3,7 @@ package com.diybracelet.mall.recommendation.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
@@ -41,6 +42,7 @@ class RecommendationServiceTest {
     private AiModelConfigMapper configMapper;
     private RecommendationCandidateMapper candidateMapper;
     private AiModelGateway gateway;
+    private AiRecommendationLogService logService;
     private RecommendationService service;
 
     @BeforeEach
@@ -48,7 +50,11 @@ class RecommendationServiceTest {
         configMapper = mock(AiModelConfigMapper.class);
         candidateMapper = mock(RecommendationCandidateMapper.class);
         gateway = mock(AiModelGateway.class);
-        service = new RecommendationService(configMapper, candidateMapper, gateway);
+        logService = mock(AiRecommendationLogService.class);
+        when(logService.start(any(), any())).thenReturn(1L);
+        service = new RecommendationService(
+            configMapper, candidateMapper, gateway, logService
+        );
     }
 
     @Test
@@ -120,7 +126,7 @@ class RecommendationServiceTest {
             .isEqualTo(expectedCode);
 
         verify(candidateMapper, never()).selectSellableCandidates();
-        verify(gateway, never()).recommend(any(), any(), any(), any());
+        verify(gateway, never()).recommend(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -133,7 +139,7 @@ class RecommendationServiceTest {
             .extracting(error -> ((BusinessException) error).errorCode())
             .isEqualTo(ErrorCode.CATALOG_EMPTY);
 
-        verify(gateway, never()).recommend(any(), any(), any(), any());
+        verify(gateway, never()).recommend(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -148,7 +154,7 @@ class RecommendationServiceTest {
             .isEqualTo(ErrorCode.COMMON_BAD_REQUEST);
 
         verify(candidateMapper, never()).selectSellableCandidates();
-        verify(gateway, never()).recommend(any(), any(), any(), any());
+        verify(gateway, never()).recommend(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -179,7 +185,7 @@ class RecommendationServiceTest {
         ArgumentCaptor<RecommendationProfile> profileCaptor =
             ArgumentCaptor.forClass(RecommendationProfile.class);
         verify(gateway).recommend(
-            any(), profileCaptor.capture(), any(), isNull()
+            any(), profileCaptor.capture(), any(), isNull(), any()
         );
         RecommendationProfile profile = profileCaptor.getValue();
         assertThat(profile.birthDate()).isEqualTo("1992-01-20");
@@ -196,6 +202,31 @@ class RecommendationServiceTest {
             .contains("sensitiveFieldsRedacted=true");
     }
 
+    @Test
+    void shouldNotRejectAValidPlanWhenSoftPreferenceCandidatesAreNotSelected() {
+        List<RecommendationCandidate> offered = new java.util.ArrayList<>(candidates());
+        offered.add(candidate(2004L, "/initial/2004.png"));
+        when(configMapper.selectById(1L)).thenReturn(configured());
+        when(candidateMapper.selectSellableCandidates()).thenReturn(offered);
+        ModelRecommendation model = new ModelRecommendation(
+            new ModelRecommendation.PreferenceAnalysis(
+                "蓝色系", List.of(2004L), List.of("2004：color=灰蓝")
+            ),
+            validModel().plans()
+        );
+        when(gateway.recommend(any(), any(), any(), any(), any()))
+            .thenReturn(model);
+        when(candidateMapper.selectCurrentSellableByIds(any()))
+            .thenReturn(currentCandidates());
+
+        RecommendationResponse response = service.recommend(request());
+
+        assertThat(response.plans()).hasSize(2);
+        verify(logService).complete(
+            anyLong(), any(), any(), any(), any(), any(), anyLong()
+        );
+    }
+
     @ParameterizedTest(name = "repairable gateway error: {0}")
     @MethodSource("repairableErrors")
     void shouldRepairOnceWithOnlyTheAllowListedErrorCode(
@@ -204,7 +235,7 @@ class RecommendationServiceTest {
         when(configMapper.selectById(1L)).thenReturn(configured());
         when(candidateMapper.selectSellableCandidates()).thenReturn(candidates());
         when(gateway.recommend(
-            any(), any(), any(), nullable(RecommendationRepairFeedback.class)
+            any(), any(), any(), nullable(RecommendationRepairFeedback.class), any()
         )).thenThrow(new BusinessException(firstError, "sensitive prior output"))
             .thenReturn(validModel());
         when(candidateMapper.selectCurrentSellableByIds(any()))
@@ -216,7 +247,7 @@ class RecommendationServiceTest {
         ArgumentCaptor<RecommendationRepairFeedback> feedbackCaptor =
             ArgumentCaptor.forClass(RecommendationRepairFeedback.class);
         verify(gateway, times(2)).recommend(
-            any(), any(), any(), feedbackCaptor.capture()
+            any(), any(), any(), feedbackCaptor.capture(), any()
         );
         assertThat(feedbackCaptor.getAllValues())
             .containsExactly(null, new RecommendationRepairFeedback(firstError.name()));
@@ -227,7 +258,7 @@ class RecommendationServiceTest {
         when(configMapper.selectById(1L)).thenReturn(configured());
         when(candidateMapper.selectSellableCandidates()).thenReturn(candidates());
         when(gateway.recommend(
-            any(), any(), any(), nullable(RecommendationRepairFeedback.class)
+            any(), any(), any(), nullable(RecommendationRepairFeedback.class), any()
         )).thenReturn(new ModelRecommendation(List.of(plan("only-one"))))
             .thenReturn(validModel());
         when(candidateMapper.selectCurrentSellableByIds(any()))
@@ -238,7 +269,7 @@ class RecommendationServiceTest {
         ArgumentCaptor<RecommendationRepairFeedback> feedbackCaptor =
             ArgumentCaptor.forClass(RecommendationRepairFeedback.class);
         verify(gateway, times(2)).recommend(
-            any(), any(), any(), feedbackCaptor.capture()
+            any(), any(), any(), feedbackCaptor.capture(), any()
         );
         assertThat(feedbackCaptor.getAllValues().get(1).code())
             .isEqualTo("AI_RESULT_COUNT_INVALID");
@@ -255,7 +286,7 @@ class RecommendationServiceTest {
         when(candidateMapper.selectSellableCandidates())
             .thenReturn(candidates(), fresh);
         when(gateway.recommend(
-            any(), any(), any(), nullable(RecommendationRepairFeedback.class)
+            any(), any(), any(), nullable(RecommendationRepairFeedback.class), any()
         )).thenThrow(new BusinessException(
             ErrorCode.AI_RESULT_SKU_INVALID, "invalid sku"
         )).thenReturn(validModel());
@@ -268,7 +299,7 @@ class RecommendationServiceTest {
         ArgumentCaptor<List<RecommendationCandidate>> candidateCaptor =
             ArgumentCaptor.forClass(List.class);
         verify(gateway, times(2)).recommend(
-            any(), any(), candidateCaptor.capture(), any()
+            any(), any(), candidateCaptor.capture(), any(), any()
         );
         assertThat(candidateCaptor.getAllValues())
             .containsExactly(candidates(), fresh);
@@ -282,7 +313,7 @@ class RecommendationServiceTest {
     ) {
         when(configMapper.selectById(1L)).thenReturn(configured());
         when(candidateMapper.selectSellableCandidates()).thenReturn(candidates());
-        when(gateway.recommend(any(), any(), any(), any())).thenThrow(
+        when(gateway.recommend(any(), any(), any(), any(), any())).thenThrow(
             new BusinessException(errorCode, "provider failure")
         );
 
@@ -291,7 +322,7 @@ class RecommendationServiceTest {
             .extracting(error -> ((BusinessException) error).errorCode())
             .isEqualTo(errorCode);
 
-        verify(gateway).recommend(any(), any(), any(), any());
+        verify(gateway).recommend(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -299,7 +330,7 @@ class RecommendationServiceTest {
         when(configMapper.selectById(1L)).thenReturn(configured());
         when(candidateMapper.selectSellableCandidates()).thenReturn(candidates());
         when(gateway.recommend(
-            any(), any(), any(), nullable(RecommendationRepairFeedback.class)
+            any(), any(), any(), nullable(RecommendationRepairFeedback.class), any()
         )).thenThrow(new BusinessException(
             ErrorCode.AI_RESPONSE_FORMAT_INVALID, "first"
         )).thenThrow(new BusinessException(
@@ -311,7 +342,7 @@ class RecommendationServiceTest {
             .extracting(error -> ((BusinessException) error).errorCode())
             .isEqualTo(ErrorCode.AI_RESPONSE_CONTENT_UNSAFE);
 
-        verify(gateway, times(2)).recommend(any(), any(), any(), any());
+        verify(gateway, times(2)).recommend(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -326,7 +357,7 @@ class RecommendationServiceTest {
             ),
             plan("第二套")
         ));
-        when(gateway.recommend(any(), any(), any(), any()))
+        when(gateway.recommend(any(), any(), any(), any(), any()))
             .thenReturn(unsafe, unsafe);
 
         assertThatThrownBy(() -> service.recommend(request()))
@@ -335,14 +366,14 @@ class RecommendationServiceTest {
             .isEqualTo(ErrorCode.AI_RESPONSE_CONTENT_UNSAFE);
 
         verify(candidateMapper, never()).selectCurrentSellableByIds(any());
-        verify(gateway, times(2)).recommend(any(), any(), any(), any());
+        verify(gateway, times(2)).recommend(any(), any(), any(), any(), any());
     }
 
     @Test
     void shouldTreatDuplicateCurrentCatalogRowsAsInternalDataFailure() {
         when(configMapper.selectById(1L)).thenReturn(configured());
         when(candidateMapper.selectSellableCandidates()).thenReturn(candidates());
-        when(gateway.recommend(any(), any(), any(), any())).thenReturn(validModel());
+        when(gateway.recommend(any(), any(), any(), any(), any())).thenReturn(validModel());
         when(candidateMapper.selectCurrentSellableByIds(any())).thenReturn(List.of(
             candidate(2001L, "/current/a.png"),
             candidate(2001L, "/current/b.png"),
@@ -355,13 +386,13 @@ class RecommendationServiceTest {
             .extracting(error -> ((BusinessException) error).errorCode())
             .isEqualTo(ErrorCode.COMMON_INTERNAL_ERROR);
 
-        verify(gateway).recommend(any(), any(), any(), any());
+        verify(gateway).recommend(any(), any(), any(), any(), any());
     }
 
     private void prepareSuccess() {
         when(configMapper.selectById(1L)).thenReturn(configured());
         when(candidateMapper.selectSellableCandidates()).thenReturn(candidates());
-        when(gateway.recommend(any(), any(), any(), any())).thenReturn(validModel());
+        when(gateway.recommend(any(), any(), any(), any(), any())).thenReturn(validModel());
         when(candidateMapper.selectCurrentSellableByIds(any()))
             .thenReturn(currentCandidates());
     }
@@ -390,6 +421,8 @@ class RecommendationServiceTest {
         config.setTimeoutSeconds(30);
         config.setMaxOutputTokens(2048);
         config.setRecommendationPrompt(hasPrompt ? "生成日常材质搭配" : null);
+        config.setPreferencePrompt("识别名称、材质、颜色和标签偏好");
+        config.setSoftPreferenceEnabled(true);
         config.setPlanCount(planCount);
         config.setVersion(1L);
         return config;

@@ -23,6 +23,8 @@ public interface AiModelConfigMapper extends BaseMapper<AiModelConfig> {
             timeout_seconds = #{config.timeoutSeconds},
             max_output_tokens = #{config.maxOutputTokens},
             recommendation_prompt = #{config.recommendationPrompt},
+            preference_prompt = #{config.preferencePrompt},
+            soft_preference_enabled = #{config.softPreferenceEnabled},
             plan_count = #{config.planCount},
             version = version + 1,
             updated_at = current_timestamp

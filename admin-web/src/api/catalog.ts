@@ -78,6 +78,14 @@ export type CreateBeadSkuRequest = SaveBeadSkuRequest & {
   initialStock: number
 }
 
+export interface InventoryAdjustment {
+  beadSkuId: number
+  addedQuantity: number
+  availableQty: number
+  reservedQty: number
+  soldQty: number
+}
+
 export interface ProductPackage {
   id: number
   packageCode: string
@@ -246,6 +254,17 @@ export function changeBeadStatus(
   return request<BeadSku>(`/admin/catalog/beads/${id}/status`, {
     method: 'PATCH',
     body: JSON.stringify({ status }),
+  })
+}
+
+export function addAdminBeadInventory(
+  id: number,
+  quantity: number,
+  note?: string,
+): Promise<InventoryAdjustment> {
+  return request<InventoryAdjustment>(`/admin/catalog/beads/${id}/inventory`, {
+    method: 'POST',
+    body: JSON.stringify({ quantity, note: note?.trim() || null }),
   })
 }
 

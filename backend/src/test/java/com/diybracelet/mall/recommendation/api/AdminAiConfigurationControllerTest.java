@@ -162,6 +162,8 @@ class AdminAiConfigurationControllerTest {
             30,
             2048,
             "生成日常材质搭配",
+            "识别颜色和标签偏好",
+            true,
             3,
             0
         );
@@ -463,6 +465,8 @@ class AdminAiConfigurationControllerTest {
         request.put("timeoutSeconds", timeoutSeconds);
         request.put("maxOutputTokens", maxOutputTokens);
         request.put("recommendationPrompt", "生成日常材质搭配");
+        request.put("preferencePrompt", "识别名称、材质、颜色和标签偏好");
+        request.put("softPreferenceEnabled", true);
         request.put("planCount", 3);
         request.put("version", version);
         return objectMapper.writeValueAsString(request);
@@ -477,6 +481,8 @@ class AdminAiConfigurationControllerTest {
         request.put("timeoutSeconds", 30);
         request.put("maxOutputTokens", 2048);
         request.put("recommendationPrompt", "生成日常材质搭配");
+        request.put("preferencePrompt", "识别名称、材质、颜色和标签偏好");
+        request.put("softPreferenceEnabled", true);
         request.put("planCount", 3);
         request.put("version", 0);
         return request;
@@ -501,6 +507,8 @@ class AdminAiConfigurationControllerTest {
         config.setTimeoutSeconds(30);
         config.setMaxOutputTokens(2048);
         config.setRecommendationPrompt("生成日常材质搭配");
+        config.setPreferencePrompt("识别名称、材质、颜色和标签偏好");
+        config.setSoftPreferenceEnabled(true);
         config.setPlanCount(3);
         config.setVersion(0L);
         return config;
@@ -517,6 +525,8 @@ class AdminAiConfigurationControllerTest {
         target.setTimeoutSeconds(source.getTimeoutSeconds());
         target.setMaxOutputTokens(source.getMaxOutputTokens());
         target.setRecommendationPrompt(source.getRecommendationPrompt());
+        target.setPreferencePrompt(source.getPreferencePrompt());
+        target.setSoftPreferenceEnabled(source.getSoftPreferenceEnabled());
         target.setPlanCount(source.getPlanCount());
         target.setVersion(source.getVersion());
         return target;

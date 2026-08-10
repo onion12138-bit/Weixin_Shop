@@ -4,6 +4,7 @@ import com.diybracelet.mall.recommendation.api.dto.RecommendationRequest;
 import com.diybracelet.mall.recommendation.api.dto.RecommendationResponse;
 import com.diybracelet.mall.recommendation.api.dto.RecommendationStatusResponse;
 import com.diybracelet.mall.recommendation.application.RecommendationService;
+import com.diybracelet.mall.recommendation.application.RecommendationExecution;
 import com.diybracelet.mall.shared.api.ApiResponse;
 import jakarta.validation.Valid;
 import java.util.UUID;
@@ -33,7 +34,9 @@ public class AppRecommendationController {
     public ApiResponse<RecommendationResponse> recommend(
             @Valid @RequestBody RecommendationRequest request
     ) {
-        return success(recommendationService.recommend(request));
+        RecommendationExecution execution =
+            recommendationService.recommendWithTrace(request);
+        return ApiResponse.success(execution.response(), execution.traceId());
     }
 
     private <T> ApiResponse<T> success(T data) {
