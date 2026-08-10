@@ -160,9 +160,9 @@ describe('DIY preview controls', () => {
     const styles = readFileSync('miniprogram/pages/diy/editor.wxss', 'utf8')
 
     expect(template).toContain(
-      '<cover-view hidden="{{loading}}" class="preview-toolbar">',
+      '<view wx:if="{{!loading}}" class="preview-toolbar">',
     )
-    expect(template).toContain('<cover-view class="preview-toggle"')
+    expect(template).toContain('<button class="preview-toggle"')
     expect(template).toContain('bindtap="togglePreview"')
     expect(template).toContain("previewExpanded ? '收起预览' : '展开预览'")
     expect(template).not.toContain('class="history-actions"')
@@ -176,9 +176,14 @@ describe('DIY preview controls', () => {
     )
     const viewportStart = template.indexOf('class="bracelet-canvas-viewport"')
     const toolbarStart = template.indexOf('class="preview-toolbar"')
-    const viewportEnd = template.indexOf('</view>', toolbarStart)
-    expect(toolbarStart).toBeGreaterThan(viewportStart)
-    expect(viewportEnd).toBeGreaterThan(toolbarStart)
+    expect(toolbarStart).toBeGreaterThan(0)
+    expect(toolbarStart).toBeLessThan(viewportStart)
+    expect(styles).toMatch(
+      /\.bracelet-canvas-viewport\s*{[^}]*top:\s*72rpx;[^}]*height:\s*588rpx;/,
+    )
+    expect(styles).toMatch(
+      /\.canvas-panel\.is-collapsed \.bracelet-canvas-viewport\s*{[^}]*top:\s*0;[^}]*right:\s*auto;/,
+    )
   })
 
   it('collapses the upper preview immediately when its own control is tapped', () => {
@@ -202,7 +207,7 @@ describe('DIY preview controls', () => {
 
   it('captures the expanded canvas once and uses that fixed image when compact', async () => {
     const page = instantiate(loadEditorDefinition())
-    const canvas = { width: 640, height: 660 }
+    const canvas = { width: 640, height: 588 }
     const canvasToTempFilePath = jest.fn((options: Record<string, any>) => {
       options.success({ tempFilePath: 'wxfile://fixed-bracelet.png' })
     })

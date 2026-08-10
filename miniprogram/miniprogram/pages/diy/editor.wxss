@@ -118,6 +118,7 @@ page {
   display: flex;
   width: 154rpx;
   height: 58rpx;
+  margin: 0;
   padding: 0 16rpx;
   align-items: center;
   justify-content: center;
@@ -128,6 +129,10 @@ page {
   line-height: 58rpx;
   background: rgba(255, 255, 255, .92);
   box-sizing: border-box;
+}
+
+.preview-toggle::after {
+  border: 0;
 }
 
 .preview-toggle-label {
@@ -147,16 +152,19 @@ page {
 }
 
 .bracelet-canvas-viewport {
-  position: relative;
+  position: absolute;
+  top: 72rpx;
+  right: 0;
+  left: 0;
   width: 100%;
-  height: 660rpx;
+  height: 588rpx;
   overflow: hidden;
 }
 
 .bracelet-canvas {
   display: block;
   width: 100%;
-  height: 660rpx;
+  height: 588rpx;
 }
 
 .canvas-panel.is-collapsed .preview-layout {
@@ -164,6 +172,8 @@ page {
 }
 
 .canvas-panel.is-collapsed .bracelet-canvas-viewport {
+  top: 0;
+  right: auto;
   width: 226rpx;
   height: 196rpx;
 }

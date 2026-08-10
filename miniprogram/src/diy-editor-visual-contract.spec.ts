@@ -34,13 +34,16 @@ describe('DIY editor visual contract', () => {
     )
   })
 
-  it('uses a cover-view overlay so controls remain available above native canvas', () => {
+  it('reserves a toolbar row so controls are never covered by native canvas', () => {
     expect(editorMarkup).toContain(
-      '<cover-view hidden="{{loading}}" class="preview-toolbar">',
+      '<view wx:if="{{!loading}}" class="preview-toolbar">',
     )
-    expect(editorMarkup).toContain('<cover-view class="preview-toggle"')
+    expect(editorMarkup).toContain('<button class="preview-toggle"')
     expect(editorStyles).toMatch(
       /\.preview-toolbar\s*\{[^}]*position:\s*absolute;[^}]*z-index:\s*30;/s,
+    )
+    expect(editorStyles).toMatch(
+      /\.bracelet-canvas-viewport\s*\{[^}]*top:\s*72rpx;[^}]*height:\s*588rpx;/s,
     )
   })
 

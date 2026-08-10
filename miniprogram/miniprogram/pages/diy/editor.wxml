@@ -19,6 +19,12 @@
 
       <view class="canvas-panel {{previewExpanded ? 'is-expanded' : 'is-collapsed'}} {{loading ? 'is-loading' : ''}}">
         <view class="preview-layout">
+          <view wx:if="{{!loading}}" class="preview-toolbar">
+            <button class="preview-toggle" bindtap="togglePreview" aria-label="{{previewExpanded ? '收起预览' : '展开预览'}}">
+              <text class="preview-toggle-label">{{previewExpanded ? '收起预览' : '展开预览'}}</text>
+              <text class="preview-toggle-arrow">{{previewExpanded ? '⌃' : '⌄'}}</text>
+            </button>
+          </view>
           <view class="bracelet-canvas-viewport">
             <canvas
               id="bracelet-canvas"
@@ -35,12 +41,6 @@
               src="{{compactPreviewUrl}}"
               mode="aspectFit"
             />
-            <cover-view hidden="{{loading}}" class="preview-toolbar">
-              <cover-view class="preview-toggle" bindtap="togglePreview" aria-label="{{previewExpanded ? '收起预览' : '展开预览'}}">
-                <cover-view class="preview-toggle-label">{{previewExpanded ? '收起预览' : '展开预览'}}</cover-view>
-                <cover-view class="preview-toggle-arrow">{{previewExpanded ? '⌃' : '⌄'}}</cover-view>
-              </cover-view>
-            </cover-view>
           </view>
           <view class="editor-summary">
             <text class="summary-primary">{{countText}}</text>
