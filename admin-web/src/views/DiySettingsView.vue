@@ -49,7 +49,7 @@ const rule = reactive<DiyRule>({
 const visualConfig = reactive<DiyVisualConfig>({
   canvasBackgroundColor: '#fffdfb',
   braceletShadowOpacity: 0.16,
-  beadShadowOpacity: 0.2,
+  beadShadowOpacity: 0.1,
   beadOverlapRatio: 0.06,
   configVersion: 0,
 })

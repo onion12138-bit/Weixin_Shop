@@ -3,6 +3,7 @@ package com.diybracelet.mall.catalog.infrastructure;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.diybracelet.mall.support.MySqlIntegrationTest;
+import java.math.BigDecimal;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -76,7 +77,9 @@ class CatalogMigrationTest extends MySqlIntegrationTest {
             "select * from diy_visual_config where id = 1"
         );
         assertThat(config.get("canvas_background_color")).isEqualTo("#fffdfb");
-        assertThat(config.get("config_version")).isEqualTo(1L);
+        assertThat(config.get("bead_shadow_opacity"))
+                .isEqualTo(new BigDecimal("0.100"));
+        assertThat(config.get("config_version")).isEqualTo(2L);
     }
 
     @Test

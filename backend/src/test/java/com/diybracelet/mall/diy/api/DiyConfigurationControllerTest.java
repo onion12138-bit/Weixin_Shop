@@ -107,7 +107,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
             bead_shadow_opacity,
             bead_overlap_ratio,
             config_version
-        ) values (1, '#fffdfb', 0.160, 0.200, 0.060, 1);
+        ) values (1, '#fffdfb', 0.160, 0.100, 0.060, 2);
         """
 })
 class DiyConfigurationControllerTest extends MySqlIntegrationTest {
@@ -140,7 +140,7 @@ class DiyConfigurationControllerTest extends MySqlIntegrationTest {
                 .andExpect(jsonPath("$.data.rule.configVersion").value(1))
                 .andExpect(jsonPath("$.data.visualConfig.canvasBackgroundColor")
                         .value("#fffdfb"))
-                .andExpect(jsonPath("$.data.visualConfig.configVersion").value(1))
+                .andExpect(jsonPath("$.data.visualConfig.configVersion").value(2))
                 .andExpect(jsonPath("$.data.craftFeeRules.length()").value(1))
                 .andExpect(jsonPath("$.data.cordOptions.length()").value(3))
                 .andExpect(jsonPath("$.data.cordOptions[0].status")
@@ -240,7 +240,7 @@ class DiyConfigurationControllerTest extends MySqlIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.visualConfig.canvasBackgroundColor")
                         .value("#f8f3ef"))
-                .andExpect(jsonPath("$.data.visualConfig.configVersion").value(2));
+                .andExpect(jsonPath("$.data.visualConfig.configVersion").value(3));
     }
 
     @Test
@@ -286,7 +286,7 @@ class DiyConfigurationControllerTest extends MySqlIntegrationTest {
                     "select config_version from diy_visual_config where id = 1",
                     Long.class
             );
-            assertThat(configVersion).isEqualTo(3L);
+            assertThat(configVersion).isEqualTo(4L);
         } finally {
             executor.shutdownNow();
         }
@@ -356,10 +356,10 @@ class DiyConfigurationControllerTest extends MySqlIntegrationTest {
         assertThat(visualConfig.get("bracelet_shadow_opacity"))
                 .isEqualTo(new BigDecimal("0.160"));
         assertThat(visualConfig.get("bead_shadow_opacity"))
-                .isEqualTo(new BigDecimal("0.200"));
+                .isEqualTo(new BigDecimal("0.100"));
         assertThat(visualConfig.get("bead_overlap_ratio"))
                 .isEqualTo(new BigDecimal("0.060"));
-        assertThat(visualConfig.get("config_version")).isEqualTo(1L);
+        assertThat(visualConfig.get("config_version")).isEqualTo(2L);
     }
 
     private static void await(CountDownLatch latch) {
