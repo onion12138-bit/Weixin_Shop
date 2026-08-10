@@ -117,6 +117,7 @@ interface CanvasImageLoadRequest {
   cacheKey: string
   imageUrl: string
   generation: number
+  imageRevision: number
 }
 
 interface CanvasRenderingContext {
@@ -157,6 +158,8 @@ const FIT_TYPE_LABELS = ['贴手', '标准', '宽松']
 const MAX_CONCURRENT_CANVAS_IMAGE_LOADS = 4
 const CANVAS_REDRAW_FRAME_MS = 16
 const PREVIEW_TRANSITION_MS = 240
+const EXPORT_CANVAS_SIZE = 620
+const EXPORT_IMAGE_WAIT_MS = 1500
 
 Page({
   data: {
@@ -195,6 +198,8 @@ Page({
     keyword: '',
     countText: '0 颗',
     lengthText: '尚未选珠',
+    targetLengthText: '目标 160 mm',
+    currentLengthText: '当前 0 mm',
     sizeText: '请选择珠子',
     priceText: '预估 ¥0.00',
     quoteIssues: [] as QuoteIssueItem[],
@@ -213,6 +218,8 @@ Page({
   canvasLogicalWidth: 0,
   canvasLogicalHeight: 0,
   canvasQueryPending: false,
+  canvasQueryRevision: 0,
+  canvasImageRevision: 0,
   canvasImages: {} as Record<
     string,
     CanvasImage | 'queued' | 'loading' | 'error'
@@ -535,6 +542,23 @@ Page({
   toggleFavoritesOnly() {
     this.setData({ favoritesOnly: !this.data.favoritesOnly })
     void this.searchCatalog()
+  },
+
+  resetCanvasForResize() {
+    this.canvasQueryRevision += 1
+    this.canvasNode = null
+    this.canvasContext = null
+    this.canvasLogicalWidth = 0
+    this.canvasLogicalHeight = 0
+    this.canvasQueryPending = false
+    this.resetCanvasImagesForNewCanvas()
+  },
+
+  resetCanvasImagesForNewCanvas() {
+    this.cancelCanvasRedraw()
+    this.canvasImageRevision += 1
+    this.canvasImages = {}
+    this.canvasImageQueue = []
   },
 
   async chooseCategory(event: WechatMiniprogram.TouchEvent) {
@@ -938,6 +962,7 @@ Page({
       authoritative: boolean
       persistDraft: boolean
       selectedIndex?: number
+      redraw?: boolean
     },
   ) {
     const summary = this.buildLocalSummary(sequence, options.authoritative)
@@ -951,13 +976,15 @@ Page({
       selectedNumber: selectedIndex >= 0 ? selectedIndex + 1 : 0,
       countText: summary.countText,
       lengthText: summary.lengthText,
+      targetLengthText: summary.targetLengthText,
+      currentLengthText: summary.currentLengthText,
       sizeText: summary.sizeText,
       priceText: summary.priceText,
       quoteIssues: options.authoritative ? this.data.quoteIssues : [],
       authoritative: options.authoritative,
     })
     if (options.persistDraft) writeDraftCache(this.currentDraft())
-    this.drawBracelet()
+    if (options.redraw !== false) this.drawBracelet()
   },
 
   buildLocalSummary(
@@ -1007,6 +1034,8 @@ Page({
       quoteIssues: quote.issues,
       countText: summary.countText,
       lengthText: summary.lengthText,
+      targetLengthText: summary.targetLengthText,
+      currentLengthText: summary.currentLengthText,
       sizeText: summary.sizeText,
       priceText: summary.priceText,
       authoritative: quote.quotable,
@@ -1106,6 +1135,7 @@ Page({
     if (this.canvasQueryPending) return
     this.canvasQueryPending = true
     const initiatingGeneration = this.editorGeneration
+    const initiatingQueryRevision = this.canvasQueryRevision
     const query = wx.createSelectorQuery() as WechatMiniprogram.SelectorQuery & {
       in?(component: object): WechatMiniprogram.SelectorQuery
     }
@@ -1116,10 +1146,12 @@ Page({
         if (
           !this.editorActive
           || initiatingGeneration !== this.editorGeneration
+          || initiatingQueryRevision !== this.canvasQueryRevision
         ) {
           return
         }
         this.canvasQueryPending = false
+        if (!result) return
         const canvasResult = result as {
           node?: CanvasNode
           width?: number
@@ -1134,9 +1166,7 @@ Page({
           return
         }
         if (this.canvasNode && this.canvasNode !== canvas) {
-          this.cancelCanvasRedraw()
-          this.canvasImages = {}
-          this.canvasImageQueue = []
+          this.resetCanvasImagesForNewCanvas()
         }
         this.canvasNode = canvas
         const dpr = wx.getSystemInfoSync().pixelRatio || 1
@@ -1315,6 +1345,7 @@ Page({
         cacheKey,
         imageUrl: canvasImageUrl,
         generation: this.editorGeneration,
+        imageRevision: this.canvasImageRevision,
       })
       this.pumpCanvasImageQueue()
       return null
@@ -1332,6 +1363,7 @@ Page({
       if (
         !this.editorActive
         || request.generation !== this.editorGeneration
+        || request.imageRevision !== this.canvasImageRevision
         || request.canvas !== this.canvasNode
         || this.canvasImages[request.cacheKey] !== 'queued'
         || !request.canvas.createImage
@@ -1360,6 +1392,10 @@ Page({
       0,
       this.activeCanvasImageLoads - 1,
     )
+    if (request.imageRevision !== this.canvasImageRevision) {
+      this.pumpCanvasImageQueue()
+      return
+    }
     if (
       !this.editorActive
       || request.canvas !== this.canvasNode
@@ -1408,10 +1444,188 @@ Page({
     }
   },
 
-  exportPreview(): Promise<string> {
+  createExportCanvas(): CanvasNode {
+    const runtime = wx as unknown as {
+      createOffscreenCanvas?: (options: {
+        type: '2d'
+        width: number
+        height: number
+      }) => CanvasNode | null | undefined
+    }
+    if (typeof runtime.createOffscreenCanvas !== 'function') {
+      throw new Error('当前微信版本不支持生成方案预览，请升级后重试')
+    }
+    let canvas: CanvasNode | null | undefined
+    try {
+      canvas = runtime.createOffscreenCanvas({
+        type: '2d',
+        width: EXPORT_CANVAS_SIZE,
+        height: EXPORT_CANVAS_SIZE,
+      })
+    } catch {
+      throw new Error('方案预览画布创建失败，请重试')
+    }
+    if (!canvas || typeof canvas.getContext !== 'function') {
+      throw new Error('方案预览画布创建失败，请重试')
+    }
+    return canvas
+  },
+
+  renderExportCanvas(
+    canvas: CanvasNode,
+    exportImages: Record<number, CanvasImage>,
+  ) {
+    const visualConfig = this.config?.visualConfig
+    if (!visualConfig) {
+      throw new Error('方案预览尚未准备好，请稍后重试')
+    }
+    const catalogMap = this.catalogMap()
+    const points = layoutBracelet(
+      this.data.sequence,
+      catalogMap,
+      { width: EXPORT_CANVAS_SIZE, height: EXPORT_CANVAS_SIZE },
+    ).map((point) => ({
+      ...point,
+      colorHex: catalogMap[point.skuId]?.colorHex,
+    }))
+    const plan = buildBraceletRenderPlan(
+      points,
+      visualConfig,
+      this.data.selectedIndex,
+      { cordColor: this.currentCord()?.colorHex },
+    )
+    const context = canvas.getContext('2d')
+    renderBraceletCanvas(
+      toBraceletDrawingContext(
+        context,
+        EXPORT_CANVAS_SIZE,
+        EXPORT_CANVAS_SIZE,
+      ),
+      plan,
+      (point) => exportImages[point.skuId] || null,
+    )
+  },
+
+  loadExportImages(
+    canvas: CanvasNode,
+  ): Promise<Record<number, CanvasImage>> {
+    const catalogMap = Object.fromEntries(
+      this.data.catalog.map((item) => [item.id, item]),
+    ) as Record<number, CatalogItem>
+    const items = Array.from(new Set(this.data.sequence))
+      .map((skuId) => catalogMap[skuId])
+      .filter((item): item is CatalogItem => Boolean(item))
+    const exportImages: Record<number, CanvasImage> = {}
+    if (!canvas.createImage || items.length === 0) {
+      return Promise.resolve(exportImages)
+    }
+
+    return new Promise((resolve) => {
+      let settled = false
+      let nextItemIndex = 0
+      let activeItems = 0
+      let completedItems = 0
+      let timeoutId: ReturnType<typeof setTimeout> | null = null
+      const activeImages = new Set<CanvasImage>()
+
+      const detachImage = (image: CanvasImage, abort: boolean) => {
+        image.onload = () => undefined
+        image.onerror = () => undefined
+        activeImages.delete(image)
+        if (!abort) return
+        try {
+          image.src = ''
+        } catch {
+          // Some Canvas implementations expose a read-only src after failure.
+        }
+      }
+
+      const finish = (abortActive: boolean) => {
+        if (settled) return
+        settled = true
+        if (timeoutId !== null) clearTimeout(timeoutId)
+        if (abortActive) {
+          Array.from(activeImages).forEach((image) => {
+            detachImage(image, true)
+          })
+        }
+        activeImages.clear()
+        resolve(exportImages)
+      }
+
+      const pump = () => {
+        while (
+          !settled
+          && activeItems < MAX_CONCURRENT_CANVAS_IMAGE_LOADS
+          && nextItemIndex < items.length
+        ) {
+          const item = items[nextItemIndex]
+          nextItemIndex += 1
+          activeItems += 1
+          const imageUrls = Array.from(new Set(
+            [item.canvasImageUrl, item.coverImageUrl].filter(Boolean),
+          ))
+
+          const completeItem = (image: CanvasImage | null) => {
+            if (settled) return
+            if (image) exportImages[item.id] = image
+            activeItems = Math.max(0, activeItems - 1)
+            completedItems += 1
+            if (completedItems === items.length) {
+              finish(false)
+              return
+            }
+            pump()
+          }
+
+          const tryNextUrl = (urlIndex: number) => {
+            if (settled) return
+            if (urlIndex >= imageUrls.length) {
+              completeItem(null)
+              return
+            }
+            let image: CanvasImage
+            try {
+              image = canvas.createImage!()
+            } catch {
+              tryNextUrl(urlIndex + 1)
+              return
+            }
+            activeImages.add(image)
+            let attemptFinished = false
+            image.onload = () => {
+              if (settled || attemptFinished) return
+              attemptFinished = true
+              detachImage(image, false)
+              completeItem(image)
+            }
+            image.onerror = () => {
+              if (settled || attemptFinished) return
+              attemptFinished = true
+              detachImage(image, false)
+              tryNextUrl(urlIndex + 1)
+            }
+            image.src = imageUrls[urlIndex]
+          }
+
+          tryNextUrl(0)
+        }
+      }
+
+      timeoutId = setTimeout(() => {
+        finish(true)
+      }, EXPORT_IMAGE_WAIT_MS)
+      pump()
+    })
+  },
+
+  async exportPreview(): Promise<string> {
+    const canvas = this.createExportCanvas()
+    const exportImages = await this.loadExportImages(canvas)
+    this.renderExportCanvas(canvas, exportImages)
     return new Promise((resolve, reject) => {
       wx.canvasToTempFilePath({
-        canvas: this.canvasNode || undefined,
+        canvas,
         fileType: 'png',
         quality: 0.9,
         success: (response) => resolve(response.tempFilePath),

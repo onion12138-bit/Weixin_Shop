@@ -1,8 +1,8 @@
 .order-page {
   min-height: 100vh;
-  padding: 24rpx 24rpx 190rpx;
+  padding: 34rpx 26rpx 190rpx;
   color: #3f3238;
-  background: #fff7f6;
+  background: #fff8fa;
   box-sizing: border-box;
 }
 

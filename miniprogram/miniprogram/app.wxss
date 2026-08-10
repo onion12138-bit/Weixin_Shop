@@ -1,6 +1,6 @@
 /* 全局只定义品牌基础色和字体；页面布局由对应页面样式负责。 */
 page {
   color: #2f2430;
-  background: #f8f4f0;
+  background: #fff8fa;
   font-family: "PingFang SC", sans-serif;
 }
