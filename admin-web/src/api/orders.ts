@@ -67,6 +67,7 @@ export interface AdminOrder {
   craftFee: number
   cordFee: number
   discountAmount: number
+  shippingFee: number
   totalAmount: number
   couponName: string | null
   contactName: string

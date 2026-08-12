@@ -349,6 +349,7 @@ public class AdminOrderService {
                 order.getCraftFee(),
                 order.getCordFee(),
                 order.getDiscountAmount(),
+                order.getShippingFee(),
                 order.getTotalAmount(),
                 couponName,
                 order.getContactName(),

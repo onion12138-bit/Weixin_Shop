@@ -47,6 +47,8 @@ public class CustomerOrder {
 
     private BigDecimal discountAmount;
 
+    private BigDecimal shippingFee;
+
     private BigDecimal totalAmount;
 
     private LocalDateTime paidAt;
@@ -184,6 +186,14 @@ public class CustomerOrder {
 
     public void setDiscountAmount(BigDecimal discountAmount) {
         this.discountAmount = discountAmount;
+    }
+
+    public BigDecimal getShippingFee() {
+        return shippingFee;
+    }
+
+    public void setShippingFee(BigDecimal shippingFee) {
+        this.shippingFee = shippingFee;
     }
 
     public BigDecimal getTotalAmount() {

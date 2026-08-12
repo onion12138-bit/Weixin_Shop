@@ -3,9 +3,15 @@ import {
   buildCheckoutCoupons,
   couponDiscountCents,
   maskPhone,
+  shippingFeeCents,
 } from '../miniprogram/utils/order-checkout-view-model'
 import type { CustomerCoupon } from '../miniprogram/services/account'
 import type { DiySchemeResponse } from '../miniprogram/services/diy'
+
+declare function require(name: string): unknown
+const { readFileSync } = require('fs') as {
+  readFileSync(path: string, encoding: string): string
+}
 
 describe('order checkout view model', () => {
   it('shows at most three distinct bead rows in first-appearance order', () => {
@@ -44,5 +50,23 @@ describe('order checkout view model', () => {
 
   it('masks standard mobile numbers', () => {
     expect(maskPhone('13812345678')).toBe('138****5678')
+  })
+
+  it('charges base shipping below the threshold after coupon discount', () => {
+    expect(shippingFeeCents(6800, 1000, 6000, 800)).toBe(800)
+    expect(shippingFeeCents(6800, 0, 6000, 800)).toBe(0)
+  })
+
+  it('enforces the configurable minimum at every checkout entry and displays shipping', () => {
+    const editor = readFileSync('miniprogram/pages/diy/editor.ts', 'utf8')
+    const schemes = readFileSync('miniprogram/pages/diy/schemes.ts', 'utf8')
+    const confirm = readFileSync('miniprogram/pages/order/confirm.ts', 'utf8')
+    const markup = readFileSync('miniprogram/pages/order/confirm.wxml', 'utf8')
+
+    expect(editor).toMatch(/goCheckout\(\)[\s\S]*minimumOrderAmountCents/)
+    expect(schemes).toMatch(/createOrder\([\s\S]*minimumOrderAmountCents/)
+    expect(confirm).toMatch(/submitOrder\(\)[\s\S]*minimumOrderCents/)
+    expect(markup).toContain('{{shippingFeeText}}')
+    expect(markup).toContain('{{shippingHint}}')
   })
 })

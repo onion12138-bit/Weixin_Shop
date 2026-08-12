@@ -380,20 +380,20 @@ describe('DIY editor compact layout', () => {
     expect(template).toContain('{{priceText}} · 去下单')
   })
 
-  it('uses compact vertical spacing between editor controls', () => {
+  it('uses balanced vertical spacing between editor controls', () => {
     const styles = readFileSync('miniprogram/pages/diy/editor.wxss', 'utf8')
 
     expect(styles).toMatch(
-      /\.configuration-strip\s*{[^}]*margin-bottom:\s*10rpx;/,
+      /\.configuration-strip\s*{[^}]*margin-bottom:\s*14rpx;/,
     )
     expect(styles).toMatch(
-      /\.selected-actions\s*{[^}]*margin:\s*10rpx 0;/,
+      /\.selected-actions\s*{[^}]*margin:\s*14rpx 0;/,
     )
     expect(styles).toMatch(
-      /\.bead-search\s*{[^}]*margin-bottom:\s*8rpx;/,
+      /\.bead-search\s*{[^}]*margin-bottom:\s*12rpx;/,
     )
     expect(styles).toMatch(
-      /\.category-tabs\s*{[^}]*margin-bottom:\s*8rpx;/,
+      /\.category-filter-row\s*{[^}]*margin-bottom:\s*12rpx;/,
     )
   })
 })

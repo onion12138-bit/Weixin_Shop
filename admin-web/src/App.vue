@@ -4,13 +4,14 @@ import { useAuthStore } from './stores/auth'
 import AiConfigurationView from './views/AiConfigurationView.vue'
 import AiRecommendationLogsView from './views/AiRecommendationLogsView.vue'
 import CatalogView from './views/CatalogView.vue'
+import CommerceSettingsView from './views/CommerceSettingsView.vue'
 import CustomerBenefitsView from './views/CustomerBenefitsView.vue'
 import DiySettingsView from './views/DiySettingsView.vue'
 import LoginView from './views/LoginView.vue'
 import OrderView from './views/OrderView.vue'
 
 const auth = useAuthStore()
-type AdminView = 'catalog' | 'diy' | 'orders' | 'customers' | 'ai' | 'ai-logs'
+type AdminView = 'catalog' | 'diy' | 'commerce' | 'orders' | 'customers' | 'ai' | 'ai-logs'
 const activeView = ref<AdminView>('catalog')
 </script>
 
@@ -45,6 +46,14 @@ const activeView = ref<AdminView>('catalog')
           <small>尺寸 / 工艺费 / 绳材</small>
         </button>
         <p>交易履约</p>
+        <button
+          :class="{ active: activeView === 'commerce' }"
+          @click="activeView = 'commerce'"
+        >
+          <span>¥</span>
+          交易规则
+          <small>起购金额 / 包邮 / 运费</small>
+        </button>
         <button
           :class="{ active: activeView === 'orders' }"
           @click="activeView = 'orders'"
@@ -96,6 +105,7 @@ const activeView = ref<AdminView>('catalog')
     <main class="admin-content">
       <CatalogView v-if="activeView === 'catalog'" />
       <DiySettingsView v-else-if="activeView === 'diy'" />
+      <CommerceSettingsView v-else-if="activeView === 'commerce'" />
       <OrderView v-else-if="activeView === 'orders'" />
       <CustomerBenefitsView v-else-if="activeView === 'customers'" />
       <AiConfigurationView v-else-if="activeView === 'ai'" />

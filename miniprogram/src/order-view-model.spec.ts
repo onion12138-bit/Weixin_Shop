@@ -13,6 +13,7 @@ const pendingOrder = {
   cordFee: 0,
   couponId: null,
   discountAmount: 0,
+  shippingFee: 0,
   totalAmount: 314.8,
   contactName: '张三',
   contactPhone: '13800000000',

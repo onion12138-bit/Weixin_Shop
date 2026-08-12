@@ -5,6 +5,7 @@ import {
   listCategories,
   type Category,
 } from '../../services/catalog'
+import { getCommerceRule } from '../../services/commerce'
 import {
   createScheme,
   getDiyConfiguration,
@@ -204,6 +205,8 @@ Page({
     priceText: '预估 ¥0.00',
     quoteIssues: [] as QuoteIssueItem[],
     authoritative: false,
+    minimumOrderAmountCents: 2000,
+    minimumOrderAmountText: '¥20.00',
     errorMessage: '',
   },
 
@@ -334,6 +337,15 @@ Page({
     })
     try {
       const beadsPromise = listAllPublicBeads()
+      void getCommerceRule()
+        .then((rule) => {
+          const minimumOrderAmountCents = yuanToCents(rule.minimumOrderAmount)
+          this.setData({
+            minimumOrderAmountCents,
+            minimumOrderAmountText: `¥${(minimumOrderAmountCents / 100).toFixed(2)}`,
+          })
+        })
+        .catch(() => undefined)
       const configPromise = getDiyConfiguration().then((config) => {
         this.config = config
         const cordOptions = config.cordOptions.map(toCordOptionItem)
@@ -787,6 +799,10 @@ Page({
 
   async saveDraft() {
     if (this.data.saving) return
+    if (!this.data.sequence.length) {
+      wx.showToast({ title: '请选择您喜欢的珠子', icon: 'none' })
+      return
+    }
     this.setData({ saving: true, errorMessage: '' })
     try {
       await this.persistScheme()
@@ -804,6 +820,13 @@ Page({
     if (this.data.checkingOut || this.data.saving) return
     if (!this.data.sequence.length) {
       wx.showToast({ title: '请先添加珠子', icon: 'none' })
+      return
+    }
+    if (this.currentEstimateCents() < this.data.minimumOrderAmountCents) {
+      wx.showToast({
+        title: `订单商品金额需满 ${this.data.minimumOrderAmountText} 才能下单`,
+        icon: 'none',
+      })
       return
     }
     this.setData({ checkingOut: true, errorMessage: '' })
@@ -1064,6 +1087,16 @@ Page({
   currentCord(): CordOptionItem | undefined {
     return this.data.cordOptions.find(
       (item) => item.id === this.data.cordOptionId,
+    )
+  },
+
+  currentEstimateCents(): number {
+    const config = this.config
+    return estimatePriceCents(
+      this.data.sequence,
+      this.catalogMap(),
+      craftFeeCents(config, this.data.sequence.length),
+      this.currentCord()?.extraFeeCents || 0,
     )
   },
 

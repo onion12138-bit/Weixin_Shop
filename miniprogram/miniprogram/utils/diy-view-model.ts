@@ -52,6 +52,7 @@ export interface SchemeCard {
   name: string
   beadCountText: string
   amountText: string
+  totalAmountCents: number
   statusText: string
   statusClass: string
   previewBeads: SchemePreviewBead[]
@@ -118,6 +119,7 @@ export function toSchemeCard(input: SchemeCardInput): SchemeCard {
     name: input.name,
     beadCountText: `${input.beadCount} 颗`,
     amountText: formatYuan(input.totalAmount),
+    totalAmountCents: Math.max(0, Math.round(Number(input.totalAmount || 0) * 100)),
     statusText: quoteStatusText(input.quoteStatus),
     statusClass: input.quoteStatus.toLowerCase().replace(/_/g, '-'),
     previewBeads: buildSchemePreviewBeads(input),

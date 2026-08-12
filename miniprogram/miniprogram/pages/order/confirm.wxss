@@ -89,6 +89,7 @@ button::after { border: 0; }
 .amount-section .discount-value { color: #b84f75; }
 .amount-section .amount-total { margin-top: 10rpx; padding-top: 19rpx; border-top: 1rpx solid #eee1e5; font-weight: 700; }
 .amount-section .amount-total text:last-child { color: #7e3f57; font-size: 31rpx; }
+.amount-section .shipping-hint { display: block; margin-top: -2rpx; color: #aa7287; font-size: 18rpx; text-align: right; }
 .inline-error { margin: 6rpx 4rpx 20rpx; font-size: 21rpx; }
 
 .checkout-bar {

@@ -3,6 +3,7 @@ package com.diybracelet.mall.order.application;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.diybracelet.mall.catalog.domain.BeadSku;
 import com.diybracelet.mall.catalog.infrastructure.mapper.BeadSkuMapper;
+import com.diybracelet.mall.commerce.application.CommerceRuleService;
 import com.diybracelet.mall.customer.domain.CouponTemplate;
 import com.diybracelet.mall.customer.domain.CustomerCoupon;
 import com.diybracelet.mall.customer.infrastructure.CouponTemplateMapper;
@@ -72,6 +73,7 @@ public class OrderService {
     private final OrderOperationLogMapper operationMapper;
     private final CustomerCouponMapper customerCouponMapper;
     private final CouponTemplateMapper couponTemplateMapper;
+    private final CommerceRuleService commerceRuleService;
     private final InventoryReservationService inventoryReservationService;
     private final ObjectMapper objectMapper;
 
@@ -87,6 +89,7 @@ public class OrderService {
             OrderOperationLogMapper operationMapper,
             CustomerCouponMapper customerCouponMapper,
             CouponTemplateMapper couponTemplateMapper,
+            CommerceRuleService commerceRuleService,
             InventoryReservationService inventoryReservationService,
             ObjectMapper objectMapper
     ) {
@@ -101,6 +104,7 @@ public class OrderService {
         this.operationMapper = operationMapper;
         this.customerCouponMapper = customerCouponMapper;
         this.couponTemplateMapper = couponTemplateMapper;
+        this.commerceRuleService = commerceRuleService;
         this.inventoryReservationService = inventoryReservationService;
         this.objectMapper = objectMapper;
     }
@@ -125,6 +129,19 @@ public class OrderService {
                     "当前方案不可报价，不能下单"
             );
         }
+        CommerceRuleService.CheckoutRule checkoutRule =
+                commerceRuleService.checkoutRule();
+        if (evaluation.totalAmount().compareTo(
+                checkoutRule.minimumOrderAmount()
+        ) < 0) {
+            throw new BusinessException(
+                    ErrorCode.COMMON_BAD_REQUEST,
+                    "订单商品金额需满 "
+                            + checkoutRule.minimumOrderAmount()
+                                    .stripTrailingZeros().toPlainString()
+                            + " 元才能下单"
+            );
+        }
 
         Map<Long, Integer> quantities = quantitiesByFirstAppearance(sequence);
         Map<Long, BeadSku> beadsById = loadSellableBeads(quantities);
@@ -140,7 +157,8 @@ public class OrderService {
                 sequence,
                 quantities,
                 evaluation,
-                coupon
+                coupon,
+                checkoutRule
         );
         orderMapper.insert(order);
         addOperation(
@@ -415,7 +433,8 @@ public class OrderService {
             List<Long> sequence,
             Map<Long, Integer> quantities,
             DiyEvaluation evaluation,
-            CouponSelection coupon
+            CouponSelection coupon,
+            CommerceRuleService.CheckoutRule checkoutRule
     ) {
         CustomerOrder order = new CustomerOrder();
         order.setOrderNo(generateOrderNo());
@@ -438,9 +457,10 @@ public class OrderService {
         order.setCouponId(coupon.customerCoupon() == null
                 ? null : coupon.customerCoupon().getId());
         order.setDiscountAmount(coupon.discountAmount());
-        order.setTotalAmount(evaluation.totalAmount().subtract(
-                coupon.discountAmount()
-        ));
+        BigDecimal discountedProductAmount = evaluation.totalAmount()
+                .subtract(coupon.discountAmount());
+        order.setShippingFee(checkoutRule.shippingFee(discountedProductAmount));
+        order.setTotalAmount(discountedProductAmount.add(order.getShippingFee()));
         order.setVersion(0L);
         return order;
     }
@@ -484,6 +504,7 @@ public class OrderService {
                 order.getCordFee(),
                 order.getCouponId(),
                 order.getDiscountAmount(),
+                order.getShippingFee(),
                 order.getTotalAmount(),
                 order.getContactName(),
                 order.getContactPhone(),

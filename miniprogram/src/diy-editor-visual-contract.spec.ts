@@ -67,6 +67,15 @@ describe('DIY editor visual contract', () => {
       "{{item.isFavorite ? '♥' : '♡'}}",
     )
   })
+
+  it('keeps the all-material button outside the horizontally scrolling categories', () => {
+    expect(editorMarkup).toMatch(
+      /class="category-filter-row"[\s\S]*class="category-all[^"]*"[\s\S]*<scroll-view scroll-x class="category-tabs">/,
+    )
+    expect(editorStyles).toMatch(
+      /\.category-all\s*\{[^}]*flex:\s*0 0 auto;/s,
+    )
+  })
 })
 
 export {}

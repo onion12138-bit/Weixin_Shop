@@ -16,6 +16,7 @@ public record AdminOrderResponse(
         BigDecimal craftFee,
         BigDecimal cordFee,
         BigDecimal discountAmount,
+        BigDecimal shippingFee,
         BigDecimal totalAmount,
         String couponName,
         String contactName,

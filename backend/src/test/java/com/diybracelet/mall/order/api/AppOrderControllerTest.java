@@ -61,7 +61,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         where bead_sku_id in (2001, 2002, 2003, 2004);
         """,
         "update bead_sku set sale_price = 12.80, status = 'ON_SALE' where id = 2001",
-        "update bead_sku set sale_price = 16.80, status = 'ON_SALE' where id = 2002"
+        "update bead_sku set sale_price = 16.80, status = 'ON_SALE' where id = 2002",
+        "update commerce_rule_config set minimum_order_amount = 20.00, free_shipping_threshold = 60.00, base_shipping_fee = 8.00, config_version = 1 where id = 1"
 })
 @Sql(
         statements = {
@@ -82,7 +83,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
                     sold_qty = 0,
                     version = 0
                 where bead_sku_id in (2001, 2002, 2003, 2004);
-                """
+                """,
+                "update commerce_rule_config set minimum_order_amount = 20.00, free_shipping_threshold = 60.00, base_shipping_fee = 8.00, config_version = 1 where id = 1"
         },
         executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD
 )
@@ -140,6 +142,47 @@ class AppOrderControllerTest extends MySqlIntegrationTest {
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isEmpty());
+    }
+
+    @Test
+    void shouldChargeShippingBelowFreeShippingThreshold() throws Exception {
+        String token = customerToken("shipping-fee-order-test");
+        Long schemeId = createScheme(token, sequence(1, 0));
+
+        mockMvc.perform(post("/api/app/orders")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "schemeId", schemeId,
+                                "contactName", "张三",
+                                "contactPhone", "13800000000",
+                                "addressDetail", "上海市浦东新区演示路 1 号"
+                        ))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.shippingFee").value(8.00))
+                .andExpect(jsonPath("$.data.totalAmount").value(30.80));
+    }
+
+    @Test
+    void shouldRejectOrderBelowConfiguredMinimumAmount() throws Exception {
+        jdbcTemplate.update(
+                "update commerce_rule_config set minimum_order_amount = 30.00 where id = 1"
+        );
+        String token = customerToken("minimum-order-test");
+        Long schemeId = createScheme(token, sequence(1, 0));
+
+        mockMvc.perform(post("/api/app/orders")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "schemeId", schemeId,
+                                "contactName", "张三",
+                                "contactPhone", "13800000000",
+                                "addressDetail", "上海市浦东新区演示路 1 号"
+                        ))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message")
+                        .value("订单商品金额需满 30 元才能下单"));
     }
 
     @Test

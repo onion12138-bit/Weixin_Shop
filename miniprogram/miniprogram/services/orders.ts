@@ -37,6 +37,7 @@ export interface OrderResponse {
   cordFee: number
   couponId: number | null
   discountAmount: number
+  shippingFee: number
   totalAmount: number
   contactName: string
   contactPhone: string

@@ -77,6 +77,18 @@ export function couponDiscountCents(
     : 0
 }
 
+export function shippingFeeCents(
+  productTotalCents: number,
+  discountCents: number,
+  freeShippingThresholdCents: number,
+  baseShippingFeeCents: number,
+): number {
+  const discountedProductCents = Math.max(0, productTotalCents - discountCents)
+  return discountedProductCents >= Math.max(0, freeShippingThresholdCents)
+    ? 0
+    : Math.max(0, baseShippingFeeCents)
+}
+
 export function maskPhone(phone: string): string {
   const normalized = phone.trim()
   if (normalized.length < 7) return normalized

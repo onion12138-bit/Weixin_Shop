@@ -30,6 +30,7 @@ const productionOrder = {
   craftFee: 10,
   cordFee: 0,
   discountAmount: 20,
+  shippingFee: 0,
   totalAmount: 294.8,
   couponName: '满200减20元',
   contactName: '张三',

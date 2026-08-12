@@ -68,6 +68,7 @@ export function toOrderDetail(order: OrderResponse) {
     craftFeeText: money(order.craftFee),
     cordFeeText: money(order.cordFee),
     discountAmountText: `-${money(order.discountAmount)}`,
+    shippingFeeText: money(order.shippingFee),
   }
 }
 

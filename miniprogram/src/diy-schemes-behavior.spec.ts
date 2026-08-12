@@ -5,11 +5,19 @@ const { readFileSync } = require('fs') as {
   readFileSync(path: string, encoding: string): string
 }
 
+const editorSource = readFileSync(
+  'miniprogram/pages/diy/editor.ts',
+  'utf8',
+)
+
 import { toSchemeCard } from '../miniprogram/utils/diy-view-model'
 
 jest.mock('../miniprogram/services/diy', () => ({
   deleteScheme: jest.fn(),
   listSchemes: jest.fn(),
+}))
+jest.mock('../miniprogram/services/commerce', () => ({
+  getCommerceRule: jest.fn(),
 }))
 
 function loadSchemesPage() {
@@ -40,6 +48,12 @@ function loadSchemesPage() {
 }
 
 describe('DIY schemes page behavior', () => {
+  it('asks the customer to choose beads before saving an empty design', () => {
+    expect(editorSource).toMatch(
+      /async saveDraft\(\)[\s\S]*!this\.data\.sequence\.length[\s\S]*请选择您喜欢的珠子/,
+    )
+  })
+
   it('keeps the full bracelet visible inside the fixed-size preview area', () => {
     const template = readFileSync('miniprogram/pages/diy/schemes.wxml', 'utf8')
     const styles = readFileSync('miniprogram/pages/diy/schemes.wxss', 'utf8')

@@ -282,7 +282,7 @@ onBeforeUnmount(() => {
 
         <section class="detail-card payment-card">
           <header><h2>D. 支付信息</h2></header>
-          <div class="payment-columns"><dl><div><dt>商品总价</dt><dd>{{ formatMoney(originalAmount) }}</dd></div><div><dt>优惠券</dt><dd>{{ order.couponName || '未使用' }}</dd></div><div><dt>优惠抵扣</dt><dd class="discount">-{{ formatMoney(order.discountAmount) }}</dd></div><div><dt>运费</dt><dd>¥0.00</dd></div><div class="paid-total"><dt>实付款</dt><dd>{{ formatMoney(order.totalAmount) }}</dd></div></dl><dl><div><dt>支付方式</dt><dd>{{ paymentLabel(order) }}</dd></div><div><dt>支付时间</dt><dd>{{ formatDate(order.payment?.paidAt || order.paidAt) }}</dd></div></dl></div>
+          <div class="payment-columns"><dl><div><dt>商品总价</dt><dd>{{ formatMoney(originalAmount) }}</dd></div><div><dt>优惠券</dt><dd>{{ order.couponName || '未使用' }}</dd></div><div><dt>优惠抵扣</dt><dd class="discount">-{{ formatMoney(order.discountAmount) }}</dd></div><div><dt>运费</dt><dd>{{ formatMoney(order.shippingFee) }}</dd></div><div class="paid-total"><dt>实付款</dt><dd>{{ formatMoney(order.totalAmount) }}</dd></div></dl><dl><div><dt>支付方式</dt><dd>{{ paymentLabel(order) }}</dd></div><div><dt>支付时间</dt><dd>{{ formatDate(order.payment?.paidAt || order.paidAt) }}</dd></div></dl></div>
         </section>
 
         <section class="detail-card operation-card">

@@ -19,6 +19,7 @@ public record OrderResponse(
         BigDecimal cordFee,
         Long couponId,
         BigDecimal discountAmount,
+        BigDecimal shippingFee,
         BigDecimal totalAmount,
         String contactName,
         String contactPhone,

@@ -56,7 +56,8 @@
     <view class="section-card amount-section">
       <view><text>商品金额</text><text>{{productTotalText}}</text></view>
       <view><text>优惠券抵扣</text><text class="discount-value">{{discountText}}</text></view>
-      <view><text>配送费</text><text>¥0.00</text></view>
+      <view><text>配送费</text><text>{{shippingFeeText}}</text></view>
+      <text class="shipping-hint">{{shippingHint}}</text>
       <view class="amount-total"><text>应付金额</text><text>{{payableText}}</text></view>
     </view>
 

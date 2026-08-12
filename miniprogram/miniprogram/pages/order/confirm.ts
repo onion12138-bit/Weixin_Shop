@@ -1,5 +1,6 @@
 import { listAddresses, listCoupons, type CustomerAddress } from '../../services/account'
 import { getScheme, type DiySchemeResponse } from '../../services/diy'
+import { getCommerceRule, type CommerceRule } from '../../services/commerce'
 import { createOrder } from '../../services/orders'
 import { ApiError } from '../../services/request'
 import {
@@ -8,6 +9,7 @@ import {
   couponDiscountCents,
   formatCents,
   maskPhone,
+  shippingFeeCents,
   yuanToCents,
   type CheckoutCouponItem,
 } from '../../utils/order-checkout-view-model'
@@ -34,6 +36,13 @@ Page({
     productTotalText: '¥0.00',
     discountCents: 0,
     discountText: '-¥0.00',
+    minimumOrderCents: 0,
+    minimumOrderText: '¥0.00',
+    freeShippingThresholdCents: 0,
+    baseShippingFeeCents: 0,
+    shippingFeeCents: 0,
+    shippingFeeText: '¥0.00',
+    shippingHint: '',
     payableCents: 0,
     payableText: '¥0.00',
     savedText: '已优惠 ¥0.00',
@@ -57,15 +66,17 @@ Page({
     }
     this.setData({ loading: true, errorMessage: '' })
     try {
-      const [scheme, addresses, rawCoupons] = await Promise.all([
+      const [scheme, addresses, rawCoupons, commerceRule] = await Promise.all([
         getScheme(this.data.schemeId),
         listAddresses().catch(() => []),
         listCoupons().catch(() => []),
+        getCommerceRule(),
       ])
       const address = preferredAddress(addresses)
       const productTotalCents = yuanToCents(scheme.totalAmount)
       const beadSummary = buildCheckoutBeads(scheme)
       const coupons = buildCheckoutCoupons(rawCoupons, productTotalCents, 0)
+      const commerce = commerceRuleData(commerceRule, productTotalCents, 0)
       this.setData({
         scheme,
         previewUrl: scheme.previewUrl || '/assets/images/bead-placeholder.svg',
@@ -78,8 +89,9 @@ Page({
         coupons,
         productTotalCents,
         productTotalText: formatCents(productTotalCents),
-        payableCents: productTotalCents,
-        payableText: formatCents(productTotalCents),
+        ...commerce,
+        payableCents: productTotalCents + commerce.shippingFeeCents,
+        payableText: formatCents(productTotalCents + commerce.shippingFeeCents),
       })
       this.pageReady = true
     } catch (error) {
@@ -132,20 +144,38 @@ Page({
       this.data.productTotalCents,
     )
     const payableCents = Math.max(0, this.data.productTotalCents - discountCents)
+    const shippingFee = shippingFeeCents(
+      this.data.productTotalCents,
+      discountCents,
+      this.data.freeShippingThresholdCents,
+      this.data.baseShippingFeeCents,
+    )
     this.setData({
       coupons,
       selectedCouponId: id,
       selectedCouponName: id ? (coupon?.name || '已选择优惠券') : '暂不使用优惠券',
       discountCents,
       discountText: `-${formatCents(discountCents)}`,
-      payableCents,
-      payableText: formatCents(payableCents),
+      shippingFeeCents: shippingFee,
+      shippingFeeText: formatCents(shippingFee),
+      shippingHint: shippingFee
+        ? `优惠后商品满 ${formatCents(this.data.freeShippingThresholdCents)} 包邮`
+        : '已享包邮',
+      payableCents: payableCents + shippingFee,
+      payableText: formatCents(payableCents + shippingFee),
       savedText: `已优惠 ${formatCents(discountCents)}`,
       couponModalVisible: false,
     })
   },
 
   async submitOrder() {
+    if (this.data.productTotalCents < this.data.minimumOrderCents) {
+      wx.showToast({
+        title: `订单商品金额需满 ${this.data.minimumOrderText} 才能下单`,
+        icon: 'none',
+      })
+      return
+    }
     const address = this.data.address
     if (!address) {
       wx.showToast({ title: '请先添加收货地址', icon: 'none' })
@@ -181,4 +211,31 @@ function readableError(error: unknown, fallback: string): string {
     return error.traceId ? `${error.message}（${error.traceId}）` : error.message
   }
   return error instanceof Error ? error.message : fallback
+}
+
+function commerceRuleData(
+  rule: CommerceRule,
+  productTotalCents: number,
+  discountCents: number,
+) {
+  const minimumOrderCents = yuanToCents(rule.minimumOrderAmount)
+  const freeShippingThresholdCents = yuanToCents(rule.freeShippingThreshold)
+  const baseShippingFeeCents = yuanToCents(rule.baseShippingFee)
+  const shippingFee = shippingFeeCents(
+    productTotalCents,
+    discountCents,
+    freeShippingThresholdCents,
+    baseShippingFeeCents,
+  )
+  return {
+    minimumOrderCents,
+    minimumOrderText: formatCents(minimumOrderCents),
+    freeShippingThresholdCents,
+    baseShippingFeeCents,
+    shippingFeeCents: shippingFee,
+    shippingFeeText: formatCents(shippingFee),
+    shippingHint: shippingFee
+      ? `优惠后商品满 ${formatCents(freeShippingThresholdCents)} 包邮`
+      : '已享包邮',
+  }
 }

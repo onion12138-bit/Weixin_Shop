@@ -70,18 +70,20 @@
           <button bindtap="searchCatalog">搜索</button>
         </view>
 
-        <scroll-view scroll-x class="category-tabs">
-          <button class="{{categoryId === 0 ? 'active' : ''}}" data-id="0" bindtap="chooseCategory">全部</button>
-          <button
-            wx:for="{{categories}}"
-            wx:key="id"
-            class="{{categoryId === item.id ? 'active' : ''}}"
-            data-id="{{item.id}}"
-            bindtap="chooseCategory"
-          >
-            {{item.name}}
-          </button>
-        </scroll-view>
+        <view class="category-filter-row">
+          <button class="category-all {{categoryId === 0 ? 'active' : ''}}" data-id="0" bindtap="chooseCategory">全部</button>
+          <scroll-view scroll-x class="category-tabs">
+            <button
+              wx:for="{{categories}}"
+              wx:key="id"
+              class="{{categoryId === item.id ? 'active' : ''}}"
+              data-id="{{item.id}}"
+              bindtap="chooseCategory"
+            >
+              {{item.name}}
+            </button>
+          </scroll-view>
+        </view>
 
         <view class="tray-heading">
           <view>

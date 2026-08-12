@@ -11,7 +11,7 @@ page {
 }
 
 .diy-controls {
-  padding-bottom: 6rpx;
+  padding-bottom: 10rpx;
   background: #faf6f3;
 }
 
@@ -71,7 +71,7 @@ page {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 12rpx;
-  margin-bottom: 10rpx;
+  margin-bottom: 14rpx;
 }
 
 .configuration-strip button {
@@ -228,8 +228,8 @@ page {
 }
 
 .selected-actions {
-  margin: 10rpx 0;
-  padding: 12rpx;
+  margin: 14rpx 0;
+  padding: 14rpx 12rpx;
   border-radius: 20rpx;
   background: #fff;
 }
@@ -256,12 +256,23 @@ page {
   background: #f6f1f3;
 }
 
+.category-filter-row {
+  display: flex;
+  gap: 10rpx;
+  min-width: 0;
+  margin-bottom: 12rpx;
+  align-items: center;
+}
+
 .category-tabs {
-  margin-bottom: 8rpx;
+  width: 0;
+  min-width: 0;
+  flex: 1;
   white-space: nowrap;
 }
 
-.category-tabs button {
+.category-tabs button,
+.category-all {
   display: inline-block;
   width: auto;
   min-width: 130rpx;
@@ -275,13 +286,19 @@ page {
   background: #fff;
 }
 
-.category-tabs .active {
+.category-tabs .active,
+.category-all.active {
   color: #fff;
   background: #754657;
 }
 
+.category-all {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
 .bead-search {
-  margin-bottom: 8rpx;
+  margin-bottom: 12rpx;
 }
 
 .bead-search input {
@@ -360,7 +377,7 @@ page {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 0 0 6rpx;
+  margin: 2rpx 0 10rpx;
 }
 
 .tray-heading view text {

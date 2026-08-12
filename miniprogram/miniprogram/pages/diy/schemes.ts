@@ -2,6 +2,7 @@ import {
   deleteScheme as deleteDiyScheme,
   listSchemes,
 } from '../../services/diy'
+import { getCommerceRule } from '../../services/commerce'
 import {
   toSchemeCard,
   type SchemeCard,
@@ -19,6 +20,8 @@ Page({
   data: {
     loading: true,
     errorMessage: '',
+    minimumOrderAmountCents: 2000,
+    minimumOrderAmountText: '¥20.00',
     schemes: [] as Array<SchemeCard & { previewPending: boolean }>,
   },
 
@@ -30,11 +33,28 @@ Page({
     this.setData({ loading: true, errorMessage: '' })
     try {
       const pending = readPendingPreview()
-      const schemes = (await listSchemes()).map((scheme) => ({
+      const [rawSchemes, commerceRule] = await Promise.all([
+        listSchemes(),
+        getCommerceRule().catch(() => ({
+          minimumOrderAmount: this.data.minimumOrderAmountCents / 100,
+          freeShippingThreshold: 60,
+          baseShippingFee: 8,
+          configVersion: 0,
+        })),
+      ])
+      const minimumOrderAmountCents = Math.max(
+        0,
+        Math.round(Number(commerceRule.minimumOrderAmount || 0) * 100),
+      )
+      const schemes = rawSchemes.map((scheme) => ({
         ...toSchemeCard(scheme),
         previewPending: pending?.schemeId === scheme.id && pending.previewPending,
       }))
-      this.setData({ schemes })
+      this.setData({
+        schemes,
+        minimumOrderAmountCents,
+        minimumOrderAmountText: `¥${(minimumOrderAmountCents / 100).toFixed(2)}`,
+      })
     } catch (error) {
       this.setData({
         errorMessage: error instanceof Error ? error.message : '方案加载失败',
@@ -53,6 +73,15 @@ Page({
   createOrder(event: WechatMiniprogram.TouchEvent) {
     const id = Number(event.currentTarget.dataset.id || 0)
     if (!id) return
+    const scheme = this.data.schemes.find((item) => item.id === id)
+    if (!scheme) return
+    if (scheme.totalAmountCents < this.data.minimumOrderAmountCents) {
+      wx.showToast({
+        title: `订单商品金额需满 ${this.data.minimumOrderAmountText} 才能下单`,
+        icon: 'none',
+      })
+      return
+    }
     wx.navigateTo({ url: `/pages/order/confirm?schemeId=${id}` })
   },
 

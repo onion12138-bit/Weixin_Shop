@@ -23,6 +23,10 @@ jest.mock('../miniprogram/services/diy', () => ({
   yuanToCents: (value: number) => Math.round(value * 100),
 }))
 
+jest.mock('../miniprogram/services/commerce', () => ({
+  getCommerceRule: jest.fn(),
+}))
+
 const bead = {
   id: 2001,
   skuCode: 'BEAD-2001',
@@ -119,17 +123,27 @@ function loadEditor(options: { removeThrows?: boolean } = {}) {
       getDiyConfiguration: jest.Mock
       getScheme: jest.Mock
     }
+    const commerce = jest.requireMock('../miniprogram/services/commerce') as {
+      getCommerceRule: jest.Mock
+    }
     catalog.listAllPublicBeads.mockReset()
     catalog.listBeads.mockReset()
     catalog.listCategories.mockReset()
     diy.getDiyConfiguration.mockReset()
     diy.getScheme.mockReset()
+    commerce.getCommerceRule.mockReset()
     catalog.listAllPublicBeads.mockResolvedValue([bead])
     catalog.listBeads.mockResolvedValue({
       items: [bead], total: 1, page: 1, size: 30,
     })
     catalog.listCategories.mockResolvedValue([])
     diy.getDiyConfiguration.mockResolvedValue(config)
+    commerce.getCommerceRule.mockResolvedValue({
+      minimumOrderAmount: 20,
+      freeShippingThreshold: 60,
+      baseShippingFee: 8,
+      configVersion: 1,
+    })
     diy.getScheme.mockResolvedValue({
       id: 91,
       name: '之前保存的设计',

@@ -46,6 +46,7 @@
       <view><text>工艺费</text><text>{{order.craftFeeText}}</text></view>
       <view><text>绳材加价</text><text>{{order.cordFeeText}}</text></view>
       <view wx:if="{{order.discountAmount}}"><text>优惠券抵扣</text><text>{{order.discountAmountText}}</text></view>
+      <view><text>配送费</text><text>{{order.shippingFeeText}}</text></view>
       <view class="total-row"><text>订单总额</text><strong>{{order.amountText}}</strong></view>
     </view>
 
