@@ -257,4 +257,37 @@ describe('OrderView', () => {
     expect(wrapper.get('[data-test="order-toast"]').text()).toContain('请填写物流公司和物流单号')
     expect(wrapper.find('.notice.error-notice').exists()).toBe(false)
   })
+
+  it('opens shipped logistics in a list modal without navigating to detail', async () => {
+    const shippedOrder = {
+      ...productionOrder,
+      status: 'SHIPPED' as const,
+      shippedAt: '2026-08-08T11:30:45',
+      fulfillment: {
+        ...productionOrder.fulfillment,
+        status: 'SHIPPED' as const,
+        logisticsCompany: '顺丰速运',
+        trackingNo: 'SF1234567890',
+        shippedAt: '2026-08-08T11:30:45',
+      },
+    }
+    vi.mocked(listAdminOrders).mockResolvedValue({
+      items: [shippedOrder], total: 1, page: 1, size: 10,
+    })
+    const wrapper = mount(OrderView)
+    await flushPromises()
+
+    await wrapper.get('[data-test="view-logistics"]').trigger('click')
+
+    expect(wrapper.get('[aria-label="查看物流信息"]').text()).toContain('顺丰速运')
+    expect(wrapper.get('[data-test="logistics-tracking-no"]').text()).toBe('SF1234567890')
+    expect(getAdminOrder).not.toHaveBeenCalled()
+  })
+
+  it('shows seconds in order list timestamps', async () => {
+    const wrapper = mount(OrderView)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('2026-08-08 10:21:00')
+  })
 })

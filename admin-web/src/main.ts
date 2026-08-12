@@ -1,5 +1,6 @@
 import { createApp } from 'vue'
 import App from './App.vue'
+import { installInputClearButtons } from './utils/input-clear'
 import './style.css'
 
 /**
@@ -9,3 +10,4 @@ import './style.css'
  * 此处只负责创建并挂载 Vue 根应用。
  */
 createApp(App).mount('#app')
+installInputClearButtons(document)

@@ -1,4 +1,5 @@
 import type { AdminOrder, OrderStatus } from '../api/orders'
+import { formatDateTime } from '../utils/date-time'
 
 export const statusLabels: Record<OrderStatus, string> = {
   PENDING_PAYMENT: '待付款',
@@ -27,8 +28,7 @@ export function formatMoney(value: number): string {
 }
 
 export function formatDate(value: string | null): string {
-  if (!value) return '—'
-  return value.replace('T', ' ').slice(0, 16)
+  return formatDateTime(value)
 }
 
 export function maskPhone(value: string): string {

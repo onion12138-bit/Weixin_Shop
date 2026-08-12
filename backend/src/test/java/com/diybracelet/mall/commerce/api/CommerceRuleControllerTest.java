@@ -26,22 +26,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "app.customer-auth.jwt-issuer=diy-customer-test",
         "app.customer-auth.identity-pepper=identity-test-pepper-0123456789012"
 })
-@Sql(statements = """
-        update commerce_rule_config
-        set minimum_order_amount = 20.00,
-            free_shipping_threshold = 60.00,
-            base_shipping_fee = 8.00,
-            config_version = 1
-        where id = 1
-        """)
-@Sql(statements = """
-        update commerce_rule_config
-        set minimum_order_amount = 20.00,
-            free_shipping_threshold = 60.00,
-            base_shipping_fee = 8.00,
-            config_version = 1
-        where id = 1
-        """, executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD)
+@Sql(statements = "update commerce_rule_config set minimum_order_amount = 20.00, "
+        + "free_shipping_threshold = 60.00, base_shipping_fee = 8.00, "
+        + "config_version = 1 where id = 1")
+@Sql(statements = "update commerce_rule_config set minimum_order_amount = 20.00, "
+        + "free_shipping_threshold = 60.00, base_shipping_fee = 8.00, "
+        + "config_version = 1 where id = 1",
+        executionPhase = Sql.ExecutionPhase.AFTER_TEST_METHOD)
 class CommerceRuleControllerTest extends MySqlIntegrationTest {
 
     @Autowired
@@ -78,7 +69,8 @@ class CommerceRuleControllerTest extends MySqlIntegrationTest {
                         org.springframework.test.web.servlet.request.MockMvcRequestBuilders
                                 .post("/api/app/session/guest")
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content("{\"installationId\":\"commerce-rule-test\"}")
+                                .content("{\"installationId\":"
+                                        + "\"8b111d7f-025a-4f97-8888-000000002603\"}")
                 )
                 .andReturn().getResponse().getContentAsString();
         return new com.fasterxml.jackson.databind.ObjectMapper()

@@ -2,7 +2,9 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ApiError, resolveApiResourceUrl } from '../api/http'
 import OverflowText from '../components/OverflowText.vue'
+import ListPagination from '../components/ListPagination.vue'
 import defaultAvatar from '../../../miniprogram/miniprogram/assets/images/profile/avatar.webp'
+import { formatDateTime } from '../utils/date-time'
 import {
   changeCustomerAddressStatus,
   createCouponTemplate,
@@ -26,6 +28,10 @@ const customers = ref<CustomerSummary[]>([])
 const addresses = ref<AdminCustomerAddress[]>([])
 const coupons = ref<CouponTemplate[]>([])
 const customerKeyword = ref('')
+const customerPage = ref(1)
+const customerPageSize = ref(10)
+const couponPage = ref(1)
+const couponPageSize = ref(10)
 const addressStatus = ref<'' | 'ACTIVE' | 'DELETED'>('')
 const addressCustomer = ref<CustomerSummary | null>(null)
 const loading = ref(false)
@@ -51,6 +57,14 @@ const filteredCustomers = computed(() => {
     customer.nickname, customer.phone, customer.address, String(customer.id),
   ].some((value) => value.toLowerCase().includes(query)))
 })
+const pagedCustomers = computed(() => filteredCustomers.value.slice(
+  (customerPage.value - 1) * customerPageSize.value,
+  customerPage.value * customerPageSize.value,
+))
+const pagedCoupons = computed(() => coupons.value.slice(
+  (couponPage.value - 1) * couponPageSize.value,
+  couponPage.value * couponPageSize.value,
+))
 
 const selectedCustomers = computed(() => {
   const lookup = new Map(
@@ -81,7 +95,12 @@ function readableError(error: unknown): string {
 }
 
 function formatDate(value: string): string {
-  return value ? value.replace('T', ' ').slice(0, 16) : '—'
+  return formatDateTime(value)
+}
+
+function resetCustomerSearch(): void {
+  customerKeyword.value = ''
+  customerPage.value = 1
 }
 
 function avatarUrl(value: string | null): string {
@@ -314,14 +333,15 @@ onBeforeUnmount(() => {
 
     <template v-if="activeTab === 'customers'">
       <div class="customer-toolbar customer-search-toolbar">
-        <input v-model="customerKeyword" placeholder="搜索昵称、手机号、地址或客户编号" />
+        <input v-model="customerKeyword" placeholder="搜索昵称、手机号、地址或客户编号" @input="customerPage = 1" />
+        <button class="secondary-button" type="button" @click="resetCustomerSearch">重置</button>
         <span>共 {{ filteredCustomers.length }} 位客户</span>
       </div>
       <div v-if="loading" class="empty-state">正在读取客户信息…</div>
       <div v-else-if="!filteredCustomers.length" class="empty-state">暂无符合条件的客户</div>
       <div v-else class="address-table customer-table">
         <div class="customer-row customer-head"><span>客户</span><span>手机号</span><span>默认收货地址</span><span>地址簿</span><span>来源</span><span>加入时间</span></div>
-        <div v-for="customer in filteredCustomers" :key="customer.id" class="customer-row">
+        <div v-for="customer in pagedCustomers" :key="customer.id" class="customer-row">
           <span class="customer-identity">
             <img v-if="customer.avatarUrl" :src="avatarUrl(customer.avatarUrl)" :alt="customer.nickname" />
             <img v-else :src="defaultAvatar" alt="默认头像" />
@@ -333,6 +353,7 @@ onBeforeUnmount(() => {
           <span><em class="source-badge">{{ customer.source === 'GUEST' ? '小程序访客' : customer.source }}</em></span>
           <span>{{ formatDate(customer.createdAt) }}</span>
         </div>
+        <ListPagination :page="customerPage" :size="customerPageSize" :total="filteredCustomers.length" @update:page="customerPage = $event" @update:size="customerPageSize = $event; customerPage = 1" />
       </div>
     </template>
 
@@ -358,12 +379,13 @@ onBeforeUnmount(() => {
           <div class="panel-title"><div><p class="section-kicker">BENEFITS</p><h2>优惠券列表</h2></div><span>{{ coupons.length }} 个模板</span></div>
           <div v-if="loading" class="empty-state">正在读取优惠权益…</div>
           <div v-else-if="!coupons.length" class="empty-state">还没有优惠券模板</div>
-          <article v-for="coupon in coupons" :key="coupon.id" class="coupon-row">
+          <article v-for="coupon in pagedCoupons" :key="coupon.id" class="coupon-row">
             <div class="coupon-value"><strong>¥{{ Number(coupon.discountAmount).toFixed(0) }}</strong><small>{{ Number(coupon.minimumSpend) > 0 ? `满 ¥${coupon.minimumSpend} 可用` : '无门槛' }}</small></div>
             <div class="coupon-copy"><h3>{{ coupon.name }}</h3><OverflowText :text="coupon.description" :lines="2" /><small>{{ coupon.code }} · {{ coupon.validDays }} 天有效 · 已发 {{ coupon.issuedCount }} 张</small></div>
             <span :class="['coupon-state', coupon.status.toLowerCase()]">{{ coupon.status === 'ACTIVE' ? '启用' : '停用' }}</span>
             <div class="coupon-actions"><button class="link-button" @click="editCoupon(coupon)">编辑</button><button class="primary-button" :disabled="coupon.status !== 'ACTIVE'" @click="openGrant(coupon)">发送</button></div>
           </article>
+          <ListPagination :page="couponPage" :size="couponPageSize" :total="coupons.length" @update:page="couponPage = $event" @update:size="couponPageSize = $event; couponPage = 1" />
         </div>
       </div>
     </template>
@@ -430,7 +452,7 @@ onBeforeUnmount(() => {
 .customer-tabs button { padding: 10px 22px; border: 0; border-radius: 10px; color: #765c66; background: transparent; }
 .customer-tabs button.active { color: #fff; background: #87445f; box-shadow: 0 8px 20px rgb(135 68 95 / 20%); }
 .customer-toolbar { display: grid; gap: 12px; margin: 22px 0; }
-.customer-search-toolbar { grid-template-columns: minmax(300px, 520px) auto; align-items: center; }
+.customer-search-toolbar { grid-template-columns: minmax(300px, 520px) auto 1fr; align-items: center; }
 .customer-search-toolbar span { color: #8e7b83; font-size: 13px; }
 input, select, textarea { box-sizing: border-box; width: 100%; border: 1px solid #e5d7dc; border-radius: 10px; color: #3d3035; background: #fff; outline: none; }
 input, select { height: 44px; padding: 0 13px; }

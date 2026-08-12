@@ -146,7 +146,7 @@ class AppOrderControllerTest extends MySqlIntegrationTest {
 
     @Test
     void shouldChargeShippingBelowFreeShippingThreshold() throws Exception {
-        String token = customerToken("shipping-fee-order-test");
+        String token = customerToken("8b111d7f-025a-4f97-8888-000000002601");
         Long schemeId = createScheme(token, sequence(1, 0));
 
         mockMvc.perform(post("/api/app/orders")
@@ -168,7 +168,7 @@ class AppOrderControllerTest extends MySqlIntegrationTest {
         jdbcTemplate.update(
                 "update commerce_rule_config set minimum_order_amount = 30.00 where id = 1"
         );
-        String token = customerToken("minimum-order-test");
+        String token = customerToken("8b111d7f-025a-4f97-8888-000000002602");
         Long schemeId = createScheme(token, sequence(1, 0));
 
         mockMvc.perform(post("/api/app/orders")

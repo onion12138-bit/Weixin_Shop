@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ApiError } from '../api/http'
+import ListPagination from '../components/ListPagination.vue'
 import OverflowText from '../components/OverflowText.vue'
 import allOrdersIcon from '../assets/icons/file-list-3-line.svg'
 import pendingPaymentIcon from '../assets/icons/bank-card-line.svg'
@@ -48,8 +49,8 @@ const showCustomerPhones = ref(false)
 const page = ref(1)
 const size = ref(10)
 const total = ref(0)
-const jumpPage = ref('')
 const shippingOrder = ref<AdminOrder | null>(null)
+const logisticsOrder = ref<AdminOrder | null>(null)
 const shippingDraft = reactive({ logisticsCompany: '顺丰速运', trackingNo: '' })
 const selectedOrders = ref<AdminOrder[]>([])
 const batchShippingOrders = ref<AdminOrder[]>([])
@@ -77,11 +78,6 @@ const selectedProductionOrders = computed(() => selectedOrders.value
   .filter((order) => order.status === 'IN_PRODUCTION'))
 const selectedShipmentOrders = computed(() => selectedOrders.value
   .filter((order) => order.status === 'PENDING_SHIPMENT'))
-const pageNumbers = computed(() => {
-  const start = Math.max(1, Math.min(page.value - 2, totalPages.value - 4))
-  const end = Math.min(totalPages.value, start + 4)
-  return Array.from({ length: end - start + 1 }, (_, index) => start + index)
-})
 
 const statisticCards = computed(() => [
   { label: '全部订单', value: statistics.value.total, status: '' as OrderStatus | '', tone: 'berry', icon: allOrdersIcon },
@@ -325,17 +321,15 @@ async function submitBatchShipping(): Promise<void> {
   await loadOrders()
 }
 
-async function goToPage(target: number): Promise<void> {
-  const safe = Math.min(Math.max(target, 1), totalPages.value)
-  if (safe === page.value) return
-  page.value = safe
-  await loadOrders()
+function updatePage(target: number): void {
+  if (target === page.value) return
+  page.value = target
+  void loadOrders()
 }
 
-function submitJump(): void {
-  const target = Number(jumpPage.value)
-  if (Number.isInteger(target)) void goToPage(target)
-  jumpPage.value = ''
+function updatePageSize(nextSize: number): void {
+  size.value = nextSize
+  void loadOrders(true)
 }
 
 async function exportOrders(): Promise<void> {
@@ -472,7 +466,7 @@ onBeforeUnmount(() => {
                   <button v-if="order.status === 'IN_PRODUCTION'" class="text-button" @click="emit('open', order.id)">打印 BOM</button>
                   <button v-if="order.status === 'IN_PRODUCTION'" class="text-button" data-test="complete-production" :disabled="workingOrderId === order.id" @click="completeProduction(order)">完成制作</button>
                   <button v-if="order.status === 'PENDING_SHIPMENT'" class="text-button" @click="openShipping(order)">发货</button>
-                  <button v-if="order.status === 'SHIPPED'" class="text-button" @click="emit('open', order.id)">查看物流</button>
+                  <button v-if="order.status === 'SHIPPED'" class="text-button" data-test="view-logistics" @click="logisticsOrder = order">查看物流</button>
                   <button v-if="order.status === 'AFTER_SALE'" class="text-button" @click="emit('open', order.id)">售后处理</button>
                 </div>
               </td>
@@ -480,14 +474,7 @@ onBeforeUnmount(() => {
           </tbody>
         </table>
       </div>
-      <footer class="order-pagination">
-        <span>共 {{ total }} 条</span>
-        <label>每页<select v-model.number="size" @change="loadOrders(true)"><option :value="10">10 条</option><option :value="20">20 条</option><option :value="50">50 条</option></select></label>
-        <button class="page-button" :disabled="page <= 1" @click="goToPage(page - 1)">上一页</button>
-        <button v-for="number in pageNumbers" :key="number" :class="['page-number', { active: number === page }]" @click="goToPage(number)">{{ number }}</button>
-        <button class="page-button" :disabled="page >= totalPages" @click="goToPage(page + 1)">下一页</button>
-        <label class="jump-page">跳至<input v-model="jumpPage" type="number" min="1" :max="totalPages" @keyup.enter="submitJump" />页</label>
-      </footer>
+      <ListPagination :page="page" :size="size" :total="total" @update:page="updatePage" @update:size="updatePageSize" />
     </section>
 
     <div v-if="shippingOrder" class="order-modal-backdrop" @click.self="shippingOrder = null">
@@ -496,6 +483,18 @@ onBeforeUnmount(() => {
         <label><span>物流公司</span><input v-model="shippingDraft.logisticsCompany" /></label>
         <label><span>物流单号</span><input v-model="shippingDraft.trackingNo" placeholder="请输入物流单号" /></label>
         <footer><button class="secondary-button" @click="shippingOrder = null">取消</button><button class="primary-button" :disabled="workingOrderId === shippingOrder.id" @click="submitShipping">确认发货</button></footer>
+      </section>
+    </div>
+
+    <div v-if="logisticsOrder" class="order-modal-backdrop" @click.self="logisticsOrder = null">
+      <section class="order-modal" role="dialog" aria-modal="true" aria-label="查看物流信息">
+        <header><div><h2>物流信息</h2><p>{{ logisticsOrder.orderNo }}</p></div><button class="text-button" @click="logisticsOrder = null">关闭</button></header>
+        <dl class="logistics-summary">
+          <div><dt>物流公司</dt><dd>{{ logisticsOrder.fulfillment?.logisticsCompany || '—' }}</dd></div>
+          <div><dt>物流单号</dt><dd data-test="logistics-tracking-no">{{ logisticsOrder.fulfillment?.trackingNo || '—' }}</dd></div>
+          <div><dt>发货时间</dt><dd>{{ formatDate(logisticsOrder.shippedAt) }}</dd></div>
+        </dl>
+        <footer><button class="primary-button" @click="logisticsOrder = null">知道了</button></footer>
       </section>
     </div>
 
@@ -529,7 +528,7 @@ onBeforeUnmount(() => {
 .statistic-icon { display: grid; width: 34px; height: 34px; flex: 0 0 auto; border-radius: 50%; place-items: center; }.statistic-icon i { width: 20px; height: 20px; background: currentColor; mask-repeat: no-repeat; mask-position: center; mask-size: contain; }.tone-berry { color: #9c4269; background: #f5e2ea; }.tone-amber { color: #c27a18; background: #fff1d7; }.tone-blue { color: #357fd1; background: #e5f0ff; }.tone-orange { color: #dc7134; background: #ffeadf; }.tone-green { color: #2f9b50; background: #e6f6e9; }.tone-success { color: #23a24a; background: #e2f6e7; }.tone-gray { color: #777277; background: #efedef; }.tone-purple { color: #795ac1; background: #eee8fb; }
 .order-table-card { overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); box-shadow: 0 12px 34px rgb(58 43 49 / 5%); }
 .batch-toolbar { display: flex; gap: 12px; min-height: 58px; padding: 9px 14px; align-items: center; border-bottom: 1px solid #eadde2; color: #5e4450; background: #fff5f8; }.batch-toolbar strong { color: var(--berry); }.batch-toolbar span { margin-right: auto; color: var(--muted); font-size: 12px; }.batch-toolbar button { min-height: 36px; padding: 0 13px; }
-.order-table { width: 100%; min-width: 1130px; table-layout: fixed; }.order-table .col-select { width: 4%; }.order-table .col-order-no { width: 15%; }.order-table .col-created-at { width: 10%; }.order-table .col-customer { width: 9%; }.order-table .col-product { width: 16%; }.order-table .col-beads { width: 15%; }.order-table .col-amount { width: 7%; }.order-table .col-status { width: 7%; }.order-table .col-payment { width: 7%; }.order-table .col-actions { width: 10%; }.order-table th,.order-table td { padding: 13px 10px; }.order-table th { white-space: nowrap; }.order-table td { color: #51494d; font-size: 12px; vertical-align: top; }.select-cell { text-align: center; vertical-align: middle !important; }.select-cell input { width: 16px; height: 16px; accent-color: var(--berry); }
+.order-table { width: 100%; min-width: 1130px; table-layout: fixed; }.order-table .col-select { width: 4%; }.order-table .col-order-no { width: 15%; }.order-table .col-created-at { width: 10%; }.order-table .col-customer { width: 9%; }.order-table .col-product { width: 16%; }.order-table .col-beads { width: 15%; }.order-table .col-amount { width: 7%; }.order-table .col-status { width: 7%; }.order-table .col-payment { width: 7%; }.order-table .col-actions { width: 10%; }.order-table th,.order-table td { padding: 13px 10px; }.order-table th { white-space: nowrap; }.order-table td { color: #51494d; font-size: 12px; vertical-align: top; }.select-cell { padding: 0 !important; text-align: center; vertical-align: middle !important; }.select-cell input { display: block; width: 16px; min-height: 16px; height: 16px; margin: auto; padding: 0; border-radius: 3px; accent-color: var(--berry); box-shadow: none !important; }
 .order-link { max-width: 100%; padding: 0; border: 0; color: var(--berry); font-weight: 800; line-height: 1.45; overflow-wrap: anywhere; text-align: left; background: transparent; }.nowrap { white-space: nowrap; }.cell-primary,.cell-secondary { display: block; }.cell-primary { font-weight: 700; }.cell-secondary { margin-top: 4px; color: var(--muted); font-size: 11px; }
 .bead-summary { display: block; max-width: 270px; }.order-amount { color: var(--berry) !important; font-size: 14px !important; font-weight: 800; white-space: nowrap; }
 .customer-heading { display: inline-flex; gap: 5px; align-items: center; }.phone-visibility { display: grid; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; place-items: center; color: #8c6674; background: transparent; }.phone-visibility:hover { color: var(--berry); background: #f4e9ed; }.phone-visibility i { width: 17px; height: 17px; background: currentColor; mask-repeat: no-repeat; mask-position: center; mask-size: contain; }
@@ -537,6 +536,7 @@ onBeforeUnmount(() => {
 .row-actions { display: flex; flex-wrap: wrap; gap: 4px 8px; }.row-actions .text-button { padding: 2px 0; white-space: nowrap; }.danger-text { color: #a2464e; }
 .table-state { height: 180px; color: var(--muted); text-align: center; }.order-pagination { display: flex; gap: 8px; align-items: center; justify-content: flex-end; padding: 13px 16px; color: var(--muted); font-size: 12px; }.order-pagination > span { margin-right: auto; }.order-pagination label { display: flex; gap: 6px; align-items: center; font-size: 12px; font-weight: 500; }.order-pagination select { width: 82px; min-height: 34px; }.page-number { min-width: 34px; min-height: 34px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); background: #fff; }.page-number.active { border-color: var(--berry); color: #fff; background: var(--berry); }.jump-page input { width: 56px; min-height: 34px; }
 .order-modal-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; padding: 24px; place-items: center; background: rgb(35 26 30 / 42%); }.order-modal { display: grid; width: min(460px, 100%); gap: 18px; padding: 24px; border-radius: 18px; background: #fffdfb; box-shadow: 0 28px 80px rgb(35 26 30 / 25%); }.order-modal header,.order-modal footer { display: flex; align-items: center; justify-content: space-between; }.order-modal h2,.order-modal p { margin: 0; }.order-modal p { margin-top: 5px; color: var(--muted); font-size: 12px; }.order-modal footer { justify-content: flex-end; gap: 10px; }
+.logistics-summary { display: grid; gap: 13px; margin: 0; padding: 16px; border: 1px solid #eadde2; border-radius: 12px; background: #fff; }.logistics-summary div { display: grid; grid-template-columns: 90px 1fr; gap: 12px; }.logistics-summary dt,.logistics-summary dd { margin: 0; }.logistics-summary dt { color: var(--muted); }.logistics-summary dd { font-weight: 700; overflow-wrap: anywhere; }
 .order-toast { position: fixed; z-index: 80; top: 24px; right: 28px; width: min(420px, calc(100vw - 56px)); padding: 14px 18px; border: 1px solid #d7c2ca; border-radius: 12px; color: #553b45; line-height: 1.55; white-space: normal; overflow-wrap: anywhere; background: #fffdfb; box-shadow: 0 16px 44px rgb(43 27 34 / 18%); }.order-toast.is-success { border-color: #bcd7c8; color: #315f4c; background: #f3fbf6; }.order-toast.is-error { border-color: #e1b7bc; color: #923e48; background: #fff5f6; }
 .batch-shipping-modal { width: min(880px, 100%); max-height: calc(100vh - 48px); }.batch-shipping-list { display: grid; gap: 10px; overflow: auto; max-height: 58vh; padding-right: 3px; }.batch-shipping-row { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(170px, .8fr) minmax(220px, 1.2fr); gap: 12px; padding: 13px; align-items: end; border: 1px solid #eadde2; border-radius: 12px; background: #fff; }.batch-shipping-row strong,.batch-shipping-row small { display: block; }.batch-shipping-row small { margin-top: 5px; color: var(--muted); }.batch-shipping-row label { display: grid; gap: 5px; }.batch-shipping-row label span { color: var(--muted); font-size: 11px; }
 @media (max-width: 1320px) { .order-statistics { grid-template-columns: repeat(4, 1fr); }.advanced-filters { grid-template-columns: repeat(3, 1fr); } }

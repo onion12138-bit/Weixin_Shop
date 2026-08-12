@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ApiError, resolveApiResourceUrl } from '../api/http'
+import ListPagination from '../components/ListPagination.vue'
 import {
   changePackageRecommendation,
   changePackageStatus,
@@ -296,8 +297,19 @@ function clearSearch(): void {
   search()
 }
 
+function resetFilters(): void {
+  Object.assign(filters, { keyword: '', status: '', page: 1 })
+  void loadPackages()
+}
+
 function changePage(page: number): void {
   filters.page = Math.min(Math.max(page, 1), totalPages.value)
+  void loadPackages()
+}
+
+function changePageSize(size: number): void {
+  filters.size = size
+  filters.page = 1
   void loadPackages()
 }
 
@@ -367,6 +379,7 @@ onUnmounted(() => {
         </select>
       </label>
       <button class="secondary-button" @click="search">查询</button>
+      <button class="secondary-button" data-test="reset-package-filters" @click="resetFilters">重置</button>
       <span class="result-count">共 {{ total }} 个搭配</span>
     </section>
 
@@ -429,23 +442,7 @@ onUnmounted(() => {
         </table>
       </div>
 
-      <footer class="pagination">
-        <button
-          class="page-button"
-          :disabled="filters.page <= 1"
-          @click="changePage(filters.page - 1)"
-        >
-          上一页
-        </button>
-        <span>第 {{ filters.page }} / {{ totalPages }} 页</span>
-        <button
-          class="page-button"
-          :disabled="filters.page >= totalPages"
-          @click="changePage(filters.page + 1)"
-        >
-          下一页
-        </button>
-      </footer>
+      <ListPagination :page="filters.page" :size="filters.size" :total="total" @update:page="changePage" @update:size="changePageSize" />
     </section>
 
     <div v-if="showForm" class="modal-backdrop" @click.self="showForm = false">

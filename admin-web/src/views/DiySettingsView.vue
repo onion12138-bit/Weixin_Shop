@@ -433,14 +433,16 @@ onMounted(loadConfiguration)
           />
         </label>
         <label>
-          <span>珠子阴影透明度</span>
+          <span>小程序珠子阴影透明度</span>
           <input
             v-model.number="visualConfig.beadShadowOpacity"
+            data-test="bead-shadow-opacity"
             type="number"
             min="0"
             max="0.5"
             step="0.01"
           />
+          <small>保存后小程序设计画板实时读取；0 表示无阴影，0.5 为最大阴影。</small>
         </label>
         <label>
           <span>珠子重叠比例</span>

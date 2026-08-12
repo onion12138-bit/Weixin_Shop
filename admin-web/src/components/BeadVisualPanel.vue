@@ -11,6 +11,7 @@ import {
   type BeadVisualStatus,
   type BeadVisualVersion,
 } from '../api/catalog'
+import { formatDateTime } from '../utils/date-time'
 
 const props = defineProps<{
   beadId: number
@@ -253,7 +254,7 @@ onMounted(loadVisuals)
                 <strong>V{{ version.version }}</strong>
                 <span class="status-pill" :class="`visual-status-${version.status.toLowerCase()}`">{{ statusLabel(version.status) }}</span>
                 <span class="visual-source">{{ version.sourceType === 'MANUAL' ? '手工上传' : '自动生成' }}</span>
-                <small>{{ version.createdBy }} · {{ version.createdAt }}</small>
+                <small>{{ version.createdBy }} · {{ formatDateTime(version.createdAt) }}</small>
                 <small v-if="version.failureMessage" class="visual-failure">{{ version.failureMessage }}</small>
               </div>
               <div class="visual-row-actions">

@@ -9,6 +9,7 @@ import {
   type AiRecommendationLogSummary,
 } from '../api/ai'
 import { ApiError } from '../api/http'
+import ListPagination from '../components/ListPagination.vue'
 
 const logs = ref<AiRecommendationLogSummary[]>([])
 const selected = ref<AiRecommendationLogDetail | null>(null)
@@ -17,11 +18,11 @@ const detailLoading = ref(false)
 const deletingId = ref<number | null>(null)
 const errorMessage = ref('')
 const page = ref(1)
-const size = 20
+const size = ref(20)
 const total = ref(0)
 const filters = reactive({ status: '' as AiLogStatus | '', keyword: '' })
 
-const totalPages = computed(() => Math.max(1, Math.ceil(total.value / size)))
+const totalPages = computed(() => Math.max(1, Math.ceil(total.value / size.value)))
 
 const statusLabels: Record<AiLogStatus, string> = {
   PROCESSING: '处理中',
@@ -42,7 +43,7 @@ async function load(resetPage = false): Promise<void> {
   errorMessage.value = ''
   try {
     const result = await listAiRecommendationLogs(
-      page.value, size, filters.status, filters.keyword,
+      page.value, size.value, filters.status, filters.keyword,
     )
     logs.value = result.items
     total.value = result.total
@@ -98,6 +99,11 @@ async function goToPage(next: number): Promise<void> {
   if (target === page.value) return
   page.value = target
   await load()
+}
+
+function changePageSize(nextSize: number): void {
+  size.value = nextSize
+  void load(true)
 }
 
 function formatTime(value: string): string {
@@ -210,13 +216,7 @@ onMounted(() => load())
             </tbody>
           </table>
         </div>
-        <footer class="ai-log-pagination">
-          <span>共 {{ total }} 条，第 {{ page }}/{{ totalPages }} 页</span>
-          <div>
-            <button class="page-button" type="button" :disabled="page <= 1" @click="goToPage(page - 1)">上一页</button>
-            <button class="page-button" type="button" :disabled="page >= totalPages" @click="goToPage(page + 1)">下一页</button>
-          </div>
-        </footer>
+        <ListPagination :page="page" :size="size" :total="total" @update:page="goToPage" @update:size="changePageSize" />
       </section>
     </div>
 

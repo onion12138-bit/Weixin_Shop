@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ApiError, resolveApiResourceUrl } from '../api/http'
 import BeadVisualPanel from '../components/BeadVisualPanel.vue'
+import ListPagination from '../components/ListPagination.vue'
 import { generateCatalogSku } from '../catalog/generate-sku'
 import {
   addAdminBeadInventory,
@@ -167,6 +168,13 @@ function search(): void {
 function clearSearch(): void {
   filters.keyword = ''
   search()
+}
+
+function resetFilters(): void {
+  Object.assign(filters, {
+    keyword: '', status: '', categoryId: '', attribute: '', page: 1,
+  })
+  void loadCatalog()
 }
 
 function generateSku(): void {
@@ -474,6 +482,12 @@ function changePage(page: number): void {
   void loadCatalog()
 }
 
+function changePageSize(size: number): void {
+  filters.size = size
+  filters.page = 1
+  void loadCatalog()
+}
+
 onMounted(loadCatalog)
 </script>
 
@@ -568,6 +582,7 @@ onMounted(loadCatalog)
         </select>
       </label>
       <button class="secondary-button" @click="search">查询</button>
+      <button class="secondary-button" data-test="reset-bead-filters" @click="resetFilters">重置</button>
       <span class="result-count">共 {{ total }} 个商品</span>
     </section>
 
@@ -688,23 +703,7 @@ onMounted(loadCatalog)
         </table>
       </div>
 
-      <footer class="pagination">
-        <button
-          class="page-button"
-          :disabled="filters.page <= 1"
-          @click="changePage(filters.page - 1)"
-        >
-          上一页
-        </button>
-        <span>第 {{ filters.page }} / {{ totalPages }} 页</span>
-        <button
-          class="page-button"
-          :disabled="filters.page >= totalPages"
-          @click="changePage(filters.page + 1)"
-        >
-          下一页
-        </button>
-      </footer>
+      <ListPagination :page="filters.page" :size="filters.size" :total="total" @update:page="changePage" @update:size="changePageSize" />
     </section>
 
     <div

@@ -122,13 +122,14 @@ describe('DiySettingsView', () => {
     const wrapper = mount(DiySettingsView)
     await flushPromises()
 
+    await wrapper.get('[data-test="bead-shadow-opacity"]').setValue('0.24')
     await wrapper.get('[data-test="bead-overlap-ratio"]').setValue('0.08')
     await wrapper.get('[data-test="save-visual-config"]').trigger('click')
 
     expect(saveDiyVisualConfig).toHaveBeenCalledWith({
       canvasBackgroundColor: '#fffdfb',
       braceletShadowOpacity: 0.16,
-      beadShadowOpacity: 0.1,
+      beadShadowOpacity: 0.24,
       beadOverlapRatio: 0.08,
     })
   })

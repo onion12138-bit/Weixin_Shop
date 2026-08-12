@@ -66,6 +66,7 @@ describe('CustomerBenefitsView', () => {
     expect(listCustomerAddresses).toHaveBeenCalledWith({ customerIdentityId: 15, status: '' })
     expect(wrapper.text()).toContain('小丸子的地址')
     expect(wrapper.text()).toContain('测试路 18 号')
+    expect(wrapper.text()).toContain('2026-08-08 10:00:00')
   })
 
   it('searches customers by phone and supports selected or all-recipient grants', async () => {

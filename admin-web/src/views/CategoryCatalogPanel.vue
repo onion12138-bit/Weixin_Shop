@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ApiError } from '../api/http'
+import ListPagination from '../components/ListPagination.vue'
 import {
   changeCategoryStatus,
   createAdminCategory,
@@ -19,6 +20,12 @@ const showForm = ref(false)
 const editingId = ref<number | null>(null)
 const errorMessage = ref('')
 const successMessage = ref('')
+const page = ref(1)
+const size = ref(10)
+const pagedCategories = computed(() => categories.value.slice(
+  (page.value - 1) * size.value,
+  page.value * size.value,
+))
 
 const form = reactive<SaveCategoryRequest>({
   name: '',
@@ -167,7 +174,7 @@ onMounted(loadCategories)
             </tr>
           </thead>
           <tbody>
-            <tr v-for="category in categories" :key="category.id">
+            <tr v-for="category in pagedCategories" :key="category.id">
               <td><strong>{{ category.name }}</strong></td>
               <td><code>{{ category.slug }}</code></td>
               <td>{{ productTypeLabel(category.productType) }}</td>
@@ -187,6 +194,7 @@ onMounted(loadCategories)
           </tbody>
         </table>
       </div>
+      <ListPagination :page="page" :size="size" :total="categories.length" @update:page="page = $event" @update:size="size = $event; page = 1" />
     </section>
 
     <div v-if="showForm" class="modal-backdrop" @click.self="showForm = false">

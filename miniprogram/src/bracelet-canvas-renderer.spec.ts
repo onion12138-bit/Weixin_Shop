@@ -15,6 +15,7 @@ class RecordingContext implements BraceletDrawingContext {
   strokeStyle = 'sentinel-stroke'
   operations: string[] = []
   strokeStyles: string[] = []
+  shadowAlphas: number[] = []
   private scaled = false
   private readonly states: Array<{
     fillStyle: string
@@ -62,6 +63,7 @@ class RecordingContext implements BraceletDrawingContext {
     if (this.scaled) {
       this.operations.push('bracelet-shadow')
     } else if (this.globalAlpha < 1) {
+      this.shadowAlphas.push(this.globalAlpha)
       this.operations.push(`bead-shadow(${this.operations.filter((item) => item.startsWith('bead-shadow')).length})`)
     } else {
       this.operations.push(`bead-fallback(${this.operations.filter((item) => item.startsWith('bead-fallback')).length}:${this.fillStyle})`)
@@ -117,6 +119,7 @@ describe('bracelet canvas renderer', () => {
       'bead-image(1)',
       'selection',
     ])
+    expect(ctx.shadowAlphas).toEqual([0.20, 0.20])
   })
 
   it('restores caller canvas state after a normal render', () => {

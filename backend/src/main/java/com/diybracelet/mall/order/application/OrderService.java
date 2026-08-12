@@ -553,10 +553,13 @@ public class OrderService {
         return quantities;
     }
 
-    private String generateOrderNo() {
+    private static String generateOrderNo() {
         return "ORD"
                 + LocalDateTime.now().format(ORDER_TIME)
-                + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+                + String.format("%08d", Math.floorMod(
+                        UUID.randomUUID().getMostSignificantBits(),
+                        100_000_000L
+                ));
     }
 
     private CouponSelection selectCoupon(
