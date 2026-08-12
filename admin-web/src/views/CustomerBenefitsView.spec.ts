@@ -99,4 +99,30 @@ describe('CustomerBenefitsView', () => {
       note: '',
     })
   })
+
+  it('shows ten customers initially and loads the next ten while retaining phone search', async () => {
+    const customerItems = Array.from({ length: 21 }, (_, index) => ({
+      ...customer,
+      id: index + 1,
+      nickname: `客户${index + 1}`,
+      phone: `1380000${String(index + 1).padStart(4, '0')}`,
+    }))
+    vi.mocked(listCustomers).mockResolvedValue(customerItems)
+    const wrapper = mount(CustomerBenefitsView)
+    await flushPromises()
+    await wrapper.get('.customer-tabs button:last-child').trigger('click')
+    await flushPromises()
+    await wrapper.get('.coupon-actions .primary-button').trigger('click')
+
+    expect(wrapper.findAll('.customer-option')).toHaveLength(10)
+    await wrapper.get('[data-test="load-more-customers"]').trigger('click')
+    expect(wrapper.findAll('.customer-option')).toHaveLength(20)
+    await wrapper.get('[data-test="load-more-customers"]').trigger('click')
+    expect(wrapper.findAll('.customer-option')).toHaveLength(21)
+
+    await wrapper.get('[data-test="coupon-customer-search"]').setValue('3456')
+    await new Promise((resolve) => setTimeout(resolve, 330))
+    await flushPromises()
+    expect(searchCustomersByPhone).toHaveBeenCalledWith('3456', 50)
+  })
 })

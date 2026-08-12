@@ -6,6 +6,7 @@ import {
   getAdminOrder,
   getOrderStatistics,
   listAdminOrders,
+  shipAdminOrder,
 } from '../api/orders'
 
 vi.mock('../api/orders', () => ({
@@ -81,6 +82,8 @@ const productionOrder = {
 
 describe('OrderView', () => {
   beforeEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
     vi.mocked(listAdminOrders).mockResolvedValue({
       items: [productionOrder], total: 1, page: 1, size: 10,
     })
@@ -158,5 +161,99 @@ describe('OrderView', () => {
 
     expect(completeOrderProduction).toHaveBeenCalledWith(41)
     expect(wrapper.text()).toContain('已进入待发货')
+  })
+
+  it('exports only checked orders', async () => {
+    const click = vi.fn()
+    const nativeCreateElement = document.createElement.bind(document)
+    const createElement = vi.spyOn(document, 'createElement')
+      .mockImplementation((tagName: string, options?: ElementCreationOptions) => {
+        const element = nativeCreateElement(tagName, options)
+        if (tagName.toLowerCase() === 'a') element.click = click
+        return element
+      })
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn(() => 'blob:orders'),
+      revokeObjectURL: vi.fn(),
+    })
+    const wrapper = mount(OrderView)
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="export-selected-orders"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-test="select-order"]').setValue(true)
+    await wrapper.get('[data-test="export-selected-orders"]').trigger('click')
+
+    expect(click).toHaveBeenCalledTimes(1)
+    expect(wrapper.get('[data-test="order-toast"]').text()).toContain('已导出 1 条订单')
+    createElement.mockRestore()
+    vi.unstubAllGlobals()
+  })
+
+  it('batch completes production for checked eligible orders', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const wrapper = mount(OrderView)
+    await flushPromises()
+
+    await wrapper.get('[data-test="select-order"]').setValue(true)
+    await wrapper.get('[data-test="batch-complete-production"]').trigger('click')
+    await flushPromises()
+
+    expect(completeOrderProduction).toHaveBeenCalledWith(41)
+    expect(wrapper.get('[data-test="order-toast"]').text()).toContain('完成制作')
+  })
+
+  it('batch shipping keeps the dialog open and shows a top-right toast when tracking is missing', async () => {
+    const shipmentOrder = {
+      ...productionOrder,
+      id: 42,
+      orderNo: 'ORD202608080002',
+      status: 'PENDING_SHIPMENT' as const,
+      fulfillment: {
+        ...productionOrder.fulfillment,
+        status: 'PENDING_SHIPMENT' as const,
+        productionCompletedAt: '2026-08-08T11:00:00',
+      },
+    }
+    vi.mocked(listAdminOrders).mockResolvedValue({
+      items: [shipmentOrder], total: 1, page: 1, size: 10,
+    })
+    const wrapper = mount(OrderView)
+    await flushPromises()
+
+    await wrapper.get('[data-test="select-order"]').setValue(true)
+    await wrapper.get('[data-test="batch-ship"]').trigger('click')
+    await wrapper.get('[data-test="submit-batch-shipping"]').trigger('click')
+
+    expect(shipAdminOrder).not.toHaveBeenCalled()
+    expect(wrapper.find('[aria-label="批量填写物流信息"]').exists()).toBe(true)
+    expect(wrapper.get('[data-test="order-toast"]').text()).toContain('ORD202608080002')
+    expect(wrapper.find('.notice.error-notice').exists()).toBe(false)
+  })
+
+  it('keeps the detail shipping dialog open and shows a top-right toast when tracking is missing', async () => {
+    const shipmentOrder = {
+      ...productionOrder,
+      status: 'PENDING_SHIPMENT' as const,
+      fulfillment: {
+        ...productionOrder.fulfillment,
+        status: 'PENDING_SHIPMENT' as const,
+        productionCompletedAt: '2026-08-08T11:00:00',
+      },
+    }
+    vi.mocked(getAdminOrder).mockResolvedValueOnce(shipmentOrder)
+    const wrapper = mount(OrderView)
+    await flushPromises()
+    await wrapper.get('[data-test="open-order"]').trigger('click')
+    await flushPromises()
+
+    const shipButton = wrapper.findAll('button').find((button) => button.text() === '发货')
+    expect(shipButton).toBeDefined()
+    await shipButton!.trigger('click')
+    await wrapper.get('[data-test="submit-shipping"]').trigger('click')
+
+    expect(shipAdminOrder).not.toHaveBeenCalled()
+    expect(wrapper.find('[aria-label="物流信息"]').exists()).toBe(true)
+    expect(wrapper.get('[data-test="order-toast"]').text()).toContain('请填写物流公司和物流单号')
+    expect(wrapper.find('.notice.error-notice').exists()).toBe(false)
   })
 })

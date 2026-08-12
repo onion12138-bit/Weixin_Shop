@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import defaultProductImage from '../../../miniprogram/miniprogram/assets/images/home/product-gentle-guardian.webp'
 import checkIcon from '../assets/icons/check-line.svg'
 import { ApiError, resolveApiResourceUrl } from '../api/http'
@@ -27,8 +27,10 @@ const emit = defineEmits<{ back: [] }>()
 const order = ref<AdminOrder | null>(null)
 const loading = ref(true)
 const working = ref(false)
-const errorMessage = ref('')
-const successMessage = ref('')
+const loadError = ref('')
+const toastMessage = ref('')
+const toastTone = ref<'success' | 'error'>('success')
+let toastTimer: ReturnType<typeof setTimeout> | null = null
 const shippingVisible = ref(false)
 const addressVisible = ref(false)
 const shipping = reactive({ logisticsCompany: '顺丰速运', trackingNo: '' })
@@ -55,13 +57,24 @@ function readableError(error: unknown): string {
   return error instanceof Error ? error.message : '订单操作失败'
 }
 
+function showToast(message: string, tone: 'success' | 'error' = 'success'): void {
+  toastMessage.value = message
+  toastTone.value = tone
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => {
+    toastMessage.value = ''
+    toastTimer = null
+  }, 5000)
+}
+
 async function loadOrder(): Promise<void> {
   loading.value = true
-  errorMessage.value = ''
+  loadError.value = ''
   try {
     order.value = await getAdminOrder(props.orderId)
   } catch (error) {
-    errorMessage.value = readableError(error)
+    loadError.value = readableError(error)
+    showToast(loadError.value, 'error')
   } finally {
     loading.value = false
   }
@@ -96,9 +109,9 @@ async function copyOrderNo(): Promise<void> {
   if (!order.value) return
   try {
     await navigator.clipboard.writeText(order.value.orderNo)
-    successMessage.value = '订单编号已复制'
+    showToast('订单编号已复制')
   } catch {
-    errorMessage.value = '复制失败，请手动选择订单编号'
+    showToast('复制失败，请手动选择订单编号', 'error')
   }
 }
 
@@ -119,10 +132,10 @@ async function submitShipping(): Promise<void> {
   const current = order.value
   if (!current) return
   if (!shipping.logisticsCompany.trim() || !shipping.trackingNo.trim()) {
-    errorMessage.value = '请填写物流公司和物流单号'
+    showToast('请填写物流公司和物流单号', 'error')
     return
   }
-  await runAction(
+  const succeeded = await runAction(
     () => shipAdminOrder(
       current.id,
       shipping.logisticsCompany.trim(),
@@ -130,7 +143,7 @@ async function submitShipping(): Promise<void> {
     ),
     '订单已发货',
   )
-  shippingVisible.value = false
+  if (succeeded) shippingVisible.value = false
 }
 
 function openAddressEditor(): void {
@@ -149,10 +162,10 @@ async function saveAddress(): Promise<void> {
   const current = order.value
   if (!current) return
   if (!address.contactName.trim() || !address.contactPhone.trim() || !address.addressDetail.trim()) {
-    errorMessage.value = '请完整填写收件人、手机号和收货地址'
+    showToast('请完整填写收件人、手机号和收货地址', 'error')
     return
   }
-  await runAction(
+  const succeeded = await runAction(
     () => updateAdminOrderAddress(current.id, {
       contactName: address.contactName.trim(),
       contactPhone: address.contactPhone.trim(),
@@ -161,21 +174,21 @@ async function saveAddress(): Promise<void> {
     }),
     '收货信息已更新',
   )
-  addressVisible.value = false
+  if (succeeded) addressVisible.value = false
 }
 
 async function runAction(
   action: () => Promise<AdminOrder>,
   message: string,
-): Promise<void> {
+): Promise<boolean> {
   working.value = true
-  errorMessage.value = ''
-  successMessage.value = ''
   try {
     order.value = await action()
-    successMessage.value = message
+    showToast(message)
+    return true
   } catch (error) {
-    errorMessage.value = readableError(error)
+    showToast(readableError(error), 'error')
+    return false
   } finally {
     working.value = false
   }
@@ -184,19 +197,31 @@ async function runAction(
 function showScheme(): void {
   const url = order.value?.product.previewUrl
   if (!url) {
-    successMessage.value = '该订单未保存独立预览图，当前已展示订单商品图'
+    showToast('该订单未保存独立预览图，当前已展示订单商品图')
     return
   }
   window.open(resolveApiResourceUrl(url), '_blank', 'noopener,noreferrer')
 }
 
 onMounted(loadOrder)
+onBeforeUnmount(() => {
+  if (toastTimer) clearTimeout(toastTimer)
+})
 </script>
 
 <template>
   <section class="order-detail-page">
+    <Transition name="toast">
+      <div
+        v-if="toastMessage"
+        :class="['order-detail-toast', toastTone]"
+        data-test="order-toast"
+        role="status"
+        aria-live="polite"
+      >{{ toastMessage }}</div>
+    </Transition>
     <div v-if="loading" class="empty-state">正在读取订单详情…</div>
-    <div v-else-if="errorMessage && !order" class="empty-state"><p>{{ errorMessage }}</p><button class="secondary-button" @click="loadOrder">重新加载</button></div>
+    <div v-else-if="loadError && !order" class="empty-state"><p>{{ loadError }}</p><button class="secondary-button" @click="loadOrder">重新加载</button></div>
 
     <template v-else-if="order">
       <header class="detail-titlebar">
@@ -209,9 +234,6 @@ onMounted(loadOrder)
           <button v-if="order.status === 'SHIPPED'" class="secondary-button" @click="shippingVisible = true">查看物流</button>
         </div>
       </header>
-
-      <div v-if="errorMessage" class="notice error-notice" role="alert">{{ errorMessage }}</div>
-      <div v-if="successMessage" class="notice success-notice">{{ successMessage }}</div>
 
       <section class="detail-summary-card">
         <div><span>订单编号</span><strong>{{ order.orderNo }}</strong><button class="text-button" @click="copyOrderNo">复制</button></div>
@@ -275,7 +297,7 @@ onMounted(loadOrder)
       <section class="detail-modal" role="dialog" aria-modal="true" aria-label="物流信息">
         <header><div><h2>{{ order.status === 'SHIPPED' ? '物流信息' : '订单发货' }}</h2><p>{{ order.orderNo }}</p></div><button class="text-button" @click="shippingVisible = false">关闭</button></header>
         <template v-if="order.status === 'SHIPPED'"><dl class="logistics-readonly"><div><dt>物流公司</dt><dd>{{ order.fulfillment?.logisticsCompany || '—' }}</dd></div><div><dt>物流单号</dt><dd>{{ order.fulfillment?.trackingNo || '—' }}</dd></div><div><dt>发货时间</dt><dd>{{ formatDate(order.shippedAt) }}</dd></div></dl></template>
-        <template v-else><label><span>物流公司</span><input v-model="shipping.logisticsCompany" /></label><label><span>物流单号</span><input v-model="shipping.trackingNo" placeholder="请输入物流单号" /></label><footer><button class="secondary-button" @click="shippingVisible = false">取消</button><button class="primary-button" :disabled="working" @click="submitShipping">确认发货</button></footer></template>
+        <template v-else><label><span>物流公司</span><input v-model="shipping.logisticsCompany" /></label><label><span>物流单号</span><input v-model="shipping.trackingNo" placeholder="请输入物流单号" /></label><footer><button class="secondary-button" @click="shippingVisible = false">取消</button><button class="primary-button" data-test="submit-shipping" :disabled="working" @click="submitShipping">确认发货</button></footer></template>
       </section>
     </div>
 
@@ -291,6 +313,7 @@ onMounted(loadOrder)
 
 <style scoped>
 .order-detail-page { padding-bottom: 20px; }.detail-titlebar { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; }.detail-titlebar h1 { margin: 0 0 5px; font-family: "Songti SC", "STSong", serif; font-size: 34px; }.detail-titlebar p { margin: 0; color: var(--muted); }.detail-top-actions { display: flex; gap: 10px; }
+.order-detail-toast { position: fixed; top: 24px; right: 28px; z-index: 90; width: min(420px, calc(100vw - 48px)); padding: 13px 17px; border: 1px solid #cce4d8; border-radius: 12px; color: #2d7255; line-height: 1.55; white-space: normal; overflow-wrap: anywhere; background: #effaf5; box-shadow: 0 16px 42px rgb(35 26 30 / 18%); }.order-detail-toast.error { border-color: #f0c7cb; color: #a53d49; background: #fff3f4; }.toast-enter-active,.toast-leave-active { transition: opacity .18s ease, transform .18s ease; }.toast-enter-from,.toast-leave-to { opacity: 0; transform: translateY(-8px); }
 .detail-summary-card { display: grid; grid-template-columns: 1.1fr 1fr 1fr 1fr; margin-bottom: 16px; padding: 18px 22px; border: 1px solid var(--line); border-radius: 13px; background: var(--paper); box-shadow: 0 8px 26px rgb(58 43 49 / 5%); }.detail-summary-card > div { min-width: 0; padding: 0 22px; border-left: 1px solid #eee5e2; }.detail-summary-card > div:first-child { padding-left: 0; border-left: 0; }.detail-summary-card span,.detail-summary-card strong { display: block; }.detail-summary-card span { margin-bottom: 9px; color: var(--muted); font-size: 12px; }.detail-summary-card strong { font-size: 15px; }.detail-summary-card .text-button { margin-top: 5px; padding: 0; }.summary-money { color: var(--berry); font-size: 18px !important; }
 .fulfillment-card { margin-bottom: 16px; padding: 22px 18px 12px; border: 1px solid var(--line); border-radius: 13px; background: var(--paper); box-shadow: 0 8px 26px rgb(58 43 49 / 5%); }.fulfillment-line { display: grid; grid-template-columns: repeat(5, 1fr); }.fulfillment-step { position: relative; display: grid; place-items: center; text-align: center; }.fulfillment-step::before,.fulfillment-step::after { position: absolute; top: 12px; z-index: 0; width: 50%; height: 2px; content: ""; background: #d9d4d2; }.fulfillment-step::before { left: 0; }.fulfillment-step::after { right: 0; }.fulfillment-step:first-child::before,.fulfillment-step:last-child::after { display: none; }.fulfillment-step.completed::before,.fulfillment-step.completed::after,.fulfillment-step.current::before { background: var(--berry); }.step-marker { position: relative; z-index: 1; display: grid; width: 25px; height: 25px; place-items: center; border: 3px solid #d9d4d2; border-radius: 50%; color: #9e9498; font-size: 10px; background: #fff; }.completed .step-marker,.current .step-marker { border-color: var(--berry); color: #fff; background: var(--berry); }.step-check { display: block; width: 14px; height: 14px; }.fulfillment-step strong { margin-top: 8px; font-size: 13px; }.fulfillment-step small { min-height: 16px; margin-top: 5px; color: var(--muted); font-size: 10px; }.fulfillment-step.muted { opacity: .45; }.status-guidance,.abnormal-status { margin-top: 15px; padding: 9px 12px; border-radius: 8px; color: #4d78a0; font-size: 12px; background: #f0f6fd; }.abnormal-status { display: flex; gap: 12px; color: #98515a; background: #fff0f1; }
 .detail-grid { display: grid; gap: 14px; margin-bottom: 14px; }.upper-grid { grid-template-columns: .8fr 1.2fr; }.lower-grid { grid-template-columns: 1.05fr .8fr .8fr; }.detail-card { overflow: hidden; border: 1px solid var(--line); border-radius: 13px; background: var(--paper); box-shadow: 0 8px 26px rgb(58 43 49 / 5%); }.detail-card > header { display: flex; min-height: 44px; padding: 0 18px; border-bottom: 1px solid #eee5e2; align-items: center; justify-content: space-between; }.detail-card h2 { margin: 0; font-size: 14px; }.detail-card dl { margin: 0; }.customer-card > dl { display: grid; gap: 12px; padding: 18px 20px; }.detail-card dl div { display: grid; grid-template-columns: 90px 1fr; gap: 10px; }.detail-card dt,.detail-card dd { margin: 0; font-size: 12px; }.detail-card dt { color: var(--muted); }.product-detail { display: grid; grid-template-columns: 132px 1fr; gap: 20px; padding: 14px 20px; }.product-detail > img { width: 132px; height: 118px; border-radius: 10px; object-fit: cover; background: #f8f1f3; }.product-detail h3 { margin: 3px 0 16px; font-size: 15px; }.product-detail dl { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px; }

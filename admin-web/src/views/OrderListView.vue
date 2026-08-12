@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ApiError } from '../api/http'
 import OverflowText from '../components/OverflowText.vue'
 import allOrdersIcon from '../assets/icons/file-list-3-line.svg'
@@ -40,8 +40,9 @@ const orders = ref<AdminOrder[]>([])
 const statistics = ref<OrderStatistics>(emptyStatistics())
 const loading = ref(false)
 const workingOrderId = ref<number | null>(null)
-const errorMessage = ref('')
-const successMessage = ref('')
+const batchWorking = ref(false)
+const toastMessage = ref('')
+const toastTone = ref<'success' | 'error'>('success')
 const expandedFilters = ref(false)
 const showCustomerPhones = ref(false)
 const page = ref(1)
@@ -50,6 +51,10 @@ const total = ref(0)
 const jumpPage = ref('')
 const shippingOrder = ref<AdminOrder | null>(null)
 const shippingDraft = reactive({ logisticsCompany: '顺丰速运', trackingNo: '' })
+const selectedOrders = ref<AdminOrder[]>([])
+const batchShippingOrders = ref<AdminOrder[]>([])
+const batchShippingDrafts = ref<Record<number, { logisticsCompany: string; trackingNo: string }>>({})
+let toastTimer: ReturnType<typeof setTimeout> | null = null
 
 const filters = reactive({
   orderNo: '',
@@ -65,6 +70,13 @@ const filters = reactive({
 })
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / size.value)))
+const selectedOrderIds = computed(() => new Set(selectedOrders.value.map((order) => order.id)))
+const allPageSelected = computed(() => orders.value.length > 0
+  && orders.value.every((order) => selectedOrderIds.value.has(order.id)))
+const selectedProductionOrders = computed(() => selectedOrders.value
+  .filter((order) => order.status === 'IN_PRODUCTION'))
+const selectedShipmentOrders = computed(() => selectedOrders.value
+  .filter((order) => order.status === 'PENDING_SHIPMENT'))
 const pageNumbers = computed(() => {
   const start = Math.max(1, Math.min(page.value - 2, totalPages.value - 4))
   const end = Math.min(totalPages.value, start + 4)
@@ -100,10 +112,19 @@ function readableError(error: unknown): string {
   return error instanceof Error ? error.message : '订单操作失败'
 }
 
+function showToast(message: string, tone: 'success' | 'error' = 'success'): void {
+  toastMessage.value = message
+  toastTone.value = tone
+  if (toastTimer !== null) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => {
+    toastMessage.value = ''
+    toastTimer = null
+  }, 5000)
+}
+
 async function loadOrders(resetPage = false): Promise<void> {
   if (resetPage) page.value = 1
   loading.value = true
-  errorMessage.value = ''
   try {
     const [result, counts] = await Promise.all([
       listAdminOrders(query()),
@@ -112,9 +133,11 @@ async function loadOrders(resetPage = false): Promise<void> {
     orders.value = result.items
     total.value = result.total
     statistics.value = counts
+    selectedOrders.value = selectedOrders.value.map((selected) =>
+      result.items.find((order) => order.id === selected.id) || selected)
     if (page.value > totalPages.value) page.value = totalPages.value
   } catch (error) {
-    errorMessage.value = readableError(error)
+    showToast(readableError(error), 'error')
   } finally {
     loading.value = false
   }
@@ -138,16 +161,16 @@ async function runAction(
   order: AdminOrder,
   action: () => Promise<AdminOrder>,
   message: string,
-): Promise<void> {
+): Promise<boolean> {
   workingOrderId.value = order.id
-  errorMessage.value = ''
-  successMessage.value = ''
   try {
     await action()
-    successMessage.value = message
+    showToast(message)
     await loadOrders()
+    return true
   } catch (error) {
-    errorMessage.value = readableError(error)
+    showToast(readableError(error), 'error')
+    return false
   } finally {
     workingOrderId.value = null
   }
@@ -186,10 +209,10 @@ async function submitShipping(): Promise<void> {
   const order = shippingOrder.value
   if (!order) return
   if (!shippingDraft.logisticsCompany.trim() || !shippingDraft.trackingNo.trim()) {
-    errorMessage.value = '请填写物流公司和物流单号'
+    showToast('请填写物流公司和物流单号', 'error')
     return
   }
-  await runAction(
+  const shipped = await runAction(
     order,
     () => shipAdminOrder(
       order.id,
@@ -198,7 +221,108 @@ async function submitShipping(): Promise<void> {
     ),
     `订单 ${order.orderNo} 已发货`,
   )
-  shippingOrder.value = null
+  if (shipped) shippingOrder.value = null
+}
+
+function toggleOrderSelection(order: AdminOrder): void {
+  selectedOrders.value = selectedOrderIds.value.has(order.id)
+    ? selectedOrders.value.filter((item) => item.id !== order.id)
+    : [...selectedOrders.value, order]
+}
+
+function toggleCurrentPage(): void {
+  if (allPageSelected.value) {
+    const pageIds = new Set(orders.value.map((order) => order.id))
+    selectedOrders.value = selectedOrders.value.filter((order) => !pageIds.has(order.id))
+    return
+  }
+  const existing = new Map(selectedOrders.value.map((order) => [order.id, order]))
+  orders.value.forEach((order) => existing.set(order.id, order))
+  selectedOrders.value = [...existing.values()]
+}
+
+function clearSelection(): void {
+  selectedOrders.value = []
+}
+
+async function completeSelectedProduction(): Promise<void> {
+  const targets = selectedProductionOrders.value
+  if (!targets.length) {
+    showToast('所选订单中没有“制作中”的订单', 'error')
+    return
+  }
+  if (!window.confirm(`确认将所选 ${targets.length} 个订单标记为完成制作？`)) return
+  batchWorking.value = true
+  const results = await Promise.allSettled(
+    targets.map((order) => completeOrderProduction(order.id)),
+  )
+  batchWorking.value = false
+  const succeededIds = new Set(targets
+    .filter((_, index) => results[index].status === 'fulfilled')
+    .map((order) => order.id))
+  selectedOrders.value = selectedOrders.value.filter((order) => !succeededIds.has(order.id))
+  const failed = results.length - succeededIds.size
+  showToast(
+    failed
+      ? `批量完成制作：成功 ${succeededIds.size} 单，失败 ${failed} 单。失败订单仍保留勾选，请检查订单状态后重试。`
+      : `已将 ${succeededIds.size} 个订单标记为完成制作`,
+    failed ? 'error' : 'success',
+  )
+  await loadOrders()
+}
+
+function openBatchShipping(): void {
+  const targets = selectedShipmentOrders.value
+  if (!targets.length) {
+    showToast('所选订单中没有“待发货”的订单', 'error')
+    return
+  }
+  batchShippingOrders.value = [...targets]
+  batchShippingDrafts.value = Object.fromEntries(targets.map((order) => [
+    order.id,
+    { logisticsCompany: '顺丰速运', trackingNo: '' },
+  ]))
+}
+
+function closeBatchShipping(): void {
+  if (batchWorking.value) return
+  batchShippingOrders.value = []
+  batchShippingDrafts.value = {}
+}
+
+async function submitBatchShipping(): Promise<void> {
+  const incomplete = batchShippingOrders.value.filter((order) => {
+    const draft = batchShippingDrafts.value[order.id]
+    return !draft?.logisticsCompany.trim() || !draft?.trackingNo.trim()
+  })
+  if (incomplete.length) {
+    showToast(
+      `请补充以下订单的物流公司和快递单号：${incomplete.map((order) => order.orderNo).join('、')}`,
+      'error',
+    )
+    return
+  }
+  batchWorking.value = true
+  const targets = [...batchShippingOrders.value]
+  const results = await Promise.allSettled(targets.map((order) => {
+    const draft = batchShippingDrafts.value[order.id]
+    return shipAdminOrder(order.id, draft.logisticsCompany.trim(), draft.trackingNo.trim())
+  }))
+  batchWorking.value = false
+  const succeededIds = new Set(targets
+    .filter((_, index) => results[index].status === 'fulfilled')
+    .map((order) => order.id))
+  selectedOrders.value = selectedOrders.value.filter((order) => !succeededIds.has(order.id))
+  const failedOrders = targets.filter((_, index) => results[index].status === 'rejected')
+  if (!failedOrders.length) closeBatchShipping()
+  else batchShippingOrders.value = failedOrders
+  showToast(
+    failedOrders.length
+      ? `批量发货：成功 ${succeededIds.size} 单，失败 ${failedOrders.length} 单。失败订单已保留在弹窗中。`
+      : `已完成 ${succeededIds.size} 个订单的发货`,
+    failedOrders.length ? 'error' : 'success',
+  )
+  await loadOrders()
 }
 
 async function goToPage(target: number): Promise<void> {
@@ -215,16 +339,12 @@ function submitJump(): void {
 }
 
 async function exportOrders(): Promise<void> {
-  errorMessage.value = ''
+  if (!selectedOrders.value.length) {
+    showToast('请先勾选需要导出的订单', 'error')
+    return
+  }
   try {
-    const first = await listAdminOrders({ ...query(), page: 1, size: 100 })
-    const pages = Math.ceil(first.total / 100)
-    const rest = await Promise.all(
-      Array.from({ length: Math.max(0, pages - 1) }, (_, index) =>
-        listAdminOrders({ ...query(), page: index + 2, size: 100 }),
-      ),
-    )
-    const all = [first, ...rest].flatMap((result) => result.items)
+    const all = selectedOrders.value
     const cells = [
       ['订单编号', '下单时间', '收件人', '手机号', '商品/方案', '珠子摘要', '实付金额', '状态', '支付方式'],
       ...all.map((order) => [
@@ -241,9 +361,9 @@ async function exportOrders(): Promise<void> {
     anchor.download = `拾珠作坊订单-${new Date().toISOString().slice(0, 10)}.csv`
     anchor.click()
     URL.revokeObjectURL(url)
-    successMessage.value = `已导出 ${all.length} 条订单`
+    showToast(`已导出 ${all.length} 条订单`)
   } catch (error) {
-    errorMessage.value = readableError(error)
+    showToast(readableError(error), 'error')
   }
 }
 
@@ -252,6 +372,9 @@ function csvCell(value: unknown): string {
 }
 
 onMounted(() => loadOrders())
+onBeforeUnmount(() => {
+  if (toastTimer !== null) clearTimeout(toastTimer)
+})
 </script>
 
 <template>
@@ -262,7 +385,7 @@ onMounted(() => loadOrders())
         <p class="muted">查看与管理所有订单，跟踪制作、发货及售后状态。</p>
       </div>
       <div class="content-header-actions">
-        <button class="secondary-button" :disabled="loading" @click="exportOrders">导出订单</button>
+        <button class="secondary-button" data-test="export-selected-orders" :disabled="loading || !selectedOrders.length" @click="exportOrders">导出所选{{ selectedOrders.length ? `（${selectedOrders.length}）` : '' }}</button>
         <button class="secondary-button" :disabled="loading" @click="loadOrders()">刷新</button>
       </div>
     </header>
@@ -289,8 +412,7 @@ onMounted(() => loadOrders())
       </div>
     </section>
 
-    <div v-if="errorMessage" class="notice error-notice" role="alert">{{ errorMessage }}</div>
-    <div v-if="successMessage" class="notice success-notice">{{ successMessage }}</div>
+    <div v-if="toastMessage" :class="['order-toast', `is-${toastTone}`]" data-test="order-toast" role="status">{{ toastMessage }}</div>
 
     <section class="order-statistics" aria-label="订单状态统计">
       <button
@@ -307,9 +429,17 @@ onMounted(() => loadOrders())
     </section>
 
     <section class="order-table-card">
+      <div v-if="selectedOrders.length" class="batch-toolbar" data-test="batch-toolbar">
+        <strong>已选 {{ selectedOrders.length }} 个订单</strong>
+        <span>其中制作中 {{ selectedProductionOrders.length }} 个，待发货 {{ selectedShipmentOrders.length }} 个</span>
+        <button class="secondary-button" :disabled="batchWorking || !selectedProductionOrders.length" data-test="batch-complete-production" @click="completeSelectedProduction">完成制作</button>
+        <button class="primary-button" :disabled="batchWorking || !selectedShipmentOrders.length" data-test="batch-ship" @click="openBatchShipping">发货</button>
+        <button class="text-button" :disabled="batchWorking" @click="clearSelection">取消选择</button>
+      </div>
       <div class="table-scroll">
         <table class="order-table">
           <colgroup>
+            <col class="col-select" />
             <col class="col-order-no" />
             <col class="col-created-at" />
             <col class="col-customer" />
@@ -320,11 +450,12 @@ onMounted(() => loadOrders())
             <col class="col-payment" />
             <col class="col-actions" />
           </colgroup>
-          <thead><tr><th>订单编号</th><th>下单时间</th><th><span class="customer-heading">顾客信息<button class="phone-visibility" data-test="toggle-order-phones" :aria-label="showCustomerPhones ? '隐藏全部手机号' : '显示全部手机号'" :title="showCustomerPhones ? '隐藏全部手机号' : '显示全部手机号'" @click="showCustomerPhones = !showCustomerPhones"><i :style="{ maskImage: `url(${showCustomerPhones ? eyeOffIcon : eyeIcon})`, WebkitMaskImage: `url(${showCustomerPhones ? eyeOffIcon : eyeIcon})` }" aria-hidden="true" /></button></span></th><th>商品 / 方案</th><th>珠子明细摘要</th><th>实付金额</th><th>状态</th><th>支付方式</th><th>操作</th></tr></thead>
+          <thead><tr><th class="select-cell"><input type="checkbox" data-test="select-page-orders" :checked="allPageSelected" aria-label="选择当前页全部订单" @change="toggleCurrentPage" /></th><th>订单编号</th><th>下单时间</th><th><span class="customer-heading">顾客信息<button class="phone-visibility" data-test="toggle-order-phones" :aria-label="showCustomerPhones ? '隐藏全部手机号' : '显示全部手机号'" :title="showCustomerPhones ? '隐藏全部手机号' : '显示全部手机号'" @click="showCustomerPhones = !showCustomerPhones"><i :style="{ maskImage: `url(${showCustomerPhones ? eyeOffIcon : eyeIcon})`, WebkitMaskImage: `url(${showCustomerPhones ? eyeOffIcon : eyeIcon})` }" aria-hidden="true" /></button></span></th><th>商品 / 方案</th><th>珠子明细摘要</th><th>实付金额</th><th>状态</th><th>支付方式</th><th>操作</th></tr></thead>
           <tbody>
-            <tr v-if="loading"><td colspan="9" class="table-state">正在读取订单…</td></tr>
-            <tr v-else-if="!orders.length"><td colspan="9" class="table-state">当前筛选条件下暂无订单</td></tr>
+            <tr v-if="loading"><td colspan="10" class="table-state">正在读取订单…</td></tr>
+            <tr v-else-if="!orders.length"><td colspan="10" class="table-state">当前筛选条件下暂无订单</td></tr>
             <tr v-for="order in orders" v-else :key="order.id">
+              <td class="select-cell"><input type="checkbox" data-test="select-order" :checked="selectedOrderIds.has(order.id)" :aria-label="`选择订单 ${order.orderNo}`" @change="toggleOrderSelection(order)" /></td>
               <td><button class="order-link" data-test="open-order" @click="emit('open', order.id)">{{ order.orderNo }}</button></td>
               <td class="nowrap">{{ formatDate(order.createdAt) }}</td>
               <td><OverflowText class="cell-primary" :text="order.contactName" /><span class="cell-secondary">{{ showCustomerPhones ? order.contactPhone : maskPhone(order.contactPhone) }}</span></td>
@@ -367,6 +498,20 @@ onMounted(() => loadOrders())
         <footer><button class="secondary-button" @click="shippingOrder = null">取消</button><button class="primary-button" :disabled="workingOrderId === shippingOrder.id" @click="submitShipping">确认发货</button></footer>
       </section>
     </div>
+
+    <div v-if="batchShippingOrders.length" class="order-modal-backdrop" @click.self="closeBatchShipping">
+      <section class="order-modal batch-shipping-modal" role="dialog" aria-modal="true" aria-label="批量填写物流信息">
+        <header><div><h2>批量发货</h2><p>请为每个订单分别填写快递单号</p></div><button class="text-button" :disabled="batchWorking" @click="closeBatchShipping">关闭</button></header>
+        <div class="batch-shipping-list">
+          <article v-for="order in batchShippingOrders" :key="order.id" class="batch-shipping-row">
+            <div><strong>{{ order.orderNo }}</strong><small>{{ order.contactName }} · {{ order.contactPhone }}</small></div>
+            <label><span>物流公司</span><input v-model="batchShippingDrafts[order.id].logisticsCompany" /></label>
+            <label><span>快递单号</span><input v-model="batchShippingDrafts[order.id].trackingNo" :data-test="`batch-tracking-${order.id}`" placeholder="请输入快递单号" /></label>
+          </article>
+        </div>
+        <footer><button class="secondary-button" :disabled="batchWorking" @click="closeBatchShipping">取消</button><button class="primary-button" data-test="submit-batch-shipping" :disabled="batchWorking" @click="submitBatchShipping">确认发货（{{ batchShippingOrders.length }} 单）</button></footer>
+      </section>
+    </div>
   </section>
 </template>
 
@@ -383,7 +528,8 @@ onMounted(() => loadOrders())
 .statistic-card:hover { border-color: #d7c7cd; transform: translateY(-1px); }.statistic-copy { display: flex; gap: 6px; flex-direction: column; }.statistic-card strong { color: var(--ink); font-size: 22px; font-variant-numeric: tabular-nums; }.statistic-card.active { border-color: #a76f83; color: var(--berry); background: #faf0f3; }.statistic-card.active strong { color: var(--berry); }
 .statistic-icon { display: grid; width: 34px; height: 34px; flex: 0 0 auto; border-radius: 50%; place-items: center; }.statistic-icon i { width: 20px; height: 20px; background: currentColor; mask-repeat: no-repeat; mask-position: center; mask-size: contain; }.tone-berry { color: #9c4269; background: #f5e2ea; }.tone-amber { color: #c27a18; background: #fff1d7; }.tone-blue { color: #357fd1; background: #e5f0ff; }.tone-orange { color: #dc7134; background: #ffeadf; }.tone-green { color: #2f9b50; background: #e6f6e9; }.tone-success { color: #23a24a; background: #e2f6e7; }.tone-gray { color: #777277; background: #efedef; }.tone-purple { color: #795ac1; background: #eee8fb; }
 .order-table-card { overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); box-shadow: 0 12px 34px rgb(58 43 49 / 5%); }
-.order-table { width: 100%; min-width: 1080px; table-layout: fixed; }.order-table .col-order-no { width: 16%; }.order-table .col-created-at { width: 10%; }.order-table .col-customer { width: 9%; }.order-table .col-product { width: 17%; }.order-table .col-beads { width: 16%; }.order-table .col-amount { width: 7%; }.order-table .col-status { width: 7%; }.order-table .col-payment { width: 7%; }.order-table .col-actions { width: 11%; }.order-table th,.order-table td { padding: 13px 10px; }.order-table th { white-space: nowrap; }.order-table td { color: #51494d; font-size: 12px; vertical-align: top; }
+.batch-toolbar { display: flex; gap: 12px; min-height: 58px; padding: 9px 14px; align-items: center; border-bottom: 1px solid #eadde2; color: #5e4450; background: #fff5f8; }.batch-toolbar strong { color: var(--berry); }.batch-toolbar span { margin-right: auto; color: var(--muted); font-size: 12px; }.batch-toolbar button { min-height: 36px; padding: 0 13px; }
+.order-table { width: 100%; min-width: 1130px; table-layout: fixed; }.order-table .col-select { width: 4%; }.order-table .col-order-no { width: 15%; }.order-table .col-created-at { width: 10%; }.order-table .col-customer { width: 9%; }.order-table .col-product { width: 16%; }.order-table .col-beads { width: 15%; }.order-table .col-amount { width: 7%; }.order-table .col-status { width: 7%; }.order-table .col-payment { width: 7%; }.order-table .col-actions { width: 10%; }.order-table th,.order-table td { padding: 13px 10px; }.order-table th { white-space: nowrap; }.order-table td { color: #51494d; font-size: 12px; vertical-align: top; }.select-cell { text-align: center; vertical-align: middle !important; }.select-cell input { width: 16px; height: 16px; accent-color: var(--berry); }
 .order-link { max-width: 100%; padding: 0; border: 0; color: var(--berry); font-weight: 800; line-height: 1.45; overflow-wrap: anywhere; text-align: left; background: transparent; }.nowrap { white-space: nowrap; }.cell-primary,.cell-secondary { display: block; }.cell-primary { font-weight: 700; }.cell-secondary { margin-top: 4px; color: var(--muted); font-size: 11px; }
 .bead-summary { display: block; max-width: 270px; }.order-amount { color: var(--berry) !important; font-size: 14px !important; font-weight: 800; white-space: nowrap; }
 .customer-heading { display: inline-flex; gap: 5px; align-items: center; }.phone-visibility { display: grid; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; place-items: center; color: #8c6674; background: transparent; }.phone-visibility:hover { color: var(--berry); background: #f4e9ed; }.phone-visibility i { width: 17px; height: 17px; background: currentColor; mask-repeat: no-repeat; mask-position: center; mask-size: contain; }
@@ -391,5 +537,7 @@ onMounted(() => loadOrders())
 .row-actions { display: flex; flex-wrap: wrap; gap: 4px 8px; }.row-actions .text-button { padding: 2px 0; white-space: nowrap; }.danger-text { color: #a2464e; }
 .table-state { height: 180px; color: var(--muted); text-align: center; }.order-pagination { display: flex; gap: 8px; align-items: center; justify-content: flex-end; padding: 13px 16px; color: var(--muted); font-size: 12px; }.order-pagination > span { margin-right: auto; }.order-pagination label { display: flex; gap: 6px; align-items: center; font-size: 12px; font-weight: 500; }.order-pagination select { width: 82px; min-height: 34px; }.page-number { min-width: 34px; min-height: 34px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); background: #fff; }.page-number.active { border-color: var(--berry); color: #fff; background: var(--berry); }.jump-page input { width: 56px; min-height: 34px; }
 .order-modal-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; padding: 24px; place-items: center; background: rgb(35 26 30 / 42%); }.order-modal { display: grid; width: min(460px, 100%); gap: 18px; padding: 24px; border-radius: 18px; background: #fffdfb; box-shadow: 0 28px 80px rgb(35 26 30 / 25%); }.order-modal header,.order-modal footer { display: flex; align-items: center; justify-content: space-between; }.order-modal h2,.order-modal p { margin: 0; }.order-modal p { margin-top: 5px; color: var(--muted); font-size: 12px; }.order-modal footer { justify-content: flex-end; gap: 10px; }
+.order-toast { position: fixed; z-index: 80; top: 24px; right: 28px; width: min(420px, calc(100vw - 56px)); padding: 14px 18px; border: 1px solid #d7c2ca; border-radius: 12px; color: #553b45; line-height: 1.55; white-space: normal; overflow-wrap: anywhere; background: #fffdfb; box-shadow: 0 16px 44px rgb(43 27 34 / 18%); }.order-toast.is-success { border-color: #bcd7c8; color: #315f4c; background: #f3fbf6; }.order-toast.is-error { border-color: #e1b7bc; color: #923e48; background: #fff5f6; }
+.batch-shipping-modal { width: min(880px, 100%); max-height: calc(100vh - 48px); }.batch-shipping-list { display: grid; gap: 10px; overflow: auto; max-height: 58vh; padding-right: 3px; }.batch-shipping-row { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(170px, .8fr) minmax(220px, 1.2fr); gap: 12px; padding: 13px; align-items: end; border: 1px solid #eadde2; border-radius: 12px; background: #fff; }.batch-shipping-row strong,.batch-shipping-row small { display: block; }.batch-shipping-row small { margin-top: 5px; color: var(--muted); }.batch-shipping-row label { display: grid; gap: 5px; }.batch-shipping-row label span { color: var(--muted); font-size: 11px; }
 @media (max-width: 1320px) { .order-statistics { grid-template-columns: repeat(4, 1fr); }.advanced-filters { grid-template-columns: repeat(3, 1fr); } }
 </style>

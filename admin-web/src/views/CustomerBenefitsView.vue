@@ -39,6 +39,7 @@ const grantNote = ref('')
 const recipientMode = ref<RecipientMode>('SINGLE')
 const phoneQuery = ref('')
 const phoneResults = ref<CustomerSummary[]>([])
+const visibleRecipientCount = ref(10)
 const selectedCustomerIds = ref<number[]>([])
 const customerSearching = ref(false)
 let phoneSearchTimer: ReturnType<typeof setTimeout> | null = null
@@ -59,6 +60,13 @@ const selectedCustomers = computed(() => {
     .map((id) => lookup.get(id))
     .filter((customer): customer is CustomerSummary => Boolean(customer))
 })
+const recipientCandidates = computed(() => phoneQuery.value.trim()
+  ? phoneResults.value
+  : customers.value)
+const visibleRecipientCandidates = computed(() =>
+  recipientCandidates.value.slice(0, visibleRecipientCount.value))
+const hasMoreRecipientCandidates = computed(() =>
+  visibleRecipientCount.value < recipientCandidates.value.length)
 
 const couponDraft = reactive<SaveCouponTemplate>({
   code: '', name: '', description: '', discountAmount: 10,
@@ -191,6 +199,7 @@ function openGrant(coupon: CouponTemplate): void {
   recipientMode.value = 'SINGLE'
   phoneQuery.value = ''
   phoneResults.value = []
+  visibleRecipientCount.value = 10
   selectedCustomerIds.value = []
 }
 
@@ -216,6 +225,7 @@ function removeSelectedCustomer(id: number): void {
 
 async function runPhoneSearch(): Promise<void> {
   const phone = phoneQuery.value.trim()
+  visibleRecipientCount.value = 10
   if (!phone) {
     phoneResults.value = []
     return
@@ -230,6 +240,18 @@ async function runPhoneSearch(): Promise<void> {
   }
 }
 
+function loadMoreRecipients(): void {
+  if (!hasMoreRecipientCandidates.value) return
+  visibleRecipientCount.value += 10
+}
+
+function onRecipientScroll(event: Event): void {
+  const target = event.currentTarget as HTMLElement
+  if (target.scrollTop + target.clientHeight >= target.scrollHeight - 24) {
+    loadMoreRecipients()
+  }
+}
+
 watch(phoneQuery, () => {
   if (phoneSearchTimer) clearTimeout(phoneSearchTimer)
   phoneSearchTimer = setTimeout(() => void runPhoneSearch(), 300)
@@ -239,6 +261,7 @@ watch(recipientMode, () => {
   selectedCustomerIds.value = []
   phoneQuery.value = ''
   phoneResults.value = []
+  visibleRecipientCount.value = 10
 })
 
 async function sendCoupon(): Promise<void> {
@@ -374,14 +397,16 @@ onBeforeUnmount(() => {
 
         <template v-if="recipientMode !== 'ALL'">
           <label class="phone-search-label">按客户手机号模糊搜索<input v-model="phoneQuery" data-test="coupon-customer-search" inputmode="numeric" placeholder="输入手机号任意连续数字，例如 1380" /></label>
-          <div class="search-results">
+          <div class="search-results" data-test="coupon-customer-results" @scroll="onRecipientScroll">
             <p v-if="customerSearching">正在搜索…</p>
-            <p v-else-if="!phoneQuery.trim()">输入手机号后显示匹配客户，单次最多展示 50 位。</p>
-            <p v-else-if="!phoneResults.length">没有匹配的客户</p>
+            <p v-else-if="phoneQuery.trim() && !phoneResults.length">没有匹配的客户</p>
+            <p v-else-if="!recipientCandidates.length">暂无可选择的客户</p>
             <template v-else>
-              <button v-for="customer in phoneResults" :key="customer.id" :class="['customer-option', { selected: selectedCustomerIds.includes(customer.id) }]" @click="selectCustomer(customer.id)">
+              <button v-for="customer in visibleRecipientCandidates" :key="customer.id" :class="['customer-option', { selected: selectedCustomerIds.includes(customer.id) }]" @click="selectCustomer(customer.id)">
                 <span><strong>{{ customer.nickname }}</strong><small>{{ customer.phone || '未填写手机号' }} · #{{ customer.id }}</small></span><i>{{ selectedCustomerIds.includes(customer.id) ? '✓' : '+' }}</i>
               </button>
+              <button v-if="hasMoreRecipientCandidates" class="load-more-customers" data-test="load-more-customers" @click="loadMoreRecipients">继续加载 10 位客户</button>
+              <p v-else class="recipient-list-end">已展示全部 {{ recipientCandidates.length }} 位客户</p>
             </template>
           </div>
           <div v-if="selectedCustomers.length" class="selected-customers">
@@ -448,7 +473,7 @@ input:focus, select:focus, textarea:focus { border-color: #a6677f; box-shadow: 0
 .address-list { display: grid; gap: 12px; }.address-card { display: grid; grid-template-columns: minmax(0,1fr) 150px; gap: 20px; align-items: center; padding: 17px; border: 1px solid #eadde2; border-radius: 14px; background: #fff; }.address-card strong { display: block; margin-bottom: 8px; }.address-state { display: flex; align-items: center; justify-content: space-between; }.address-state em { margin-left: 6px; padding: 3px 7px; border-radius: 9px; color: #9b466a; font-size: 10px; font-style: normal; background: #f9e5ed; }
 .grant-modal { width: min(540px, calc(100vw - 40px)); }
 .recipient-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 18px; padding: 5px; border-radius: 12px; background: #f3e9ed; }.recipient-tabs button { min-height: 38px; border: 0; border-radius: 9px; color: #775d67; background: transparent; }.recipient-tabs button.active { color: #fff; font-weight: 700; background: #87445f; box-shadow: 0 5px 14px rgb(135 68 95 / 18%); }
-.phone-search-label { margin-bottom: 8px !important; }.search-results { max-height: 280px; min-height: 92px; overflow: auto; margin-bottom: 12px; border: 1px solid #eadde2; border-radius: 12px; background: #fff; }.search-results > p { margin: 0; padding: 28px 18px; color: #96848b; font-size: 12px; text-align: center; }.customer-option { display: flex; width: 100%; min-height: 58px; padding: 10px 14px; border: 0; border-top: 1px solid #f0e7ea; align-items: center; justify-content: space-between; color: #4d3e44; text-align: left; background: #fff; }.customer-option:first-of-type { border-top: 0; }.customer-option:hover, .customer-option.selected { background: #fff5f8; }.customer-option strong, .customer-option small { display: block; }.customer-option small { margin-top: 4px; color: #8e7b83; }.customer-option i { display: grid; width: 25px; height: 25px; border-radius: 50%; place-items: center; color: #fff; font-style: normal; background: #a5677f; }
+.phone-search-label { margin-bottom: 8px !important; }.search-results { max-height: 320px; min-height: 92px; overflow: auto; margin-bottom: 12px; border: 1px solid #eadde2; border-radius: 12px; background: #fff; }.search-results > p { margin: 0; padding: 28px 18px; color: #96848b; font-size: 12px; text-align: center; }.customer-option { display: flex; width: 100%; min-height: 58px; padding: 10px 14px; border: 0; border-top: 1px solid #f0e7ea; align-items: center; justify-content: space-between; color: #4d3e44; text-align: left; background: #fff; }.customer-option:first-of-type { border-top: 0; }.customer-option:hover, .customer-option.selected { background: #fff5f8; }.customer-option strong, .customer-option small { display: block; }.customer-option small { margin-top: 4px; color: #8e7b83; }.customer-option i { display: grid; width: 25px; height: 25px; border-radius: 50%; place-items: center; color: #fff; font-style: normal; background: #a5677f; }.load-more-customers { width: 100%; min-height: 42px; border: 0; border-top: 1px solid #f0e7ea; color: #87445f; font-size: 12px; background: #fff8fa; }.recipient-list-end { padding: 12px 18px !important; border-top: 1px solid #f0e7ea; }
 .selected-customers { display: flex; flex-wrap: wrap; gap: 7px; margin: 0 0 14px; }.selected-customers > span { width: 100%; color: #7b6870; font-size: 12px; }.selected-customers button { padding: 6px 9px; border: 1px solid #e6d3da; border-radius: 16px; color: #7d4658; font-size: 11px; background: #fff; }
 .all-customer-warning { display: flex; min-height: 105px; margin-bottom: 18px; padding: 18px; border: 1px solid #efcfda; border-radius: 13px; flex-direction: column; justify-content: center; color: #743e54; background: #fff1f5; }.all-customer-warning span { margin-top: 7px; color: #8f6978; font-size: 12px; line-height: 1.6; }
 .grant-modal > .primary-button { width: 100%; margin-top: 7px; }
