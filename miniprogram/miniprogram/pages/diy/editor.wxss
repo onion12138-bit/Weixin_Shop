@@ -5,7 +5,7 @@ page {
 .diy-page {
   position: relative;
   min-height: 100vh;
-  padding: 16rpx 24rpx 158rpx;
+  padding: 16rpx 24rpx calc(158rpx + env(safe-area-inset-bottom));
   background: #faf6f3;
   box-sizing: border-box;
 }
@@ -69,12 +69,15 @@ page {
 
 .configuration-strip {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12rpx;
   margin-bottom: 14rpx;
 }
 
 .configuration-strip button {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   height: 64rpx;
   border-radius: 32rpx;
   color: #684353;
@@ -302,6 +305,7 @@ page {
 }
 
 .bead-search input {
+  min-width: 0;
   flex: 1;
   height: 64rpx;
   padding: 0 24rpx;
@@ -312,6 +316,7 @@ page {
 }
 
 .bead-search button {
+  flex: 0 0 auto;
   width: 130rpx;
   height: 64rpx;
   border-radius: 32rpx;

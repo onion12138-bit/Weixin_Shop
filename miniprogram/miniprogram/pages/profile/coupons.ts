@@ -29,9 +29,9 @@ Page({
     try {
       const allCoupons = (await listCoupons()).map((coupon) => ({
         ...coupon,
-        amountText: `¥${Number(coupon.discountAmount).toFixed(0)}`,
+        amountText: `¥${Number(coupon.discountAmount).toFixed(2)}`,
         thresholdText: Number(coupon.minimumSpend) > 0
-          ? `满 ¥${Number(coupon.minimumSpend).toFixed(0)} 可用` : '无门槛',
+          ? `满 ¥${Number(coupon.minimumSpend).toFixed(2)} 可用` : '无门槛',
         statusLabel: STATUS_LABELS[coupon.status] || coupon.status,
         expiresText: `有效期至 ${formatDate(coupon.expiresAt)}`,
       }))

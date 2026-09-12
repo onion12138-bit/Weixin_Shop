@@ -78,7 +78,7 @@ export function request<T>(
         if (
           response.statusCode >= 200 &&
           response.statusCode < 300 &&
-          envelope.code === 'OK'
+          envelope?.code === 'OK'
         ) {
           resolve(envelope.data)
           return
@@ -168,16 +168,16 @@ function handleUploadEnvelope<T>(
   if (
     response.statusCode >= 200 &&
     response.statusCode < 300 &&
-    envelope.code === 'OK'
+    envelope?.code === 'OK'
   ) {
     resolve(envelope.data)
     return
   }
   reject(
     new ApiError(
-      envelope.message || '上传失败',
-      envelope.code || 'COMMON_INTERNAL_ERROR',
-      envelope.traceId,
+      envelope?.message || '上传失败',
+      envelope?.code || 'COMMON_INTERNAL_ERROR',
+      envelope?.traceId,
     ),
   )
 }

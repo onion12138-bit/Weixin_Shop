@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { useAuthStore } from './stores/auth'
 import AiConfigurationView from './views/AiConfigurationView.vue'
 import AiRecommendationLogsView from './views/AiRecommendationLogsView.vue'
@@ -13,6 +13,7 @@ import OrderView from './views/OrderView.vue'
 const auth = useAuthStore()
 type AdminView = 'catalog' | 'diy' | 'commerce' | 'orders' | 'customers' | 'ai' | 'ai-logs'
 const activeView = ref<AdminView>('catalog')
+watch(activeView, () => window.scrollTo(0, 0), { flush: 'post' })
 </script>
 
 <template>

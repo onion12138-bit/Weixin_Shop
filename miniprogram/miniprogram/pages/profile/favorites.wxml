@@ -5,7 +5,7 @@
   <view wx:elif="{{!favoriteCards.length}}" class="soft-card state-card"><text>还没有收藏珠子</text><button class="secondary-action browse-button" bindtap="browseBeads">去 DIY 里发现心动</button></view>
   <view wx:else class="favorite-grid">
     <view wx:for="{{favoriteCards}}" wx:key="id" class="soft-card favorite-card">
-      <button class="heart-button" data-id="{{item.id}}" bindtap="removeFavorite">♥</button><image src="{{item.imageUrl}}" mode="aspectFit" /><strong>{{item.title}}</strong><text>{{item.specification}}</text><text class="price">{{item.priceText}}</text><button class="design-button" data-id="{{item.id}}" bindtap="startDesign">加入 DIY</button>
+      <button class="heart-button" data-id="{{item.id}}" bindtap="removeFavorite">♥</button><image src="{{item.imageUrl}}" mode="aspectFit" /><text class="strong-text">{{item.title}}</text><text>{{item.specification}}</text><text class="price">{{item.priceText}}</text><button class="design-button" data-id="{{item.id}}" bindtap="startDesign">加入 DIY</button>
     </view>
   </view>
 </view>

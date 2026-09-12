@@ -25,6 +25,12 @@ Page({
     errorMessage: '',
   },
 
+  productsRequestId: 0,
+
+  onUnload() {
+    this.productsRequestId += 1
+  },
+
   async onLoad(options: Record<string, string | undefined> = {}) {
     this.setData({
       activeTab: options.tab === 'packages' ? 'packages' : 'beads',
@@ -45,14 +51,14 @@ Page({
       await this.loadProducts(true)
     } catch (error) {
       this.showError(error)
-    } finally {
       this.setData({ loading: false })
     }
   },
 
   async loadProducts(reset = false) {
     if (this.data.loading && !reset) return
-    const nextPage = reset ? 1 : this.data.page
+    const requestId = ++this.productsRequestId
+    const nextPage = reset ? 1 : this.data.page + 1
     this.setData({ loading: true, errorMessage: '' })
     try {
       if (this.data.activeTab === 'packages') {
@@ -60,6 +66,7 @@ Page({
           page: nextPage,
           size: this.data.size,
         })
+        if (requestId !== this.productsRequestId) return
         const cards = result.items.map(toPackageCard)
         this.setData({
           packageCards: reset
@@ -76,6 +83,7 @@ Page({
           page: nextPage,
           size: this.data.size,
         })
+        if (requestId !== this.productsRequestId) return
         const cards = result.items.map(toBeadCard)
         this.setData({
           beadCards: reset
@@ -87,9 +95,9 @@ Page({
         })
       }
     } catch (error) {
-      this.showError(error)
+      if (requestId === this.productsRequestId) this.showError(error)
     } finally {
-      this.setData({ loading: false })
+      if (requestId === this.productsRequestId) this.setData({ loading: false })
     }
   },
 
@@ -122,7 +130,6 @@ Page({
 
   loadMore() {
     if (this.data.loading || !this.data.hasMore) return
-    this.setData({ page: this.data.page + 1 })
     void this.loadProducts(false)
   },
 

@@ -26,6 +26,15 @@
       <text>{{order.addressDetail}}</text>
     </view>
 
+    <view class="detail-card logistics-card">
+      <view class="card-heading">
+        <text class="card-title">物流信息</text>
+        <button wx:if="{{order.trackingNo}}" bindtap="copyTrackingNo">复制单号</button>
+      </view>
+      <text>{{order.logisticsCompany || '物流公司待更新'}}</text>
+      <text>{{order.trackingNo || '暂未提供运单号，请等待物流更新'}}</text>
+    </view>
+
     <view class="detail-card">
       <view class="card-heading">
         <text class="card-title">制作清单</text>
@@ -47,7 +56,7 @@
       <view><text>绳材加价</text><text>{{order.cordFeeText}}</text></view>
       <view wx:if="{{order.discountAmount}}"><text>优惠券抵扣</text><text>{{order.discountAmountText}}</text></view>
       <view><text>配送费</text><text>{{order.shippingFeeText}}</text></view>
-      <view class="total-row"><text>订单总额</text><strong>{{order.amountText}}</strong></view>
+      <view class="total-row"><text>订单总额</text><text class="strong-text">{{order.amountText}}</text></view>
     </view>
 
     <view wx:if="{{errorMessage}}" class="inline-error">{{errorMessage}}</view>

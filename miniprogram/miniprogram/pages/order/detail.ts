@@ -77,6 +77,7 @@ Page({
     action: () => ReturnType<typeof getOrder>,
     message: string,
   ) {
+    if (this.data.operating) return
     this.setData({ operating: true, errorMessage: '' })
     try {
       this.setData({ order: toOrderDetail(await action()) })
@@ -86,6 +87,15 @@ Page({
     } finally {
       this.setData({ operating: false })
     }
+  },
+
+  copyTrackingNo() {
+    const trackingNo = this.data.order?.trackingNo?.trim()
+    if (!trackingNo) return
+    wx.setClipboardData({
+      data: trackingNo,
+      fail: () => wx.showToast({ title: '复制失败，请重试', icon: 'none' }),
+    })
   },
 })
 

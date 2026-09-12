@@ -44,6 +44,6 @@ public record SavePackageRequest(
         CatalogStatus status,
 
         @NotEmpty(message = "套餐至少需要一种散珠")
-        List<@Valid SavePackageItemRequest> items
+        List<@NotNull @Valid SavePackageItemRequest> items
 ) {
 }

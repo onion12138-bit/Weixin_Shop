@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import DataTooltip from '../components/DataTooltip.vue'
+import OverflowText from '../components/OverflowText.vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import {
   deleteAiRecommendationLog,
   getAiRecommendationLog,
@@ -21,6 +23,9 @@ const page = ref(1)
 const size = ref(20)
 const total = ref(0)
 const filters = reactive({ status: '' as AiLogStatus | '', keyword: '' })
+let latestListRequest = 0
+let latestDetailRequest = 0
+let disposed = false
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / size.value)))
 
@@ -38,6 +43,8 @@ function readableError(error: unknown, fallback: string): string {
 }
 
 async function load(resetPage = false): Promise<void> {
+  if (disposed) return
+  const requestId = ++latestListRequest
   if (resetPage) page.value = 1
   loading.value = true
   errorMessage.value = ''
@@ -45,31 +52,44 @@ async function load(resetPage = false): Promise<void> {
     const result = await listAiRecommendationLogs(
       page.value, size.value, filters.status, filters.keyword,
     )
+    if (requestId !== latestListRequest) return
+    const lastPage = Math.max(1, Math.ceil(result.total / size.value))
+    if (page.value > lastPage) {
+      page.value = lastPage
+      await load()
+      return
+    }
     logs.value = result.items
     total.value = result.total
-    if (page.value > totalPages.value) page.value = totalPages.value
   } catch (error) {
+    if (requestId !== latestListRequest) return
     errorMessage.value = readableError(error, 'AI 调用日志读取失败')
   } finally {
-    loading.value = false
+    if (requestId === latestListRequest) loading.value = false
   }
 }
 
 async function openDetail(id: number): Promise<void> {
+  if (disposed) return
+  const requestId = ++latestDetailRequest
   selected.value = null
   detailLoading.value = true
   errorMessage.value = ''
   try {
-    selected.value = await getAiRecommendationLog(id)
+    const result = await getAiRecommendationLog(id)
+    if (requestId !== latestDetailRequest) return
+    selected.value = result
   } catch (error) {
+    if (requestId !== latestDetailRequest) return
     errorMessage.value = readableError(error, 'AI 日志详情读取失败')
   } finally {
-    detailLoading.value = false
+    if (requestId === latestDetailRequest) detailLoading.value = false
   }
 }
 
 function closeDetail(): void {
-  if (detailLoading.value) return
+  latestDetailRequest++
+  detailLoading.value = false
   selected.value = null
 }
 
@@ -128,6 +148,11 @@ function preferenceObservation(log: AiRecommendationLogSummary): string {
 }
 
 onMounted(() => load())
+onBeforeUnmount(() => {
+  disposed = true
+  latestListRequest++
+  latestDetailRequest++
+})
 </script>
 
 <template>
@@ -174,7 +199,7 @@ onMounted(() => load())
         <div v-if="loading" class="empty-state">正在读取 AI 日志…</div>
         <div v-else-if="logs.length === 0" class="empty-state">暂无符合条件的 AI 调用日志</div>
         <div v-else class="table-scroll">
-          <table>
+          <table class="ai-log-table">
             <thead>
               <tr>
                 <th>时间 / 状态</th>
@@ -188,22 +213,24 @@ onMounted(() => load())
               <tr v-for="log in logs" :key="log.id" :data-test="`log-row-${log.id}`">
                 <td>
                   <strong>{{ formatTime(log.createdAt) }}</strong>
-                  <small class="trace-code">{{ log.traceId }}</small>
+                  <OverflowText class="trace-code" :text="log.traceId" />
                   <span class="status-pill" :class="`ai-log-status-${log.status.toLowerCase()}`">
                     {{ statusLabels[log.status] }}
                   </span>
                 </td>
-                <td>{{ log.wishSummary || '未填写期望' }}</td>
+                <td><OverflowText :text="log.wishSummary || '未填写期望'" :lines="2" /></td>
                 <td>
-                  <span>{{ log.preferenceSummary || '未识别' }}</span>
-                  <small>{{ log.matchedPlanCount }}/{{ log.planCount }} 套采用 · {{ log.candidateCount }} 款候选</small>
+                  <DataTooltip :text="preferenceObservation(log)">
+                    <span class="log-preference-copy">{{ log.preferenceSummary || '未识别' }}</span>
+                    <small>{{ log.matchedPlanCount }}/{{ log.planCount }} 套采用 · {{ log.candidateCount }} 款候选</small>
+                  </DataTooltip>
                 </td>
                 <td>
                   <span>{{ log.attemptCount }} 次</span>
                   <small>{{ log.durationMs === null ? '—' : `${log.durationMs} ms` }}</small>
                   <small v-if="log.errorCode" class="error-code">{{ log.errorCode }}</small>
                 </td>
-                <td class="ai-log-actions">
+                <td><div class="ai-log-actions">
                   <button class="secondary-button" type="button" @click="openDetail(log.id)">详情</button>
                   <button
                     class="danger-button"
@@ -211,7 +238,7 @@ onMounted(() => load())
                     :disabled="deletingId === log.id"
                     @click="remove(log)"
                   >{{ deletingId === log.id ? '删除中…' : '删除' }}</button>
-                </td>
+                </div></td>
               </tr>
             </tbody>
           </table>

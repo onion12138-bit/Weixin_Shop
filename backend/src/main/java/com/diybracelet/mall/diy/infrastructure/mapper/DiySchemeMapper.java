@@ -18,6 +18,10 @@ import java.util.List;
 @Mapper
 public interface DiySchemeMapper extends BaseMapper<DiyScheme> {
 
+    /** 串行化同一顾客的新增/复制，避免并发请求一起通过数量检查。 */
+    @Select("select id from customer_identity where id = #{customerId} for update")
+    Long lockCustomerForSchemeChanges(@Param("customerId") Long customerId);
+
     /**
      * 查询当前顾客拥有的单个有效方案。
      */

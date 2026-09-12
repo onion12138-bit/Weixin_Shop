@@ -64,6 +64,7 @@ Page({
   },
 
   async saveAddress() {
+    if (this.data.saving) return
     const draft = {
       ...this.data.draft,
       receiverName: this.data.draft.receiverName.trim(),

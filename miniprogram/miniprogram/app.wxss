@@ -1,6 +1,8 @@
-/* 全局只定义品牌基础色和字体；页面布局由对应页面样式负责。 */
+/* 全局定义品牌基础色和文字强调；页面布局由对应页面样式负责。 */
 page {
   color: #2f2430;
   background: #fff8fa;
   font-family: "PingFang SC", sans-serif;
 }
+
+.strong-text { font-weight: 700; }

@@ -1,13 +1,28 @@
-import { flushPromises, mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import CustomerBenefitsView from './CustomerBenefitsView.vue'
 import {
+  createCouponTemplate,
   grantCouponsBatch,
   listCouponTemplates,
   listCustomerAddresses,
   listCustomers,
   searchCustomersByPhone,
+  updateCouponTemplate,
+  type AdminCustomerAddress,
+  type CouponTemplate,
+  type CustomerSummary,
 } from '../api/customers'
+
+enableAutoUnmount(afterEach)
+afterEach(() => vi.useRealTimers())
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no })
+  return { promise, resolve, reject }
+}
 
 vi.mock('../api/customers', () => ({
   listCustomers: vi.fn(),
@@ -47,11 +62,23 @@ const coupon = {
 
 describe('CustomerBenefitsView', () => {
   beforeEach(() => {
+    vi.resetAllMocks()
     vi.mocked(listCustomers).mockResolvedValue([customer])
     vi.mocked(listCouponTemplates).mockResolvedValue([coupon])
     vi.mocked(listCustomerAddresses).mockResolvedValue([{ id: 21, customerIdentityId: 15, customerNickname: '小丸子', receiverName: '小丸子', phone: '13812345678', region: '上海市徐汇区', detail: '测试路 18 号', isDefault: true, status: 'ACTIVE', updatedAt: '2026-08-08T10:00:00' }])
     vi.mocked(searchCustomersByPhone).mockResolvedValue([customer])
     vi.mocked(grantCouponsBatch).mockResolvedValue({ requestedCount: 1, grantedCount: 1, skippedCount: 0 })
+  })
+
+  it('shows coupon amounts and minimum spend without rounding away cents', async () => {
+    vi.mocked(listCouponTemplates).mockResolvedValue([{ ...coupon, discountAmount: 10.49, minimumSpend: 100.25 }])
+    const wrapper = mount(CustomerBenefitsView)
+    await flushPromises()
+    await wrapper.get('.customer-tabs button:last-child').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.coupon-value').text()).toContain('¥10.49')
+    expect(wrapper.get('.coupon-value').text()).toContain('¥100.25')
+    wrapper.unmount()
   })
 
   it('merges address management into each customer row', async () => {
@@ -125,5 +152,143 @@ describe('CustomerBenefitsView', () => {
     await new Promise((resolve) => setTimeout(resolve, 330))
     await flushPromises()
     expect(searchCustomersByPhone).toHaveBeenCalledWith('3456', 50)
+  })
+
+  async function openGrantDialog() {
+    const wrapper = mount(CustomerBenefitsView)
+    await flushPromises()
+    await wrapper.get('.customer-tabs button:last-child').trigger('click')
+    await flushPromises()
+    await wrapper.get('.coupon-actions .primary-button').trigger('click')
+    return wrapper
+  }
+
+  it('invalidates an older phone result as soon as the query changes, before the debounce expires', async () => {
+    const wrapper = await openGrantDialog()
+    vi.useFakeTimers()
+    const older = deferred<CustomerSummary[]>()
+    vi.mocked(searchCustomersByPhone).mockReturnValueOnce(older.promise)
+      .mockResolvedValueOnce([{ ...customer, id: 16, nickname: '新查询客户' }])
+    await wrapper.get('[data-test="coupon-customer-search"]').setValue('138')
+    await vi.advanceTimersByTimeAsync(300)
+    await wrapper.get('[data-test="coupon-customer-search"]').setValue('139')
+
+    older.resolve([{ ...customer, nickname: '过期查询客户' }])
+    await flushPromises()
+    expect(wrapper.get('[data-test="coupon-customer-results"]').text()).not.toContain('过期查询客户')
+    await vi.advanceTimersByTimeAsync(300)
+    await flushPromises()
+    expect(wrapper.get('[data-test="coupon-customer-results"]').text()).toContain('新查询客户')
+  })
+
+  it('keeps a new phone search loading when an older search fails', async () => {
+    const wrapper = await openGrantDialog()
+    vi.useFakeTimers()
+    const older = deferred<CustomerSummary[]>()
+    const latest = deferred<CustomerSummary[]>()
+    vi.mocked(searchCustomersByPhone).mockReturnValueOnce(older.promise).mockReturnValueOnce(latest.promise)
+    await wrapper.get('[data-test="coupon-customer-search"]').setValue('138')
+    await vi.advanceTimersByTimeAsync(300)
+    await wrapper.get('[data-test="coupon-customer-search"]').setValue('139')
+    await vi.advanceTimersByTimeAsync(300)
+
+    older.reject(new Error('过期搜索错误'))
+    await flushPromises()
+    expect(wrapper.get('[data-test="coupon-customer-results"]').text()).toContain('正在搜索')
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+    latest.resolve([customer])
+    await flushPromises()
+  })
+
+  it('cancels pending phone debounce when the grant dialog closes', async () => {
+    const wrapper = await openGrantDialog()
+    vi.useFakeTimers()
+    await wrapper.get('[data-test="coupon-customer-search"]').setValue('138')
+    await wrapper.get('.grant-modal .panel-title .link-button').trigger('click')
+
+    await vi.advanceTimersByTimeAsync(300)
+
+    expect(searchCustomersByPhone).not.toHaveBeenCalled()
+  })
+
+  it.each(['close', 'unmount'])('ignores a phone response after %s', async (action) => {
+    const wrapper = await openGrantDialog()
+    vi.useFakeTimers()
+    const pending = deferred<CustomerSummary[]>()
+    vi.mocked(searchCustomersByPhone).mockReturnValueOnce(pending.promise)
+    await wrapper.get('[data-test="coupon-customer-search"]').setValue('138')
+    await vi.advanceTimersByTimeAsync(300)
+    const state = wrapper.vm as unknown as { phoneResults: CustomerSummary[] }
+    if (action === 'close') await wrapper.get('.grant-modal .panel-title .link-button').trigger('click')
+    else wrapper.unmount()
+    const previousResults = state.phoneResults
+
+    pending.resolve([customer])
+    await flushPromises()
+
+    expect(state.phoneResults).toBe(previousResults)
+  })
+
+  it.each(['success', 'failure'])('ignores an older address %s after switching customers', async (outcome) => {
+    vi.mocked(listCustomers).mockResolvedValue([customer, { ...customer, id: 16, nickname: '第二位顾客' }])
+    const older = deferred<AdminCustomerAddress[]>()
+    const latest = deferred<AdminCustomerAddress[]>()
+    vi.mocked(listCustomerAddresses).mockReturnValueOnce(older.promise).mockReturnValueOnce(latest.promise)
+    const wrapper = mount(CustomerBenefitsView)
+    await flushPromises()
+    await wrapper.findAll('[data-test="open-customer-addresses"]')[0].trigger('click')
+    await wrapper.get('.address-modal .panel-title .link-button').trigger('click')
+    await wrapper.findAll('[data-test="open-customer-addresses"]')[1].trigger('click')
+
+    if (outcome === 'success') older.resolve([])
+    else older.reject(new Error('过期地址错误'))
+    await flushPromises()
+    expect(wrapper.get('.address-modal').text()).toContain('正在读取地址')
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+
+    latest.resolve([{
+      id: 22, customerIdentityId: 16, customerNickname: '第二位顾客', receiverName: '第二位顾客',
+      phone: '13912345678', region: '上海市', detail: '第二个地址', isDefault: true,
+      status: 'ACTIVE', updatedAt: '2026-08-08T10:00:00',
+    }])
+    await flushPromises()
+    expect(wrapper.get('.address-modal').text()).toContain('第二个地址')
+  })
+
+  it.each(['create', 'update'])('prevents duplicate %s coupon submissions before rendering disables the button', async (action) => {
+    const pending = deferred<CouponTemplate>()
+    const save = action === 'create' ? createCouponTemplate : updateCouponTemplate
+    vi.mocked(save).mockReturnValue(pending.promise)
+    const wrapper = mount(CustomerBenefitsView)
+    await flushPromises()
+    await wrapper.get('.customer-tabs button:last-child').trigger('click')
+    await flushPromises()
+    if (action === 'update') await wrapper.get('.coupon-actions .link-button').trigger('click')
+    else {
+      await wrapper.get('input[placeholder="例如 NEW-20"]').setValue('NEW-20')
+      await wrapper.get('input[placeholder="例如 新客立减券"]').setValue('新客券')
+      await wrapper.get('textarea').setValue('测试优惠说明')
+    }
+    const form = wrapper.get('.coupon-form').element
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+
+    expect(save).toHaveBeenCalledTimes(1)
+    pending.resolve(coupon)
+    await flushPromises()
+  })
+
+  it('prevents duplicate coupon grants before rendering disables the send button', async () => {
+    const pending = deferred<Awaited<ReturnType<typeof grantCouponsBatch>>>()
+    vi.mocked(grantCouponsBatch).mockReturnValue(pending.promise)
+    const wrapper = await openGrantDialog()
+    await wrapper.get('.customer-option').trigger('click')
+    const button = wrapper.get('[data-test="send-coupon"]').element
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+    expect(grantCouponsBatch).toHaveBeenCalledTimes(1)
+    pending.resolve({ requestedCount: 1, grantedCount: 1, skippedCount: 0 })
+    await flushPromises()
   })
 })

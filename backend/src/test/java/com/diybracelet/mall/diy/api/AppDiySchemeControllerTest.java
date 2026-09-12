@@ -94,6 +94,52 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 class AppDiySchemeControllerTest extends MySqlIntegrationTest {
 
+    @Test
+    void concurrentCreatesMustRespectTheThreeSchemeLimit() throws Exception {
+        String session = mockMvc.perform(post("/api/app/session/guest")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"installationId\":\"9b4c9e91-e267-4515-aad5-3900f2e985a9\"}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        String token = objectMapper.readTree(session).path("data").path("accessToken").asText();
+        long customerId = objectMapper.readTree(session).path("data").path("customerIdentityId").asLong();
+        String request = """
+                {"name":"并发保存","wristCircumferenceMm":160,"fitType":"STANDARD",
+                 "cordOptionId":6001,"sequence":[2001],"version":0}
+                """;
+        var executor = java.util.concurrent.Executors.newFixedThreadPool(8);
+        var ready = new java.util.concurrent.CountDownLatch(8);
+        var start = new java.util.concurrent.CountDownLatch(1);
+        try {
+            var results = new ArrayList<java.util.concurrent.Future<Integer>>();
+            for (int index = 0; index < 8; index++) {
+                results.add(executor.submit(() -> {
+                    ready.countDown();
+                    if (!start.await(10, java.util.concurrent.TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("start barrier timed out");
+                    }
+                    return mockMvc.perform(post("/api/app/diy/schemes")
+                                    .header("Authorization", "Bearer " + token)
+                                    .contentType(MediaType.APPLICATION_JSON).content(request))
+                            .andReturn().getResponse().getStatus();
+                }));
+            }
+            assertThat(ready.await(10, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            var statuses = new ArrayList<Integer>();
+            for (var result : results) statuses.add(result.get(30, java.util.concurrent.TimeUnit.SECONDS));
+            assertThat(statuses).containsOnly(201, 409);
+            assertThat(statuses.stream().filter(value -> value == 201).count()).isEqualTo(3);
+            assertThat(jdbcTemplate.queryForObject(
+                    "select count(*) from diy_scheme where customer_identity_id = ? and status = 'ACTIVE'",
+                    Integer.class, customerId)).isEqualTo(3);
+        } finally {
+            start.countDown();
+            executor.shutdownNow();
+            executor.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS);
+        }
+    }
+
     @Autowired
     private MockMvc mockMvc;
 

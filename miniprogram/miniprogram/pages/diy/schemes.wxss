@@ -1,12 +1,14 @@
 .schemes-page {
   min-height: 100vh;
-  padding: 34rpx 26rpx 64rpx;
+  padding: 34rpx 26rpx calc(64rpx + env(safe-area-inset-bottom));
   background: #fff8fa;
   box-sizing: border-box;
 }
 
 .schemes-header {
   display: flex;
+  flex-wrap: wrap;
+  gap: 22rpx;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 30rpx;
@@ -145,6 +147,8 @@
 }
 
 .scheme-title {
+  min-width: 0;
+  word-break: break-all;
   flex: 1;
   color: #3b3036;
   font-size: 30rpx;
@@ -152,6 +156,8 @@
 }
 
 .status {
+  flex: 0 0 auto;
+  white-space: nowrap;
   padding: 7rpx 16rpx;
   border-radius: 999rpx;
   color: #fff;
@@ -177,6 +183,7 @@
 
 .scheme-meta {
   display: flex;
+  flex-wrap: wrap;
   gap: 24rpx;
   margin-top: 18rpx;
 }

@@ -1,6 +1,6 @@
 .orders-page {
   min-height: 100vh;
-  padding: 34rpx 26rpx 64rpx;
+  padding: 34rpx 26rpx calc(64rpx + env(safe-area-inset-bottom));
   background: #fff8fa;
   box-sizing: border-box;
 }
@@ -93,6 +93,8 @@
 }
 
 .status {
+  flex: 0 0 auto;
+  white-space: nowrap;
   padding: 7rpx 15rpx;
   border-radius: 99rpx;
   color: #754657;
@@ -138,7 +140,7 @@
   font-size: 21rpx;
 }
 
-.order-main strong {
+.order-main .strong-text {
   color: #754657;
   font-size: 30rpx;
 }
@@ -150,6 +152,10 @@
 }
 
 .order-footer text:last-child {
+  flex: 0 0 auto;
   color: #754657;
   font-weight: 700;
 }
+
+.order-top, .order-footer { gap: 18rpx; }
+.order-top > view, .order-footer text:first-child { min-width: 0; word-break: break-all; }

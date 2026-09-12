@@ -104,7 +104,7 @@ function exchangeGuestSession(installationId: string): Promise<GuestSession> {
         if (
           response.statusCode >= 200 &&
           response.statusCode < 300 &&
-          envelope.code === 'OK'
+          envelope?.code === 'OK'
         ) {
           resolve(envelope.data)
           return

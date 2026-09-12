@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import OverflowText from '../components/OverflowText.vue'
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ApiError, resolveApiResourceUrl } from '../api/http'
 import ListPagination from '../components/ListPagination.vue'
@@ -38,6 +39,9 @@ const ACCEPTED_COVER_TYPES = new Set([
   'image/webp',
 ])
 let toastTimer: ReturnType<typeof setTimeout> | null = null
+let latestPackageRequest = 0
+let latestEditorRequest = 0
+let disposed = false
 
 const filters = reactive({
   keyword: '',
@@ -87,22 +91,26 @@ function showToast(message: string): void {
 }
 
 async function loadPackages(): Promise<void> {
+  if (disposed) return
+  const requestId = ++latestPackageRequest
   loading.value = true
   errorMessage.value = ''
   try {
     const result = await listAdminPackages(filters)
+    if (requestId !== latestPackageRequest) return
     packages.value = result.items
     total.value = result.total
   } catch (error) {
+    if (requestId !== latestPackageRequest) return
     errorMessage.value = readableError(error)
   } finally {
-    loading.value = false
+    if (requestId === latestPackageRequest) loading.value = false
   }
 }
 
-async function loadEditorBeads(): Promise<void> {
+async function loadEditorBeads(): Promise<BeadSku[]> {
   const result = await listAdminBeads({ page: 1, size: 100 })
-  availableBeads.value = result.items
+  return result.items
 }
 
 function emptyItem(): { beadSkuId: number; quantity: number } {
@@ -113,11 +121,15 @@ function emptyItem(): { beadSkuId: number; quantity: number } {
 }
 
 async function openCreate(): Promise<void> {
+  if (disposed) return
+  const requestId = ++latestEditorRequest
   editingId.value = null
   editorLoading.value = true
   errorMessage.value = ''
   try {
-    await loadEditorBeads()
+    const beads = await loadEditorBeads()
+    if (requestId !== latestEditorRequest) return
+    availableBeads.value = beads
     Object.assign(form, {
       packageCode: '',
       name: '',
@@ -130,9 +142,10 @@ async function openCreate(): Promise<void> {
     coverPreviewUrl.value = ''
     showForm.value = true
   } catch (error) {
+    if (requestId !== latestEditorRequest) return
     errorMessage.value = readableError(error)
   } finally {
-    editorLoading.value = false
+    if (requestId === latestEditorRequest) editorLoading.value = false
   }
 }
 
@@ -141,14 +154,18 @@ async function openCreate(): Promise<void> {
  * 提交时后端会在一个事务中整体替换明细，避免出现半旧半新的搭配。
  */
 async function openEdit(item: ProductPackage): Promise<void> {
+  if (disposed) return
+  const requestId = ++latestEditorRequest
   editingId.value = item.id
   editorLoading.value = true
   errorMessage.value = ''
   try {
-    const [detail] = await Promise.all([
+    const [detail, beads] = await Promise.all([
       getAdminPackage(item.id),
       loadEditorBeads(),
     ])
+    if (requestId !== latestEditorRequest) return
+    availableBeads.value = beads
     Object.assign(form, {
       packageCode: detail.packageCode,
       name: detail.name,
@@ -166,9 +183,10 @@ async function openEdit(item: ProductPackage): Promise<void> {
       : ''
     showForm.value = true
   } catch (error) {
+    if (requestId !== latestEditorRequest) return
     errorMessage.value = readableError(error)
   } finally {
-    editorLoading.value = false
+    if (requestId === latestEditorRequest) editorLoading.value = false
   }
 }
 
@@ -315,6 +333,9 @@ function changePageSize(size: number): void {
 
 onMounted(loadPackages)
 onUnmounted(() => {
+  disposed = true
+  latestPackageRequest++
+  latestEditorRequest++
   if (toastTimer !== null) clearTimeout(toastTimer)
 })
 </script>
@@ -390,7 +411,7 @@ onUnmounted(() => {
         <span>创建后，小程序套餐页会展示已上架的数据。</span>
       </div>
       <div v-else class="table-scroll">
-        <table>
+        <table class="package-table">
           <thead>
             <tr>
               <th>搭配</th>
@@ -404,10 +425,10 @@ onUnmounted(() => {
           <tbody>
             <tr v-for="item in packages" :key="item.id">
               <td>
-                <strong>{{ item.name }}</strong>
-                <code>{{ item.packageCode }}</code>
+                <OverflowText class="table-primary" :text="item.name" :lines="2" />
+                <OverflowText class="table-code" :text="item.packageCode" />
               </td>
-              <td><span class="cell-detail package-description">{{ item.description }}</span></td>
+              <td><OverflowText class="cell-detail package-description" :text="item.description" :lines="2" /></td>
               <td class="money">¥ {{ Number(item.salePrice).toFixed(2) }}</td>
               <td>
                 <span class="status-pill" :class="`status-${item.status.toLowerCase()}`">

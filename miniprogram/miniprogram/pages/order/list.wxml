@@ -36,7 +36,7 @@
         <text class="item-summary">{{item.itemSummary}}</text>
         <view>
           <text>{{item.beadCountText}}</text>
-          <strong>{{item.amountText}}</strong>
+          <text class="strong-text">{{item.amountText}}</text>
         </view>
       </view>
       <view class="order-footer">

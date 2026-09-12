@@ -54,6 +54,7 @@ button::after {
 }
 
 .profile-copy {
+  flex: 1;
   position: relative;
   z-index: 2;
   min-width: 0;
@@ -67,6 +68,10 @@ button::after {
 }
 
 .profile-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: #351447;
   font-family: "Songti SC", "STSong", serif;
   font-size: 48rpx;
@@ -75,6 +80,7 @@ button::after {
 }
 
 .edit-button {
+  flex: 0 0 auto;
   min-width: 66rpx;
   height: 40rpx;
   margin-left: 12rpx;
@@ -93,6 +99,7 @@ button::after {
 }
 
 .profile-tagline image {
+  flex: 0 0 auto;
   width: 30rpx;
   height: 30rpx;
   margin-left: 10rpx;

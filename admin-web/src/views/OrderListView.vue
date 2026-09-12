@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import DataTooltip from '../components/DataTooltip.vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ApiError } from '../api/http'
 import ListPagination from '../components/ListPagination.vue'
@@ -56,6 +57,8 @@ const selectedOrders = ref<AdminOrder[]>([])
 const batchShippingOrders = ref<AdminOrder[]>([])
 const batchShippingDrafts = ref<Record<number, { logisticsCompany: string; trackingNo: string }>>({})
 let toastTimer: ReturnType<typeof setTimeout> | null = null
+let latestOrderRequest = 0
+let disposed = false
 
 const filters = reactive({
   orderNo: '',
@@ -70,7 +73,6 @@ const filters = reactive({
   sortDirection: 'desc' as 'asc' | 'desc',
 })
 
-const totalPages = computed(() => Math.max(1, Math.ceil(total.value / size.value)))
 const selectedOrderIds = computed(() => new Set(selectedOrders.value.map((order) => order.id)))
 const allPageSelected = computed(() => orders.value.length > 0
   && orders.value.every((order) => selectedOrderIds.value.has(order.id)))
@@ -119,6 +121,8 @@ function showToast(message: string, tone: 'success' | 'error' = 'success'): void
 }
 
 async function loadOrders(resetPage = false): Promise<void> {
+  if (disposed) return
+  const requestId = ++latestOrderRequest
   if (resetPage) page.value = 1
   loading.value = true
   try {
@@ -126,16 +130,23 @@ async function loadOrders(resetPage = false): Promise<void> {
       listAdminOrders(query()),
       getOrderStatistics(query()),
     ])
+    if (requestId !== latestOrderRequest) return
+    const lastPage = Math.max(1, Math.ceil(result.total / size.value))
+    if (page.value > lastPage) {
+      page.value = lastPage
+      await loadOrders()
+      return
+    }
     orders.value = result.items
     total.value = result.total
     statistics.value = counts
     selectedOrders.value = selectedOrders.value.map((selected) =>
       result.items.find((order) => order.id === selected.id) || selected)
-    if (page.value > totalPages.value) page.value = totalPages.value
   } catch (error) {
+    if (requestId !== latestOrderRequest) return
     showToast(readableError(error), 'error')
   } finally {
-    loading.value = false
+    if (requestId === latestOrderRequest) loading.value = false
   }
 }
 
@@ -367,6 +378,8 @@ function csvCell(value: unknown): string {
 
 onMounted(() => loadOrders())
 onBeforeUnmount(() => {
+  disposed = true
+  latestOrderRequest++
   if (toastTimer !== null) clearTimeout(toastTimer)
 })
 </script>
@@ -409,9 +422,11 @@ onBeforeUnmount(() => {
     <div v-if="toastMessage" :class="['order-toast', `is-${toastTone}`]" data-test="order-toast" role="status">{{ toastMessage }}</div>
 
     <section class="order-statistics" aria-label="订单状态统计">
-      <button
+      <DataTooltip
         v-for="card in statisticCards"
         :key="card.label"
+        as="button"
+        :text="`${card.label}：${card.value} 单\n当前查询条件下共 ${statistics.total} 单\n${card.status ? '点击按此状态筛选订单' : `其中退款成功 ${statistics.refunded} 单`}`"
         :class="['statistic-card', { active: filters.status === card.status }]"
         @click="chooseStatus(card.status)"
       >
@@ -419,7 +434,7 @@ onBeforeUnmount(() => {
         <span :class="['statistic-icon', `tone-${card.tone}`]" aria-hidden="true">
           <i :style="{ maskImage: `url(${card.icon})`, WebkitMaskImage: `url(${card.icon})` }" />
         </span>
-      </button>
+      </DataTooltip>
     </section>
 
     <section class="order-table-card">
@@ -444,18 +459,18 @@ onBeforeUnmount(() => {
             <col class="col-payment" />
             <col class="col-actions" />
           </colgroup>
-          <thead><tr><th class="select-cell"><input type="checkbox" data-test="select-page-orders" :checked="allPageSelected" aria-label="选择当前页全部订单" @change="toggleCurrentPage" /></th><th>订单编号</th><th>下单时间</th><th><span class="customer-heading">顾客信息<button class="phone-visibility" data-test="toggle-order-phones" :aria-label="showCustomerPhones ? '隐藏全部手机号' : '显示全部手机号'" :title="showCustomerPhones ? '隐藏全部手机号' : '显示全部手机号'" @click="showCustomerPhones = !showCustomerPhones"><i :style="{ maskImage: `url(${showCustomerPhones ? eyeOffIcon : eyeIcon})`, WebkitMaskImage: `url(${showCustomerPhones ? eyeOffIcon : eyeIcon})` }" aria-hidden="true" /></button></span></th><th>商品 / 方案</th><th>珠子明细摘要</th><th>实付金额</th><th>状态</th><th>支付方式</th><th>操作</th></tr></thead>
+          <thead><tr><th class="select-cell"><input type="checkbox" data-test="select-page-orders" :checked="allPageSelected" aria-label="选择当前页全部订单" @change="toggleCurrentPage" /></th><th>订单编号</th><th>下单时间</th><th><span class="customer-heading">顾客信息<button class="phone-visibility" data-test="toggle-order-phones" :aria-label="showCustomerPhones ? '隐藏全部手机号' : '显示全部手机号'" :title="showCustomerPhones ? '隐藏全部手机号' : '显示全部手机号'" @click="showCustomerPhones = !showCustomerPhones"><i :style="{ maskImage: `url(${showCustomerPhones ? eyeOffIcon : eyeIcon})`, WebkitMaskImage: `url(${showCustomerPhones ? eyeOffIcon : eyeIcon})` }" aria-hidden="true" /></button></span></th><th>商品 / 方案</th><th>珠子明细摘要</th><th>订单金额</th><th>状态</th><th>支付方式</th><th>操作</th></tr></thead>
           <tbody>
             <tr v-if="loading"><td colspan="10" class="table-state">正在读取订单…</td></tr>
             <tr v-else-if="!orders.length"><td colspan="10" class="table-state">当前筛选条件下暂无订单</td></tr>
             <tr v-for="order in orders" v-else :key="order.id">
               <td class="select-cell"><input type="checkbox" data-test="select-order" :checked="selectedOrderIds.has(order.id)" :aria-label="`选择订单 ${order.orderNo}`" @change="toggleOrderSelection(order)" /></td>
               <td><button class="order-link" data-test="open-order" @click="emit('open', order.id)">{{ order.orderNo }}</button></td>
-              <td class="nowrap">{{ formatDate(order.createdAt) }}</td>
+              <td><OverflowText :text="formatDate(order.createdAt)" :lines="2" /></td>
               <td><OverflowText class="cell-primary" :text="order.contactName" /><span class="cell-secondary">{{ showCustomerPhones ? order.contactPhone : maskPhone(order.contactPhone) }}</span></td>
               <td><OverflowText class="cell-primary" :text="order.product.name" :lines="2" /><OverflowText class="cell-secondary" :text="`方案 ${order.product.schemeNo}`" /></td>
               <td><OverflowText class="bead-summary" :text="beadSummary(order)" :lines="2" /></td>
-              <td class="order-amount">{{ formatMoney(order.totalAmount) }}</td>
+              <td class="order-amount"><DataTooltip :text="`商品金额：${formatMoney(order.beadAmount)}\n工艺费：${formatMoney(order.craftFee)}\n绳材费：${formatMoney(order.cordFee)}\n运费：${formatMoney(order.shippingFee)}\n优惠抵扣：${formatMoney(order.discountAmount)}\n订单应付：${formatMoney(order.totalAmount)}\n实付金额：${formatMoney(order.payment?.status === 'SUCCESS' ? order.payment.amount : 0)}`">{{ formatMoney(order.totalAmount) }}</DataTooltip></td>
               <td><span :class="['order-status', `is-${order.status.toLowerCase()}`]">{{ statusLabels[order.status] }}</span></td>
               <td>{{ paymentLabel(order) }}</td>
               <td>
@@ -529,8 +544,8 @@ onBeforeUnmount(() => {
 .order-table-card { overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); box-shadow: 0 12px 34px rgb(58 43 49 / 5%); }
 .batch-toolbar { display: flex; gap: 12px; min-height: 58px; padding: 9px 14px; align-items: center; border-bottom: 1px solid #eadde2; color: #5e4450; background: #fff5f8; }.batch-toolbar strong { color: var(--berry); }.batch-toolbar span { margin-right: auto; color: var(--muted); font-size: 12px; }.batch-toolbar button { min-height: 36px; padding: 0 13px; }
 .order-table { width: 100%; min-width: 1130px; table-layout: fixed; }.order-table .col-select { width: 4%; }.order-table .col-order-no { width: 15%; }.order-table .col-created-at { width: 10%; }.order-table .col-customer { width: 9%; }.order-table .col-product { width: 16%; }.order-table .col-beads { width: 15%; }.order-table .col-amount { width: 7%; }.order-table .col-status { width: 7%; }.order-table .col-payment { width: 7%; }.order-table .col-actions { width: 10%; }.order-table th,.order-table td { padding: 13px 10px; }.order-table th { white-space: nowrap; }.order-table td { color: #51494d; font-size: 12px; vertical-align: top; }.select-cell { padding: 0 !important; text-align: center; vertical-align: middle !important; }.select-cell input { display: block; width: 16px; min-height: 16px; height: 16px; margin: auto; padding: 0; border-radius: 3px; accent-color: var(--berry); box-shadow: none !important; }
-.order-link { max-width: 100%; padding: 0; border: 0; color: var(--berry); font-weight: 800; line-height: 1.45; overflow-wrap: anywhere; text-align: left; background: transparent; }.nowrap { white-space: nowrap; }.cell-primary,.cell-secondary { display: block; }.cell-primary { font-weight: 700; }.cell-secondary { margin-top: 4px; color: var(--muted); font-size: 11px; }
-.bead-summary { display: block; max-width: 270px; }.order-amount { color: var(--berry) !important; font-size: 14px !important; font-weight: 800; white-space: nowrap; }
+.order-link { max-width: 100%; padding: 0; border: 0; color: var(--berry); font-weight: 800; line-height: 1.45; overflow-wrap: anywhere; text-align: left; background: transparent; }.nowrap { white-space: nowrap; }.cell-secondary:not(.overflow-text) { display: block; }.cell-primary { font-weight: 700; }.cell-secondary { margin-top: 4px; color: var(--muted); font-size: 11px; }
+.bead-summary { max-width: 270px; }.order-amount { color: var(--berry) !important; font-size: 14px !important; font-weight: 800; white-space: nowrap; }
 .customer-heading { display: inline-flex; gap: 5px; align-items: center; }.phone-visibility { display: grid; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; place-items: center; color: #8c6674; background: transparent; }.phone-visibility:hover { color: var(--berry); background: #f4e9ed; }.phone-visibility i { width: 17px; height: 17px; background: currentColor; mask-repeat: no-repeat; mask-position: center; mask-size: contain; }
 .order-status { display: inline-flex; padding: 5px 9px; border-radius: 999px; color: #765d68; font-size: 11px; font-weight: 700; background: #f2e9ec; white-space: nowrap; }.is-in_production,.is-pending_shipment { color: #956126; background: #fbf1df; }.is-shipped { color: #37658a; background: #eaf2f8; }.is-completed { color: var(--green); background: var(--green-soft); }.is-cancelled,.is-refunded { color: #776e72; background: #eeeae8; }.is-after_sale { color: #9b4d57; background: #fae8ea; }
 .row-actions { display: flex; flex-wrap: wrap; gap: 4px 8px; }.row-actions .text-button { padding: 2px 0; white-space: nowrap; }.danger-text { color: #a2464e; }

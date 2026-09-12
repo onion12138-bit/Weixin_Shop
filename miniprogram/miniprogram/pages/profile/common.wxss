@@ -1,4 +1,4 @@
-.subpage { box-sizing: border-box; min-height: 100vh; padding: 34rpx 28rpx 70rpx; color: #351f2b; background: #fff8fa; }
+.subpage { box-sizing: border-box; min-height: 100vh; padding: 34rpx 28rpx calc(70rpx + env(safe-area-inset-bottom)); color: #351f2b; background: #fff8fa; }
 .page-kicker { display: block; color: #c16a91; font-size: 19rpx; font-weight: 700; letter-spacing: 5rpx; }
 .page-title { display: block; margin-top: 12rpx; font-family: "Songti SC", serif; font-size: 48rpx; font-weight: 700; }
 .page-subtitle { display: block; margin-top: 10rpx; color: #8e7c84; font-size: 24rpx; }
@@ -8,3 +8,4 @@
 button::after { border: 0; }
 .state-card { margin-top: 28rpx; padding: 46rpx 28rpx; color: #8f7f86; font-size: 24rpx; text-align: center; }
 .inline-error { margin-top: 18rpx; padding: 18rpx 22rpx; border-radius: 18rpx; color: #aa4b60; font-size: 22rpx; background: #fff0f2; }
+.page-subtitle, .inline-error { word-break: break-all; line-height: 1.6; }

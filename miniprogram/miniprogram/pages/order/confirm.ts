@@ -169,6 +169,7 @@ Page({
   },
 
   async submitOrder() {
+    if (this.data.submitting || this.data.loading || !this.data.scheme) return
     if (this.data.productTotalCents < this.data.minimumOrderCents) {
       wx.showToast({
         title: `订单商品金额需满 ${this.data.minimumOrderText} 才能下单`,

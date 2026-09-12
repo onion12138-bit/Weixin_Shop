@@ -2,6 +2,8 @@ package com.diybracelet.mall.customer.domain;
 
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 
 import java.time.LocalDateTime;
 
@@ -10,6 +12,7 @@ public class CustomerProfile {
     @TableId("customer_identity_id")
     private Long customerIdentityId;
     private String nickname;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long avatarAssetId;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

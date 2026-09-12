@@ -110,6 +110,12 @@ declare const wx: {
 
   stopPullDownRefresh(): void
 
+  setClipboardData(options: {
+    data: string
+    success?(): void
+    fail?(error: { errMsg: string }): void
+  }): void
+
   pageScrollTo(options: {
     scrollTop: number
     duration?: number

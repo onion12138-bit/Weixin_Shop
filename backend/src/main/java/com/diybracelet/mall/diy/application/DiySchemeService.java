@@ -150,8 +150,8 @@ public class DiySchemeService {
     @Transactional
     public DiySchemeResponse copy(Long id) {
         Long customerId = identityResolver.requireCustomerIdentityId();
-        DiyScheme source = requireOwnedScheme(id, customerId);
         ensureSchemeCapacity(customerId);
+        DiyScheme source = requireOwnedScheme(id, customerId);
         DiyScheme copy = new DiyScheme();
         copy.setCustomerIdentityId(customerId);
         copy.setName(copyName(source.getName()));
@@ -270,6 +270,9 @@ public class DiySchemeService {
     }
 
     private void ensureSchemeCapacity(Long customerId) {
+        // Acquire before any consistent read so MySQL REPEATABLE READ sees the
+        // preceding creator's committed rows when it establishes this snapshot.
+        schemeMapper.lockCustomerForSchemeChanges(customerId);
         if (schemeMapper.countOwnedActive(customerId)
                 < MAX_ACTIVE_SCHEMES_PER_CUSTOMER) {
             return;

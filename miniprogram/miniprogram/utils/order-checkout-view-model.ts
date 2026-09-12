@@ -56,7 +56,7 @@ export function buildCheckoutCoupons(
       ...coupon,
       amountText: formatCents(yuanToCents(coupon.discountAmount)),
       thresholdText: Number(coupon.minimumSpend) > 0
-        ? `满 ¥${Number(coupon.minimumSpend).toFixed(0)} 可用`
+        ? `满 ${formatCents(yuanToCents(coupon.minimumSpend))} 可用`
         : '无门槛',
       expiresText: `有效期至 ${formatDate(coupon.expiresAt)}`,
       statusText: couponStatusText(coupon, expired, meetsThreshold),
@@ -111,7 +111,7 @@ function couponStatusText(
   if (coupon.status === 'USED') return '已使用'
   if (coupon.status === 'REVOKED') return '已失效'
   if (coupon.status === 'EXPIRED' || expired) return '已过期'
-  if (!meetsThreshold) return `未满 ¥${Number(coupon.minimumSpend).toFixed(0)}`
+  if (!meetsThreshold) return `未满 ${formatCents(yuanToCents(coupon.minimumSpend))}`
   return '可使用'
 }
 

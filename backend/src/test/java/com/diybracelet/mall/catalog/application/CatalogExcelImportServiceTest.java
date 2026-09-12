@@ -26,6 +26,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.lenient;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @ExtendWith(MockitoExtension.class)
 class CatalogExcelImportServiceTest {
@@ -41,7 +44,7 @@ class CatalogExcelImportServiceTest {
     @BeforeEach
     void setUp() {
         service = new CatalogExcelImportService(adminCatalogService, validator);
-        when(adminCatalogService.listCategories()).thenReturn(
+        lenient().when(adminCatalogService.listCategories()).thenReturn(
                 List.of(category())
         );
     }
@@ -90,6 +93,33 @@ class CatalogExcelImportServiceTest {
         verify(adminCatalogService).createBead(requestCaptor.capture());
         assertThat(requestCaptor.getValue().coverAssetId()).isNull();
         assertThat(requestCaptor.getValue().initialStock()).isEqualTo(77);
+    }
+
+    @Test
+    void shouldRejectTooManyRowsBeforeCreatingAnyProducts() throws Exception {
+        lenient().when(validator.validate(any(CreateBeadSkuRequest.class))).thenReturn(Set.of());
+        byte[] content;
+        try (Workbook workbook = new XSSFWorkbook(new ByteArrayInputStream(importWorkbook()));
+             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            Sheet sheet = workbook.getSheetAt(0);
+            for (int row = 1; row <= 1001; row++) {
+                writeRow(sheet.createRow(row), new String[]{
+                        "OVER-LIMIT-" + row, "白水晶", "天然水晶", "水晶", "透明", "8",
+                        "9.80", "2.10", "77", "10", "日常", "已上架"
+                });
+            }
+            workbook.write(output);
+            content = output.toByteArray();
+        }
+        MockMultipartFile file = new MockMultipartFile("file", "catalog.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", content);
+
+        assertThatThrownBy(() -> service.importProducts(file))
+                .isInstanceOf(com.diybracelet.mall.shared.error.BusinessException.class)
+                .hasMessageContaining("1000");
+        // Each create is independently committed by AdminCatalogService; no
+        // creation may occur when the whole workbook is rejected as too large.
+        verify(adminCatalogService, never()).createBead(any(CreateBeadSkuRequest.class));
     }
 
     private Category category() {

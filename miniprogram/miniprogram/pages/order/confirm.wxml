@@ -66,9 +66,9 @@
     <view class="checkout-bar">
       <view class="checkout-total">
         <text>{{savedText}}</text>
-        <view><text>合计</text><strong>{{payableText}}</strong></view>
+        <view><text>合计</text><text class="strong-text">{{payableText}}</text></view>
       </view>
-      <button loading="{{submitting}}" disabled="{{submitting}}" bindtap="submitOrder">立即支付</button>
+      <button loading="{{submitting}}" disabled="{{submitting}}" bindtap="submitOrder">提交订单</button>
     </view>
   </block>
 
@@ -85,7 +85,7 @@
           <radio checked="{{selectedCouponId === 0}}" color="#a74d70" />
         </view>
         <view wx:for="{{coupons}}" wx:key="id" class="coupon-option {{item.usable ? '' : 'disabled'}}" data-id="{{item.id}}" bindtap="selectCoupon">
-          <view class="coupon-amount"><strong>{{item.amountText}}</strong><text>{{item.thresholdText}}</text></view>
+          <view class="coupon-amount"><text class="strong-text">{{item.amountText}}</text><text>{{item.thresholdText}}</text></view>
           <view class="coupon-detail"><text>{{item.name}}</text><text>{{item.description}}</text><text>{{item.expiresText}}</text></view>
           <view class="coupon-status">
             <text>{{item.statusText}}</text>

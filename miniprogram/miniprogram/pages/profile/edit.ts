@@ -41,11 +41,13 @@ Page({
   },
 
   chooseAvatar(event: WechatMiniprogram.ChooseAvatarEvent) {
+    if (this.data.saving) return
     const avatarUrl = event.detail.avatarUrl
     if (avatarUrl) this.setData({ avatarUrl, pendingAvatarPath: avatarUrl })
   },
 
   async submit() {
+    if (this.data.saving || this.data.loading) return
     const nickname = this.data.nickname.trim()
     if (!nickname) {
       this.setData({ errorMessage: '请输入昵称' })

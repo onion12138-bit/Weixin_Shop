@@ -1,6 +1,6 @@
 .detail-page {
   min-height: 100vh;
-  padding-bottom: 170rpx;
+  padding-bottom: calc(170rpx + env(safe-area-inset-bottom));
   background: #fff8fa;
 }
 
@@ -22,6 +22,7 @@
 
 .tag-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 10rpx;
 }
 
@@ -39,6 +40,7 @@
 .copy-title,
 .copy {
   display: block;
+  word-break: break-all;
 }
 
 .detail-title {
@@ -90,7 +92,7 @@
 
 .composition-item {
   display: grid;
-  grid-template-columns: 66rpx 1fr auto;
+  grid-template-columns: 66rpx minmax(0, 1fr) auto;
   gap: 18rpx;
   align-items: center;
   padding: 20rpx;
@@ -109,6 +111,7 @@
 
 .composition-item text {
   display: block;
+  word-break: break-all;
   color: #4a3e43;
   font-size: 24rpx;
 }
@@ -160,7 +163,7 @@
 }
 
 .bottom-bar text,
-.bottom-bar strong {
+.bottom-bar .strong-text {
   display: block;
 }
 

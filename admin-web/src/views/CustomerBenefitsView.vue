@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ApiError, resolveApiResourceUrl } from '../api/http'
 import OverflowText from '../components/OverflowText.vue'
+import DataTooltip from '../components/DataTooltip.vue'
 import ListPagination from '../components/ListPagination.vue'
 import defaultAvatar from '../../../miniprogram/miniprogram/assets/images/profile/avatar.webp'
 import { formatDateTime } from '../utils/date-time'
@@ -49,6 +50,11 @@ const visibleRecipientCount = ref(10)
 const selectedCustomerIds = ref<number[]>([])
 const customerSearching = ref(false)
 let phoneSearchTimer: ReturnType<typeof setTimeout> | null = null
+let latestPhoneRequest = 0
+let latestAddressRequest = 0
+let savingCoupon = false
+let sendingCoupon = false
+let disposed = false
 
 const filteredCustomers = computed(() => {
   const query = customerKeyword.value.trim().toLowerCase()
@@ -136,20 +142,30 @@ async function openAddresses(customer: CustomerSummary): Promise<void> {
 }
 
 async function loadAddresses(): Promise<void> {
-  if (!addressCustomer.value) return
+  if (disposed || !addressCustomer.value) return
+  const requestId = ++latestAddressRequest
   addressLoading.value = true
   errorMessage.value = ''
   try {
-    addresses.value = await listCustomerAddresses({
+    const result = await listCustomerAddresses({
       customerIdentityId: addressCustomer.value.id,
       status: addressStatus.value,
     })
+    if (requestId !== latestAddressRequest) return
+    addresses.value = result
   } catch (error) {
+    if (requestId !== latestAddressRequest) return
     errorMessage.value = readableError(error)
   } finally {
-    addressLoading.value = false
+    if (requestId === latestAddressRequest) addressLoading.value = false
   }
 }
+
+watch(() => addressCustomer.value?.id, () => {
+  latestAddressRequest++
+  addresses.value = []
+  addressLoading.value = false
+}, { flush: 'sync' })
 
 async function toggleAddress(address: AdminCustomerAddress): Promise<void> {
   workingId.value = address.id
@@ -187,12 +203,14 @@ function editCoupon(coupon: CouponTemplate): void {
 }
 
 async function saveCoupon(): Promise<void> {
+  if (disposed || savingCoupon) return
   errorMessage.value = ''
   successMessage.value = ''
   if (!couponDraft.code.trim() || !couponDraft.name.trim() || !couponDraft.description.trim()) {
     errorMessage.value = '请完整填写优惠券编码、名称和说明'
     return
   }
+  savingCoupon = true
   loading.value = true
   try {
     const payload = { ...couponDraft, code: couponDraft.code.trim().toUpperCase() }
@@ -208,11 +226,13 @@ async function saveCoupon(): Promise<void> {
   } catch (error) {
     errorMessage.value = readableError(error)
   } finally {
+    savingCoupon = false
     loading.value = false
   }
 }
 
 function openGrant(coupon: CouponTemplate): void {
+  invalidatePhoneSearch()
   grantTemplateId.value = coupon.id
   grantNote.value = ''
   recipientMode.value = 'SINGLE'
@@ -223,6 +243,7 @@ function openGrant(coupon: CouponTemplate): void {
 }
 
 function closeGrant(): void {
+  invalidatePhoneSearch()
   grantTemplateId.value = null
   phoneResults.value = []
   selectedCustomerIds.value = []
@@ -243,6 +264,8 @@ function removeSelectedCustomer(id: number): void {
 }
 
 async function runPhoneSearch(): Promise<void> {
+  if (disposed || !grantTemplateId.value || recipientMode.value === 'ALL') return
+  const requestId = ++latestPhoneRequest
   const phone = phoneQuery.value.trim()
   visibleRecipientCount.value = 10
   if (!phone) {
@@ -251,12 +274,22 @@ async function runPhoneSearch(): Promise<void> {
   }
   customerSearching.value = true
   try {
-    phoneResults.value = await searchCustomersByPhone(phone, 50)
+    const result = await searchCustomersByPhone(phone, 50)
+    if (requestId !== latestPhoneRequest) return
+    phoneResults.value = result
   } catch (error) {
+    if (requestId !== latestPhoneRequest) return
     errorMessage.value = readableError(error)
   } finally {
-    customerSearching.value = false
+    if (requestId === latestPhoneRequest) customerSearching.value = false
   }
+}
+
+function invalidatePhoneSearch(): void {
+  latestPhoneRequest++
+  if (phoneSearchTimer !== null) clearTimeout(phoneSearchTimer)
+  phoneSearchTimer = null
+  customerSearching.value = false
 }
 
 function loadMoreRecipients(): void {
@@ -272,23 +305,30 @@ function onRecipientScroll(event: Event): void {
 }
 
 watch(phoneQuery, () => {
-  if (phoneSearchTimer) clearTimeout(phoneSearchTimer)
-  phoneSearchTimer = setTimeout(() => void runPhoneSearch(), 300)
-})
+  invalidatePhoneSearch()
+  phoneResults.value = []
+  if (disposed || !grantTemplateId.value || recipientMode.value === 'ALL' || !phoneQuery.value.trim()) return
+  phoneSearchTimer = setTimeout(() => {
+    phoneSearchTimer = null
+    void runPhoneSearch()
+  }, 300)
+}, { flush: 'sync' })
 
 watch(recipientMode, () => {
+  invalidatePhoneSearch()
   selectedCustomerIds.value = []
   phoneQuery.value = ''
   phoneResults.value = []
   visibleRecipientCount.value = 10
-})
+}, { flush: 'sync' })
 
 async function sendCoupon(): Promise<void> {
-  if (!grantTemplateId.value) return
+  if (disposed || sendingCoupon || !grantTemplateId.value) return
   if (recipientMode.value !== 'ALL' && !selectedCustomerIds.value.length) {
     errorMessage.value = '请先按手机号搜索并选择顾客'
     return
   }
+  sendingCoupon = true
   workingId.value = grantTemplateId.value
   errorMessage.value = ''
   successMessage.value = ''
@@ -304,13 +344,16 @@ async function sendCoupon(): Promise<void> {
   } catch (error) {
     errorMessage.value = readableError(error)
   } finally {
+    sendingCoupon = false
     workingId.value = null
   }
 }
 
 onMounted(() => loadBenefits())
 onBeforeUnmount(() => {
-  if (phoneSearchTimer) clearTimeout(phoneSearchTimer)
+  disposed = true
+  latestAddressRequest++
+  invalidatePhoneSearch()
 })
 </script>
 
@@ -345,7 +388,7 @@ onBeforeUnmount(() => {
           <span class="customer-identity">
             <img v-if="customer.avatarUrl" :src="avatarUrl(customer.avatarUrl)" :alt="customer.nickname" />
             <img v-else :src="defaultAvatar" alt="默认头像" />
-            <span><strong>{{ customer.nickname }}</strong><small>客户 #{{ customer.id }}</small></span>
+            <span><OverflowText class="table-primary" :text="customer.nickname" /><small>客户 #{{ customer.id }}</small></span>
           </span>
           <span>{{ customer.phone || '未填写' }}</span>
           <OverflowText class="customer-address" :text="customer.address || '暂无收货地址'" />
@@ -380,8 +423,8 @@ onBeforeUnmount(() => {
           <div v-if="loading" class="empty-state">正在读取优惠权益…</div>
           <div v-else-if="!coupons.length" class="empty-state">还没有优惠券模板</div>
           <article v-for="coupon in pagedCoupons" :key="coupon.id" class="coupon-row">
-            <div class="coupon-value"><strong>¥{{ Number(coupon.discountAmount).toFixed(0) }}</strong><small>{{ Number(coupon.minimumSpend) > 0 ? `满 ¥${coupon.minimumSpend} 可用` : '无门槛' }}</small></div>
-            <div class="coupon-copy"><h3>{{ coupon.name }}</h3><OverflowText :text="coupon.description" :lines="2" /><small>{{ coupon.code }} · {{ coupon.validDays }} 天有效 · 已发 {{ coupon.issuedCount }} 张</small></div>
+            <DataTooltip class="coupon-value" :text="`${coupon.name}\n优惠金额：¥${Number(coupon.discountAmount).toFixed(2)}\n使用门槛：¥${Number(coupon.minimumSpend).toFixed(2)}\n领取后 ${coupon.validDays} 天有效\n已发放 ${coupon.issuedCount} 张`"><strong>¥{{ Number(coupon.discountAmount).toFixed(2) }}</strong><small>{{ Number(coupon.minimumSpend) > 0 ? `满 ¥${Number(coupon.minimumSpend).toFixed(2)} 可用` : '无门槛' }}</small></DataTooltip>
+            <div class="coupon-copy"><h3><OverflowText :text="coupon.name" :lines="2" /></h3><OverflowText :text="coupon.description" :lines="2" /><OverflowText class="coupon-meta" :text="`${coupon.code} · ${coupon.validDays} 天有效 · 已发 ${coupon.issuedCount} 张`" :lines="2" /></div>
             <span :class="['coupon-state', coupon.status.toLowerCase()]">{{ coupon.status === 'ACTIVE' ? '启用' : '停用' }}</span>
             <div class="coupon-actions"><button class="link-button" @click="editCoupon(coupon)">编辑</button><button class="primary-button" :disabled="coupon.status !== 'ACTIVE'" @click="openGrant(coupon)">发送</button></div>
           </article>
@@ -463,6 +506,8 @@ input:focus, select:focus, textarea:focus { border-color: #a6677f; box-shadow: 0
 .customer-row:first-child { border-top: 0; }
 .customer-head { color: #8b7780; font-size: 12px; font-weight: 700; letter-spacing: .05em; background: #fbf7f8; }
 .customer-identity { display: flex; min-width: 0; align-items: center; gap: 12px; }
+.customer-identity > span { min-width: 0; }
+.coupon-meta { margin-top: 5px; color: #9b8a91; font-size: 12px; }
 .customer-identity > img { display: flex; width: 44px; height: 44px; flex: 0 0 auto; border-radius: 50%; object-fit: cover; }
 .customer-identity strong, .customer-identity small { display: block; }
 .customer-identity small { margin-top: 4px; color: #99878e; font-size: 11px; }
@@ -485,7 +530,7 @@ input:focus, select:focus, textarea:focus { border-color: #a6677f; box-shadow: 0
 .coupon-form > .primary-button { width: 100%; margin-top: 4px; }
 .coupon-row { display: grid; grid-template-columns: 112px minmax(0,1fr) 70px 110px; gap: 15px; align-items: center; padding: 17px 0; border-top: 1px solid #f0e7ea; }
 .coupon-value { display: flex; height: 76px; flex-direction: column; align-items: center; justify-content: center; border-radius: 14px; color: #a3426c; background: linear-gradient(135deg,#ffe8f0,#fff5f7); }
-.coupon-value strong { font-size: 27px; }.coupon-value small { margin-top: 4px; font-size: 11px; }
+.coupon-value strong { max-width: 100%; padding: 0 4px; font-size: 22px; overflow-wrap: anywhere; }.coupon-value small { margin-top: 4px; font-size: 11px; }
 .coupon-copy { min-width: 0; }.coupon-copy h3 { margin: 0 0 5px; font-size: 16px; }.coupon-copy p { margin: 0 0 6px; color: #74636a; font-size: 13px; }.coupon-copy small { color: #9b8a91; }
 .coupon-state { justify-self: center; padding: 5px 9px; border-radius: 12px; font-size: 12px; }.coupon-state.active { color: #287b59; background: #e6f5ee; }.coupon-state.inactive { color: #9d6067; background: #f8e9eb; }
 .coupon-actions { display: flex; flex-direction: column; gap: 7px; }.coupon-actions .primary-button { min-height: 34px; padding: 6px 12px; }

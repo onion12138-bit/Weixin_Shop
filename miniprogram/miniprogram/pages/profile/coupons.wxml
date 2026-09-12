@@ -6,8 +6,8 @@
   <view wx:elif="{{!couponCards.length}}" class="soft-card state-card">当前没有{{activeStatus === 'UNUSED' ? '可使用的' : ''}}优惠券</view>
   <view wx:else class="coupon-list">
     <view wx:for="{{couponCards}}" wx:key="id" class="soft-card coupon-card {{item.status !== 'UNUSED' ? 'inactive' : ''}}">
-      <view class="coupon-value"><strong>{{item.amountText}}</strong><text>{{item.thresholdText}}</text></view>
-      <view class="coupon-content"><view class="coupon-heading"><strong>{{item.name}}</strong><i>{{item.statusLabel}}</i></view><text class="coupon-description">{{item.description}}</text><text class="coupon-date">{{item.expiresText}}</text><text wx:if="{{item.note}}" class="coupon-note">{{item.note}}</text></view>
+      <view class="coupon-value"><text class="strong-text">{{item.amountText}}</text><text>{{item.thresholdText}}</text></view>
+      <view class="coupon-content"><view class="coupon-heading"><text class="strong-text">{{item.name}}</text><text class="badge-text">{{item.statusLabel}}</text></view><text class="coupon-description">{{item.description}}</text><text class="coupon-date">{{item.expiresText}}</text><text wx:if="{{item.note}}" class="coupon-note">{{item.note}}</text></view>
     </view>
   </view>
 </view>

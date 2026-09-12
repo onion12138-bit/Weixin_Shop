@@ -1,6 +1,6 @@
 .order-page {
   min-height: 100vh;
-  padding: 34rpx 26rpx 190rpx;
+  padding: 34rpx 26rpx calc(190rpx + env(safe-area-inset-bottom));
   color: #3f3238;
   background: #fff8fa;
   box-sizing: border-box;
@@ -101,7 +101,7 @@ button::after { border: 0; }
 .checkout-total > text { display: block; color: #c26785; font-size: 18rpx; }
 .checkout-total view { display: flex; align-items: baseline; gap: 9rpx; margin-top: 4rpx; }
 .checkout-total view text { color: #75656b; font-size: 21rpx; }
-.checkout-total strong { color: #7e3f57; font-size: 34rpx; }
+.checkout-total .strong-text { color: #7e3f57; font-size: 34rpx; }
 .checkout-bar > button { width: 290rpx; height: 82rpx; margin: 0; border-radius: 41rpx; color: #fff; font-size: 25rpx; line-height: 82rpx; background: #82445c; box-shadow: 0 10rpx 24rpx rgba(130,68,92,.2); }
 
 .coupon-backdrop { position: fixed; z-index: 80; inset: 0; display: flex; align-items: flex-end; background: rgba(45,29,35,.42); }
@@ -120,8 +120,13 @@ button::after { border: 0; }
 .no-coupon > view:first-child text:first-child { font-size: 24rpx; font-weight: 700; }
 .no-coupon > view:first-child text:last-child { margin-top: 6rpx; color: #9b8990; font-size: 19rpx; }
 .coupon-amount { display: flex; min-height: 88rpx; flex-direction: column; align-items: center; justify-content: center; border-right: 1rpx dashed #ddbfc9; color: #9d4264; }
-.coupon-amount strong { font-size: 29rpx; }.coupon-amount text { margin-top: 5rpx; font-size: 16rpx; }
+.coupon-amount .strong-text { font-size: 29rpx; }.coupon-amount text { margin-top: 5rpx; font-size: 16rpx; }
 .coupon-detail text { display: block; }.coupon-detail text:first-child { font-size: 23rpx; font-weight: 700; }.coupon-detail text:nth-child(2) { margin-top: 5rpx; color: #796970; font-size: 18rpx; }.coupon-detail text:last-child { margin-top: 8rpx; color: #a38e96; font-size: 16rpx; }
 .coupon-status { display: flex; flex-direction: column; align-items: flex-end; gap: 13rpx; color: #9a586f; font-size: 17rpx; }
 .coupon-option radio { transform: scale(.82); }
 .empty-coupons { padding: 90rpx 0; color: #9b8990; font-size: 22rpx; text-align: center; }
+.address-ticket > image:first-child,.product-total,.coupon-value { flex: 0 0 auto; }
+.address-copy view { flex-wrap: wrap; }.address-copy > text,.product-name,.coupon-detail,.coupon-summary text:last-child { word-break: break-all; }
+.checkout-total { min-width: 0; }.checkout-total view { flex-wrap: wrap; }.checkout-bar > button { flex: 0 0 auto; }
+.coupon-sheet { display: flex; flex-direction: column; }.coupon-scroll { min-height: 0; height: 58vh; flex: 1; }
+.coupon-amount .strong-text { margin-top: 0; }

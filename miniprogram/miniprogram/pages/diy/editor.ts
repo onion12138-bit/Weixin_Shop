@@ -165,6 +165,7 @@ const EXPORT_IMAGE_WAIT_MS = 1500
 Page({
   data: {
     loading: true,
+    loadFailed: false,
     saving: false,
     checkingOut: false,
     quoting: false,
@@ -245,6 +246,8 @@ Page({
   previewExpansionScrollResetting: false,
   previewVisibilityQueryPending: false,
   previewTransitionTimer: null as ReturnType<typeof setTimeout> | null,
+  catalogRequestId: 0,
+  designRevision: 0,
 
   onLoad(options: Record<string, string>) {
     this.cancelCanvasRedraw()
@@ -306,6 +309,8 @@ Page({
   },
 
   onUnload() {
+    this.catalogRequestId += 1
+    this.designRevision += 1
     this.cancelCanvasRedraw()
     this.cancelCompactPreviewCapture()
     this.cancelPreviewTransition()
@@ -332,6 +337,7 @@ Page({
   async bootstrap(options: Record<string, string>) {
     this.setData({
       loading: true,
+      loadFailed: false,
       catalogInitialLoading: true,
       errorMessage: '',
     })
@@ -389,6 +395,9 @@ Page({
       ])
 
       const initial = await this.resolveInitialDraft(options)
+      if (!cordOptions.some((item) => item.id === initial.cordOptionId)) {
+        initial.cordOptionId = cordOptions[0]?.id || initial.cordOptionId
+      }
       this.setData({
         schemeId: initial.schemeId,
         schemeVersion: initial.schemeVersion,
@@ -416,6 +425,7 @@ Page({
       this.initialVisualLoading = false
       this.setData({
         loading: false,
+        loadFailed: true,
         catalogInitialLoading: false,
         errorMessage: error instanceof Error
           ? error.message
@@ -480,7 +490,8 @@ Page({
   },
 
   schemeToDraft(scheme: DiySchemeResponse): DraftCache {
-    this.mergeCatalog(scheme.catalogSnapshot.map((item) => ({
+    const liveSkuIds = new Set(this.data.catalog.map((item) => item.id))
+    this.mergeCatalog(scheme.catalogSnapshot.filter((item) => !liveSkuIds.has(item.skuId)).map((item) => ({
       id: item.skuId,
       name: item.name,
       material: item.skuCode,
@@ -584,30 +595,23 @@ Page({
   },
 
   async searchCatalog() {
-    if (this.data.catalogLoading) return
+    const requestId = ++this.catalogRequestId
     this.setData({ catalogLoading: true })
     try {
-      if (this.data.favoritesOnly) {
-        const favoriteIds = new Set(readFavoriteBeadIds())
-        const items = (await listAllPublicBeads({
-          categoryId: this.data.categoryId || undefined,
-          keyword: this.data.keyword || undefined,
-        })).filter((item) => favoriteIds.has(item.id))
-        this.mergeCatalog(items.map(toCatalogItem), true)
-      } else {
-        const items = await listAllPublicBeads({
-          categoryId: this.data.categoryId || undefined,
-          keyword: this.data.keyword || undefined,
-        })
-        this.mergeCatalog(items.map(toCatalogItem), true)
-      }
+      const items = await listAllPublicBeads({
+        categoryId: this.data.categoryId || undefined,
+        keyword: this.data.keyword.trim() || undefined,
+      })
+      if (requestId !== this.catalogRequestId) return
+      this.mergeCatalog(items.map(toCatalogItem), true)
     } catch (error) {
+      if (requestId !== this.catalogRequestId) return
       wx.showToast({
         title: error instanceof Error ? error.message : '珠子加载失败',
         icon: 'none',
       })
     } finally {
-      this.setData({ catalogLoading: false })
+      if (requestId === this.catalogRequestId) this.setData({ catalogLoading: false })
     }
   },
 
@@ -703,6 +707,7 @@ Page({
   },
 
   changeWrist(event: WechatMiniprogram.PickerChange) {
+    if (this.data.saving || this.data.checkingOut) return
     const index = Number(event.detail.value || 0)
     const wristCircumferenceMm = this.data.wristOptions[index]
       || this.data.wristCircumferenceMm
@@ -718,6 +723,7 @@ Page({
   },
 
   changeFitType(event: WechatMiniprogram.PickerChange) {
+    if (this.data.saving || this.data.checkingOut) return
     const index = Number(event.detail.value || 0)
     const fitType = FIT_TYPES[index] || 'STANDARD'
     this.setData({ fitType, fitTypeIndex: index })
@@ -728,6 +734,7 @@ Page({
   },
 
   changeCord(event: WechatMiniprogram.PickerChange) {
+    if (this.data.saving || this.data.checkingOut) return
     const index = Number(event.detail.value || 0)
     const cordOption = this.data.cordOptions[index]
     if (!cordOption) return
@@ -798,7 +805,7 @@ Page({
   },
 
   async saveDraft() {
-    if (this.data.saving) return
+    if (this.data.saving || this.data.checkingOut) return
     if (!this.data.sequence.length) {
       wx.showToast({ title: '请选择您喜欢的珠子', icon: 'none' })
       return
@@ -954,6 +961,7 @@ Page({
 
   async confirmQuote() {
     if (this.data.quoting) return
+    const revision = this.designRevision
     this.setData({ quoting: true, errorMessage: '' })
     try {
       const quote = await quoteDiy({
@@ -962,11 +970,13 @@ Page({
         cordOptionId: this.data.cordOptionId,
         sequence: this.data.sequence,
       })
+      if (revision !== this.designRevision) return
       this.applyQuote(quote)
       if (quote.quotable) {
         wx.showToast({ title: '权威报价已更新', icon: 'success' })
       }
     } catch (error) {
+      if (revision !== this.designRevision) return
       this.setData({
         errorMessage: error instanceof Error ? error.message : '报价失败',
       })
@@ -988,6 +998,12 @@ Page({
       redraw?: boolean
     },
   ) {
+    if (options.persistDraft && (this.data.saving || this.data.checkingOut)) return
+    if (options.persistDraft && this.config && sequence.length > this.config.rule.maxBeadCount) {
+      wx.showToast({ title: `最多添加 ${this.config.rule.maxBeadCount} 颗珠子`, icon: 'none' })
+      return
+    }
+    if (!options.authoritative) this.designRevision += 1
     const summary = this.buildLocalSummary(sequence, options.authoritative)
     const selectedIndex = options.selectedIndex === undefined
       ? normalizeSelectedIndex(this.data.selectedIndex, sequence)

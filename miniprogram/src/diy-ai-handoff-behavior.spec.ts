@@ -94,6 +94,7 @@ function selectorQuery() {
 
 function loadEditor(options: { removeThrows?: boolean } = {}) {
   let definition: Record<string, any> | null = null
+  let services: { catalog: any; diy: any } | null = null
   const storage = new Map<string, unknown>()
   const wxMock = {
     getStorageSync: jest.fn((key: string) => storage.get(key) || ''),
@@ -106,6 +107,8 @@ function loadEditor(options: { removeThrows?: boolean } = {}) {
     }),
     createSelectorQuery: jest.fn(() => selectorQuery()),
     showModal: jest.fn(),
+    showToast: jest.fn(),
+    navigateTo: jest.fn(),
     getSystemInfoSync: jest.fn(() => ({ pixelRatio: 1 })),
   }
   ;(globalThis as any).wx = wxMock
@@ -126,6 +129,7 @@ function loadEditor(options: { removeThrows?: boolean } = {}) {
     const commerce = jest.requireMock('../miniprogram/services/commerce') as {
       getCommerceRule: jest.Mock
     }
+    services = { catalog, diy }
     catalog.listAllPublicBeads.mockReset()
     catalog.listBeads.mockReset()
     catalog.listCategories.mockReset()
@@ -172,12 +176,111 @@ function loadEditor(options: { removeThrows?: boolean } = {}) {
     require('../miniprogram/pages/diy/editor')
   })
   if (!definition) throw new Error('Editor Page definition was not captured')
-  return { definition, storage, wxMock }
+  return { definition, storage, wxMock, services: services! }
 }
 
 async function flushMicrotasks(): Promise<void> {
   for (let index = 0; index < 12; index += 1) await Promise.resolve()
 }
+
+describe('DIY editor audit regressions', () => {
+  it('keeps the saved design stable while preview export is pending', () => {
+    const { definition } = loadEditor()
+    const page = instantiate(definition)
+    page.setData({ saving: true, sequence: [2001], selectedIndex: 0 })
+    page.addCatalogBead({ currentTarget: { dataset: { id: 2001 } } })
+    expect(page.data.sequence).toEqual([2001])
+  })
+
+  it.each(['changeWrist', 'changeFitType', 'changeCord'])('ignores %s during checkout save', (method) => {
+    const { definition } = loadEditor()
+    const page = instantiate(definition)
+    page.setData({ checkingOut: true, wristOptions: [170], cordOptions: [{ id: 7002 }] })
+    const draft = page.currentDraft()
+    page[method]({ detail: { value: '0' } })
+    expect(page.currentDraft()).toEqual(draft)
+  })
+
+  it('stops adding beads at the configured design limit', () => {
+    const { definition } = loadEditor()
+    const page = instantiate(definition)
+    page.config = { ...config, rule: { ...config.rule, maxBeadCount: 2 } }
+    page.setData({ sequence: [2001, 2001], selectedIndex: 1 })
+    page.addCatalogBead({ currentTarget: { dataset: { id: 2001 } } })
+    expect(page.data.sequence).toEqual([2001, 2001])
+  })
+
+  it('uses the current cord options when starting a blank design', async () => {
+    const { definition, services: { diy } } = loadEditor()
+    const page = instantiate(definition)
+    diy.getDiyConfiguration.mockResolvedValue({ ...config, cordOptions: [{ ...config.cordOptions[0], id: 7002 }] })
+    await page.bootstrap({})
+    expect(page.data.cordOptionId).toBe(7002)
+    expect(page.currentCord()?.id).toBe(7002)
+  })
+
+  it('marks an initial loading failure separately from a recoverable save error', async () => {
+    const { definition, services: { diy } } = loadEditor()
+    const page = instantiate(definition)
+    diy.getDiyConfiguration.mockRejectedValue(new Error('加载失败'))
+    await page.bootstrap({})
+    expect(page.data.loadFailed).toBe(true)
+    expect(page.data.loading).toBe(false)
+  })
+
+  it('retains live bead prices when restoring a saved scheme', async () => {
+    const { definition } = loadEditor()
+    const page = instantiate(definition)
+    await page.bootstrap({ schemeId: '91' })
+
+    expect(page.currentEstimateCents()).toBe(1000)
+    expect(page.data.priceText).toBe('预估 ¥10.00')
+  })
+
+  it('loads the newest category even while another category is pending', async () => {
+    const { definition, services: { catalog } } = loadEditor()
+    const page = instantiate(definition)
+    let finishOld!: (value: any) => void
+    catalog.listAllPublicBeads.mockImplementationOnce(() => new Promise((resolve) => {
+      finishOld = resolve
+    }))
+    const oldRequest = page.searchCatalog()
+    catalog.listAllPublicBeads.mockResolvedValueOnce([{ ...bead, id: 2002, name: '新分类珠子' }])
+
+    await page.chooseCategory({ currentTarget: { dataset: { id: 3 } } })
+    finishOld([bead])
+    await oldRequest
+
+    expect(page.data.visibleCatalog.map((item: any) => item.id)).toEqual([2002])
+  })
+
+  it('discards a quote if the design changes while it is pending', async () => {
+    const { definition, services: { diy } } = loadEditor()
+    const page = instantiate(definition)
+    let finishQuote!: (value: any) => void
+    diy.quoteDiy.mockImplementationOnce(() => new Promise((resolve) => { finishQuote = resolve }))
+    page.setData({ sequence: [2001] })
+    const pending = page.confirmQuote()
+    page.refreshDerivedState([2001, 2001], { authoritative: false, persistDraft: false })
+    finishQuote({ quotable: true, totalAmount: 10, issues: [], currentLengthMm: 8, targetLengthMm: 170, sizeStatus: 'TOO_SHORT' })
+    await pending
+
+    expect(page.data.authoritative).toBe(false)
+    expect(page.data.countText).toBe('2 颗')
+  })
+
+  it('does not save another scheme while checkout is already saving it', async () => {
+    const { definition, services: { diy } } = loadEditor()
+    const page = instantiate(definition)
+    diy.createScheme.mockClear()
+    page.setData({ sequence: [2001], checkingOut: true })
+
+    await page.saveDraft()
+
+    expect(diy.createScheme).not.toHaveBeenCalled()
+    expect(page.data.errorMessage).toBe('')
+  })
+})
 
 const validHandoff = {
   sequence: [2001],

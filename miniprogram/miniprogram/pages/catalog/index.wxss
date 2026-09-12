@@ -1,6 +1,6 @@
 .catalog-page {
   min-height: 100vh;
-  padding-bottom: 70rpx;
+  padding-bottom: calc(70rpx + env(safe-area-inset-bottom));
   background: #fff8fa;
 }
 
@@ -47,6 +47,7 @@
 }
 
 .search-box input {
+  min-width: 0;
   flex: 1;
   height: 82rpx;
   padding-left: 30rpx;
@@ -125,7 +126,7 @@
 
 .product-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 20rpx;
   padding: 0 28rpx;
 }
@@ -150,6 +151,7 @@
 
 .tag-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 8rpx;
   min-height: 32rpx;
 }
@@ -171,6 +173,13 @@
 }
 
 .product-title {
+  display: -webkit-box;
+  min-height: 76rpx;
+  overflow: hidden;
+  line-height: 1.4;
+  word-break: break-all;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   margin-top: 15rpx;
   color: #3c3236;
   font-size: 27rpx;
@@ -202,7 +211,7 @@
 
 .package-card {
   display: grid;
-  grid-template-columns: 220rpx 1fr;
+  grid-template-columns: 220rpx minmax(0, 1fr);
   gap: 24rpx;
   padding: 20rpx;
   border: 1rpx solid #ece2de;
@@ -218,6 +227,7 @@
 }
 
 .package-title {
+  word-break: break-all;
   margin-top: 12rpx;
   color: #3c3236;
   font-size: 30rpx;

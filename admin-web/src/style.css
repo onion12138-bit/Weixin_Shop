@@ -70,6 +70,7 @@ button {
 .secondary-button,
 .danger-button,
 .page-button {
+  white-space: nowrap;
   min-height: 40px;
   padding: 0 18px;
   border-radius: 10px;
@@ -254,6 +255,7 @@ select {
 
 label {
   display: grid;
+  align-content: start;
   gap: 8px;
   color: #51494d;
   font-size: 14px;
@@ -360,6 +362,7 @@ input[type="checkbox"]:focus {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  overflow-y: auto;
   padding: 28px 20px 20px;
   border-right: 1px solid #3e3338;
   color: white;
@@ -406,7 +409,7 @@ input[type="checkbox"]:focus {
 .sidebar nav {
   display: grid;
   gap: 6px;
-  margin-top: 46px;
+  margin-top: 24px;
 }
 
 .sidebar nav p {
@@ -419,12 +422,14 @@ input[type="checkbox"]:focus {
 
 .sidebar nav a,
 .sidebar nav button {
-  display: flex;
-  gap: 11px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  column-gap: 10px;
+  row-gap: 4px;
   align-items: center;
   width: 100%;
   min-height: 44px;
-  padding: 0 12px;
+  padding: 9px 12px;
   border: 0;
   border-radius: 9px;
   color: #cfc5c9;
@@ -448,10 +453,14 @@ input[type="checkbox"]:focus {
 
 .sidebar nav a small,
 .sidebar nav button small {
-  margin-left: auto;
+  grid-column: 2;
+  margin-left: 0;
   color: #8f8388;
   font-size: 10px;
 }
+
+.sidebar nav button > span { grid-row: 1 / 3; align-self: center; }
+.sidebar nav button.active small { color: #dac3cd; }
 
 .sidebar-footer {
   display: grid;
@@ -459,6 +468,7 @@ input[type="checkbox"]:focus {
   gap: 10px;
   align-items: center;
   margin-top: auto;
+  flex-shrink: 0;
   padding: 16px 8px 0;
   border-top: 1px solid #493d42;
 }
@@ -650,6 +660,7 @@ td {
 }
 
 th {
+  white-space: nowrap;
   color: #857a7f;
   font-size: 11px;
   font-weight: 800;
@@ -671,6 +682,27 @@ tbody tr:hover {
   align-items: center;
   min-width: 270px;
 }
+
+.product-cell > div:last-child { min-width: 0; flex: 1; }
+.bead-table { min-width: 1140px; table-layout: fixed; }
+.bead-table th:nth-child(1) { width: 310px; }
+.bead-table th:nth-child(2) { width: 170px; }
+.bead-table th:nth-child(3), .bead-table th:nth-child(4) { width: 95px; }
+.bead-table th:nth-child(5) { width: 130px; }
+.bead-table th:nth-child(6) { width: 100px; }
+.bead-table th:nth-child(7) { width: 90px; }
+.bead-table th:nth-child(8) { width: 150px; }
+.bead-table .product-cell { min-width: 0; }
+.bead-table .text-button { margin: 3px 0; white-space: nowrap; }
+.package-table { min-width: 960px; table-layout: fixed; }
+.package-table th:nth-child(1) { width: 220px; }
+.package-table th:nth-child(2) { width: 260px; }
+.package-table th:nth-child(3) { width: 110px; }
+.package-table th:nth-child(4) { width: 90px; }
+.package-table th:nth-child(5) { width: 130px; }
+.package-table th:nth-child(6) { width: 150px; }
+.table-primary { font-weight: 700; }
+.table-code { margin-top: 5px; font-family: ui-monospace, monospace; font-size: 11px; color: var(--muted); }
 
 .product-cell strong,
 .product-cell code,
@@ -734,6 +766,7 @@ tbody tr:hover {
 
 .tag-list {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   margin-top: 7px;
 }
@@ -757,6 +790,7 @@ tbody tr:hover {
 }
 
 .money {
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
 }
@@ -768,6 +802,7 @@ tbody tr:hover {
   border-radius: 999px;
   font-size: 11px;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .status-on_sale {
@@ -1534,6 +1569,14 @@ tbody tr:hover {
 .ai-log-list-card td {
   vertical-align: top;
 }
+
+.ai-log-table { min-width: 980px; table-layout: fixed; }
+.ai-log-table th:nth-child(1) { width: 210px; }
+.ai-log-table th:nth-child(2) { width: 180px; }
+.ai-log-table th:nth-child(3) { width: 330px; }
+.ai-log-table th:nth-child(4) { width: 100px; }
+.ai-log-table th:nth-child(5) { width: 160px; }
+.log-preference-copy { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
 
 .ai-log-list-card td strong,
 .ai-log-list-card td small {

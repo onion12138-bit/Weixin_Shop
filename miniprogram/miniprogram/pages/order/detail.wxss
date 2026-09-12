@@ -1,6 +1,6 @@
 .detail-page {
   min-height: 100vh;
-  padding-bottom: 170rpx;
+  padding-bottom: calc(170rpx + env(safe-area-inset-bottom));
   background: #fff8fa;
 }
 
@@ -129,6 +129,7 @@
 }
 
 .detail-card > text:not(.card-title) {
+  word-break: break-all;
   margin-top: 10rpx;
   color: #7e7176;
   font-size: 23rpx;
@@ -166,6 +167,8 @@
 }
 
 .bom-row view {
+  min-width: 0;
+  word-break: break-all;
   flex: 1;
 }
 
@@ -182,6 +185,7 @@
 }
 
 .bom-row > text {
+  flex: 0 0 auto;
   width: 100rpx;
   color: #76696f;
   font-size: 22rpx;
@@ -200,7 +204,7 @@
   border-top: 1rpx solid #eee6e2;
 }
 
-.total-row strong {
+.total-row .strong-text {
   color: #754657;
   font-size: 34rpx;
 }
@@ -240,3 +244,16 @@
   color: #fff;
   background: #754657;
 }
+
+.logistics-card button {
+  flex: 0 0 auto;
+  width: auto;
+  margin: 0;
+  padding: 8rpx 18rpx;
+  border-radius: 24rpx;
+  color: #754657;
+  font-size: 21rpx;
+  line-height: 1.5;
+  background: #f2e6ea;
+}
+.logistics-card button::after { border: 0; }

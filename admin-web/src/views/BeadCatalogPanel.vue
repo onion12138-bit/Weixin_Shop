@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import DataTooltip from '../components/DataTooltip.vue'
+import OverflowText from '../components/OverflowText.vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ApiError, resolveApiResourceUrl } from '../api/http'
 import BeadVisualPanel from '../components/BeadVisualPanel.vue'
 import ListPagination from '../components/ListPagination.vue'
@@ -55,6 +57,7 @@ const ACCEPTED_COVER_TYPES = new Set([
   'image/webp',
 ])
 let latestCatalogRequest = 0
+let disposed = false
 
 const filters = reactive({
   keyword: '',
@@ -135,6 +138,7 @@ function readableError(error: unknown): string {
 }
 
 async function loadCatalog(): Promise<void> {
+  if (disposed) return
   const requestId = ++latestCatalogRequest
   loading.value = true
   errorMessage.value = ''
@@ -489,6 +493,10 @@ function changePageSize(size: number): void {
 }
 
 onMounted(loadCatalog)
+onBeforeUnmount(() => {
+  disposed = true
+  latestCatalogRequest++
+})
 </script>
 
 <template>
@@ -593,7 +601,7 @@ onMounted(loadCatalog)
         <span>可以调整筛选条件，或创建第一个商品。</span>
       </div>
       <div v-else class="table-scroll">
-        <table>
+        <table class="bead-table">
           <thead>
             <tr>
               <th>商品</th>
@@ -627,8 +635,8 @@ onMounted(loadCatalog)
                     <span />
                   </div>
                   <div>
-                    <strong>{{ bead.name }}</strong>
-                    <code>{{ bead.skuCode }}</code>
+                    <OverflowText class="table-primary" :text="bead.name" :lines="2" />
+                    <OverflowText class="table-code" :text="bead.skuCode" />
                     <div class="tag-list">
                       <span
                         v-for="tag in parseTags(bead.tagsJson)"
@@ -641,19 +649,16 @@ onMounted(loadCatalog)
                 </div>
               </td>
               <td>
-                <strong class="subtle-strong">
-                  {{ categoryNames.get(bead.categoryId) || '未分类' }}
-                </strong>
-                <span class="cell-detail">
-                  {{ productTypeLabel(bead.productType) }} · {{ bead.material }} · {{ bead.color }}
-                  <template v-if="bead.diameterMm !== null"> · {{ bead.diameterMm }}mm</template>
-                </span>
+                <OverflowText class="subtle-strong table-primary" :text="categoryNames.get(bead.categoryId) || '未分类'" />
+                <OverflowText class="cell-detail" :lines="2" :text="`${productTypeLabel(bead.productType)} · ${bead.material} · ${bead.color}${bead.diameterMm !== null ? ` · ${bead.diameterMm}mm` : ''}`" />
               </td>
               <td class="money">¥ {{ Number(bead.salePrice).toFixed(2) }}</td>
               <td class="money muted">¥ {{ Number(bead.costPrice).toFixed(2) }}</td>
               <td>
-                <strong data-test="available-stock">{{ bead.availableQty }}</strong>
-                <span class="cell-detail">预占 {{ bead.reservedQty }} · 已售 {{ bead.soldQty }}</span>
+                <DataTooltip :text="`${bead.name}\n可售库存：${bead.availableQty}\n订单预占：${bead.reservedQty}\n累计已售：${bead.soldQty}\n预警阈值：${bead.stockAlertThreshold}`">
+                  <strong data-test="available-stock">{{ bead.availableQty }}</strong>
+                  <span class="cell-detail">预占 {{ bead.reservedQty }} · 已售 {{ bead.soldQty }}</span>
+                </DataTooltip>
               </td>
               <td>
                 <strong>{{ bead.stockAlertThreshold }}</strong>

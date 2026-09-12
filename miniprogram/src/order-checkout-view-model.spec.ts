@@ -52,6 +52,16 @@ describe('order checkout view model', () => {
     expect(maskPhone('13812345678')).toBe('138****5678')
   })
 
+  it('keeps the exact fractional threshold when explaining coupon eligibility', () => {
+    const coupon: CustomerCoupon = {
+      id: 9, status: 'UNUSED', discountAmount: 5.5, minimumSpend: 20.5,
+      expiresAt: '2030-01-01T00:00:00', issuedAt: '2029-01-01T00:00:00',
+      templateId: 1, code: 'SAVE', name: '立减券', description: '', note: null,
+    }
+    expect(buildCheckoutCoupons([coupon], 2049, 0, Date.parse('2029-06-01'))[0])
+      .toMatchObject({ usable: false, thresholdText: '满 ¥20.50 可用', statusText: '未满 ¥20.50' })
+  })
+
   it('charges base shipping below the threshold after coupon discount', () => {
     expect(shippingFeeCents(6800, 1000, 6000, 800)).toBe(800)
     expect(shippingFeeCents(6800, 0, 6000, 800)).toBe(0)

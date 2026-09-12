@@ -15,7 +15,7 @@ import java.util.List;
  * @param rules 新的完整区间集合
  */
 public record SaveCraftFeeRulesRequest(
-        @NotEmpty List<@Valid CraftFeeRuleInput> rules
+        @NotEmpty List<@NotNull @Valid CraftFeeRuleInput> rules
 ) {
 
     /**

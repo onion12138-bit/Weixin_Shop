@@ -86,7 +86,8 @@ public class CustomerAccountService {
     @Transactional
     public AddressView createAddress(SaveAddressRequest request) {
         Long customerId = identityResolver.requireCustomerIdentityId();
-        List<CustomerAddress> existing = activeAddresses(customerId);
+        lockAddressOwner(customerId);
+        List<CustomerAddress> existing = activeAddresses(customerId, true);
         boolean makeDefault = Boolean.TRUE.equals(request.isDefault())
                 || existing.isEmpty();
         if (makeDefault) clearDefaults(customerId);
@@ -102,6 +103,7 @@ public class CustomerAccountService {
     @Transactional
     public AddressView updateAddress(Long addressId, SaveAddressRequest request) {
         Long customerId = identityResolver.requireCustomerIdentityId();
+        lockAddressOwner(customerId);
         CustomerAddress address = requireOwnedAddress(addressId, customerId, true);
         boolean makeDefault = Boolean.TRUE.equals(request.isDefault());
         if (makeDefault) clearDefaults(customerId);
@@ -114,6 +116,7 @@ public class CustomerAccountService {
     @Transactional
     public AddressView setDefaultAddress(Long addressId) {
         Long customerId = identityResolver.requireCustomerIdentityId();
+        lockAddressOwner(customerId);
         CustomerAddress address = requireOwnedAddress(addressId, customerId, true);
         clearDefaults(customerId);
         address.setIsDefault(true);
@@ -124,6 +127,7 @@ public class CustomerAccountService {
     @Transactional
     public boolean deleteAddress(Long addressId) {
         Long customerId = identityResolver.requireCustomerIdentityId();
+        lockAddressOwner(customerId);
         CustomerAddress address = requireOwnedAddress(addressId, customerId, true);
         boolean wasDefault = Boolean.TRUE.equals(address.getIsDefault());
         address.setStatus(DELETED);
@@ -263,6 +267,8 @@ public class CustomerAccountService {
         validateAddressStatus(status);
         CustomerAddress address = addressMapper.selectById(addressId);
         if (address == null) notFound("收货地址不存在");
+        lockAddressOwner(address.getCustomerIdentityId());
+        address = requireOwnedAddress(addressId, address.getCustomerIdentityId(), false);
         boolean wasDefault = Boolean.TRUE.equals(address.getIsDefault());
         address.setStatus(status);
         if (DELETED.equals(status)) address.setIsDefault(false);
@@ -270,7 +276,7 @@ public class CustomerAccountService {
         if (DELETED.equals(status) && wasDefault) {
             selectReplacementDefault(address.getCustomerIdentityId());
         } else if (ACTIVE.equals(status)
-                && activeAddresses(address.getCustomerIdentityId()).stream()
+                && activeAddresses(address.getCustomerIdentityId(), true).stream()
                 .noneMatch(item -> Boolean.TRUE.equals(item.getIsDefault()))) {
             address.setIsDefault(true);
             addressMapper.updateById(address);
@@ -316,13 +322,24 @@ public class CustomerAccountService {
     }
 
     private List<CustomerAddress> activeAddresses(Long customerId) {
+        return activeAddresses(customerId, false);
+    }
+
+    private List<CustomerAddress> activeAddresses(Long customerId, boolean forUpdate) {
         return addressMapper.selectList(
                 new LambdaQueryWrapper<CustomerAddress>()
                         .eq(CustomerAddress::getCustomerIdentityId, customerId)
                         .eq(CustomerAddress::getStatus, ACTIVE)
                         .orderByDesc(CustomerAddress::getIsDefault)
                         .orderByDesc(CustomerAddress::getUpdatedAt)
+                        .last(forUpdate, "for update")
         );
+    }
+
+    private void lockAddressOwner(Long customerId) {
+        if (identityMapper.selectByIdForUpdate(customerId) == null) {
+            notFound("顾客不存在");
+        }
     }
 
     private CustomerAddress requireOwnedAddress(
@@ -335,13 +352,14 @@ public class CustomerAccountService {
                         .eq(CustomerAddress::getId, addressId)
                         .eq(CustomerAddress::getCustomerIdentityId, customerId);
         if (activeOnly) query.eq(CustomerAddress::getStatus, ACTIVE);
+        query.last("for update");
         CustomerAddress address = addressMapper.selectOne(query);
         if (address == null) notFound("收货地址不存在");
         return address;
     }
 
     private void clearDefaults(Long customerId) {
-        for (CustomerAddress current : activeAddresses(customerId)) {
+        for (CustomerAddress current : activeAddresses(customerId, true)) {
             if (Boolean.TRUE.equals(current.getIsDefault())) {
                 current.setIsDefault(false);
                 addressMapper.updateById(current);
@@ -350,7 +368,7 @@ public class CustomerAccountService {
     }
 
     private void selectReplacementDefault(Long customerId) {
-        List<CustomerAddress> remaining = activeAddresses(customerId);
+        List<CustomerAddress> remaining = activeAddresses(customerId, true);
         if (!remaining.isEmpty()) {
             CustomerAddress replacement = remaining.get(0);
             replacement.setIsDefault(true);

@@ -28,6 +28,21 @@ grep -Fxq '.local-run/' "${project_root}/.gitignore" || {
 test_root="$(mktemp -d "${TMPDIR:-/tmp}/weixin-shop-start-local.XXXXXX")"
 trap 'rm -rf "${test_root}"' EXIT
 
+# Respect a runtime already selected by nvm/asdf instead of replacing it with Homebrew.
+selected_node_bin="${test_root}/selected-node/bin"
+mkdir -p "${selected_node_bin}"
+printf '#!/bin/sh\nprintf "v24.0.0\\n"\n' >"${selected_node_bin}/node"
+chmod +x "${selected_node_bin}/node"
+resolved_node="$(
+  PATH="${selected_node_bin}:${PATH}" \
+  PROJECT_LOCAL_SECRETS_DIR="${test_root}/runtime-check-secrets" \
+    bash -c 'source "$1/scripts/project-env.sh" >/dev/null && command -v node' _ "${project_root}"
+)"
+[[ "${resolved_node}" == "${selected_node_bin}/node" ]] || {
+  echo 'FAIL: project-env replaced the explicitly selected Node runtime' >&2
+  exit 1
+}
+
 generated_secrets="${test_root}/generated-secrets"
 generated_key="$({
   env -i \
@@ -360,7 +375,8 @@ fi
 kill "${command_pid}"
 wait "${command_pid}" 2>/dev/null || true
 
-if rg -n "localhost:8080" \
+runtime_scan_status=0
+grep -RInF "localhost:8080" \
   "${project_root}/.env.example" \
   "${project_root}/backend/src/main/resources" \
   "${project_root}/admin-web/src" \
@@ -368,8 +384,12 @@ if rg -n "localhost:8080" \
   "${project_root}/scripts/start-local.sh" \
   "${project_root}/scripts/catalog-smoke.sh" \
   "${project_root}/scripts/diy-smoke.sh" \
-  "${project_root}/scripts/order-smoke.sh"; then
+  "${project_root}/scripts/order-smoke.sh" || runtime_scan_status=$?
+if [[ "${runtime_scan_status}" -eq 0 ]]; then
   echo "FAIL: active runtime files still route clients to localhost:8080" >&2
+  exit 1
+elif [[ "${runtime_scan_status}" -ne 1 ]]; then
+  echo "FAIL: could not scan active runtime files for stale backend URLs" >&2
   exit 1
 fi
 

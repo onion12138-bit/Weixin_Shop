@@ -424,11 +424,9 @@ public class AdminOrderService {
 
     private void restoreCoupon(CustomerOrder order) {
         if (order.getCouponId() == null) return;
-        CustomerCoupon coupon = customerCouponMapper.selectById(order.getCouponId());
-        if (coupon == null || !"USED".equals(coupon.getStatus())) return;
-        coupon.setStatus("UNUSED");
-        coupon.setUsedAt(null);
-        customerCouponMapper.updateById(coupon);
+        customerCouponMapper.restoreUsedCoupon(
+                order.getCouponId(), order.getCustomerIdentityId()
+        );
     }
 
     private void addOperation(

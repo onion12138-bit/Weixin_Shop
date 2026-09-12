@@ -143,7 +143,7 @@ public final class CustomerDtos {
             @NotBlank(message = "发送范围不能为空")
             String recipientMode,
             @Size(max = 5000, message = "单次最多选择 5000 位顾客")
-            List<@Positive(message = "顾客主键必须大于零") Long>
+            List<@NotNull @Positive(message = "顾客主键必须大于零") Long>
                     customerIdentityIds,
             @Size(max = 120, message = "发券备注不能超过 120 个字符")
             String note

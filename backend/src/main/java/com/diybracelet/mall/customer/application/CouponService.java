@@ -209,7 +209,7 @@ public class CouponService {
         );
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public List<CustomerCouponView> listMine() {
         Long customerId = identityResolver.requireCustomerIdentityId();
         List<CustomerCoupon> coupons = customerCouponMapper.selectList(
@@ -221,9 +221,10 @@ public class CouponService {
         LocalDateTime now = LocalDateTime.now();
         for (CustomerCoupon coupon : coupons) {
             if (UNUSED.equals(coupon.getStatus())
-                    && coupon.getExpiresAt().isBefore(now)) {
+                    && !coupon.getExpiresAt().isAfter(now)) {
+                // Expiration is a display projection. Persisting a previously
+                // read entity here could overwrite an order's concurrent use.
                 coupon.setStatus(EXPIRED);
-                customerCouponMapper.updateById(coupon);
             }
         }
         Map<Long, CouponTemplate> templates = templateMapper.selectBatchIds(

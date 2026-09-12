@@ -632,18 +632,11 @@ public class OrderService {
 
     private void restoreCoupon(CustomerOrder order) {
         if (order.getCouponId() == null) return;
-        CustomerCoupon coupon = customerCouponMapper.selectById(
-                order.getCouponId()
+        // A revoked/expired coupon stays unchanged; it must not prevent the
+        // customer from cancelling the order and releasing reserved inventory.
+        customerCouponMapper.restoreUsedCoupon(
+                order.getCouponId(), order.getCustomerIdentityId()
         );
-        if (coupon == null || !"USED".equals(coupon.getStatus())) return;
-        coupon.setStatus("UNUSED");
-        coupon.setUsedAt(null);
-        if (customerCouponMapper.updateById(coupon) != 1) {
-            throw new BusinessException(
-                    ErrorCode.COMMON_CONFLICT,
-                    "优惠券退回失败，请刷新后重试"
-            );
-        }
     }
 
     private record CouponSelection(

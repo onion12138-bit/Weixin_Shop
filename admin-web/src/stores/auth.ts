@@ -1,13 +1,13 @@
 import { computed, reactive } from 'vue'
 import { loginAdmin } from '../api/auth'
 import {
+  accessToken,
   clearAccessToken,
-  getAccessToken,
   setAccessToken,
-} from '../api/http'
+} from '../utils/access-token'
 
 const state = reactive({
-  token: getAccessToken(),
+  token: accessToken,
   loading: false,
 })
 
@@ -25,7 +25,6 @@ export function useAuthStore() {
     try {
       const result = await loginAdmin(username, password)
       setAccessToken(result.accessToken)
-      state.token = result.accessToken
     } finally {
       state.loading = false
     }
@@ -33,7 +32,6 @@ export function useAuthStore() {
 
   function logout(): void {
     clearAccessToken()
-    state.token = null
   }
 
   return {

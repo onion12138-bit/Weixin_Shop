@@ -1,11 +1,21 @@
 import {
   createGuestSessionManager,
+  ensureGuestToken,
   type SessionTransport,
   type StringStorage,
 } from '../miniprogram/services/session'
 import { shouldRefreshCustomerSession } from '../miniprogram/services/request'
 
 describe('guest session manager', () => {
+  it('rejects an empty session response without crashing its callback', async () => {
+    ;(globalThis as any).getApp = () => ({ globalData: { apiBaseUrl: 'http://localhost:8081/api' } })
+    ;(globalThis as any).wx = {
+      getStorageSync: () => '', setStorageSync: () => undefined,
+      request: (options: any) => options.success({ statusCode: 200, data: null }),
+    }
+    await expect(ensureGuestToken()).rejects.toThrow('建立访客会话失败')
+  })
+
   it('reuses installation id and coalesces concurrent refreshes', async () => {
     const values = new Map<string, string>()
     const storage: StringStorage = {

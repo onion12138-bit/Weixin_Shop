@@ -24,8 +24,8 @@ JAVA_HOME="$(/usr/libexec/java_home -v 17)"
 
 export MAVEN_HOME="${tool_root}/apache-maven-3.9.16"
 # Finder 双击 `.command` 时不会加载用户的交互式 Shell 配置，因此需要显式加入
-# Apple Silicon 与 Intel Homebrew 的可执行目录，确保 Node.js 能被一键启动脚本找到。
-export PATH="${JAVA_HOME}/bin:${MAVEN_HOME}/bin:/Applications/Docker.app/Contents/Resources/bin:/opt/homebrew/bin:/usr/local/bin:${PATH}"
+# Apple Silicon 与 Intel Homebrew 目录作为后备；保留 nvm/asdf 已选择的 Node 版本优先级。
+export PATH="${JAVA_HOME}/bin:${MAVEN_HOME}/bin:/Applications/Docker.app/Contents/Resources/bin:${PATH}:/opt/homebrew/bin:/usr/local/bin"
 
 # `.env` 同时供 Docker Compose 和本地 Java/Node 进程使用。通过 set -a
 # 自动导出其中变量，避免用户修改了密码或端口但后端仍读取默认值。

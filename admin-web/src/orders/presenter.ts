@@ -44,7 +44,8 @@ export function beadSummary(order: AdminOrder): string {
 
 export function paymentLabel(order: AdminOrder): string {
   if (!order.payment) return '未支付'
-  if (order.payment.channel === 'MOCK' || order.payment.channel === 'WECHAT') {
+  if (order.payment.channel === 'MOCK') return '模拟支付'
+  if (order.payment.channel === 'WECHAT') {
     return '微信支付'
   }
   return order.payment.channel

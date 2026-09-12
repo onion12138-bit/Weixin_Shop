@@ -2,11 +2,15 @@
 .heading-row { display: flex; align-items: flex-end; justify-content: space-between; }.heading-row .page-kicker,.heading-row .page-title { display:block; }
 .add-button { width: 150rpx; height: 64rpx; border-radius: 32rpx; color:#fff; font-size:23rpx; line-height:64rpx; background:#c55884; }
 .address-list { display:flex; flex-direction:column; gap:20rpx; margin-top:30rpx; }.address-item { padding:28rpx; }
-.contact-row { display:flex; align-items:center; gap:18rpx; }.contact-row strong { font-size:29rpx; }.contact-row text { color:#78676e; font-size:23rpx; }.contact-row i { padding:5rpx 12rpx; border-radius:14rpx; color:#c3527f; font-size:18rpx; font-style:normal; background:#fde7ef; }
+.contact-row { display:flex; align-items:center; gap:18rpx; }.contact-row .strong-text { font-size:29rpx; }.contact-row text { color:#78676e; font-size:23rpx; }.contact-row .badge-text { padding:5rpx 12rpx; border-radius:14rpx; color:#c3527f; font-size:18rpx; font-style:normal; background:#fde7ef; }
 .address-copy { display:block; margin-top:18rpx; color:#64555c; font-size:24rpx; line-height:1.65; }
 .address-actions { display:flex; justify-content:flex-end; gap:28rpx; margin-top:22rpx; padding-top:18rpx; border-top:1rpx solid #f0e4e8; }.address-actions button { width:auto; margin:0; padding:0; color:#a05a74; font-size:21rpx; background:transparent; }
 .empty-add { width:260rpx; margin:26rpx auto 0; }.editor-mask { position:fixed; z-index:50; inset:0; display:flex; align-items:flex-end; background:rgba(55,35,43,.32); }
 .address-editor { box-sizing:border-box; width:100%; max-height:92vh; padding:34rpx 30rpx calc(34rpx + env(safe-area-inset-bottom)); overflow-y:auto; border-radius:38rpx 38rpx 0 0; background:#fff9fb; }
-.editor-heading { display:flex; align-items:center; justify-content:space-between; margin-bottom:28rpx; }.editor-heading strong { font-family:"Songti SC",serif; font-size:36rpx; }.editor-heading button { width:58rpx; height:58rpx; border-radius:50%; color:#8d6f7a; line-height:58rpx; background:#f5e9ed; }
+.editor-heading { display:flex; align-items:center; justify-content:space-between; margin-bottom:28rpx; }.editor-heading .strong-text { font-family:"Songti SC",serif; font-size:36rpx; }.editor-heading button { width:58rpx; height:58rpx; border-radius:50%; color:#8d6f7a; line-height:58rpx; background:#f5e9ed; }
 .address-editor label { display:block; margin-bottom:20rpx; }.address-editor label text { display:block; margin-bottom:9rpx; color:#634b55; font-size:22rpx; }.address-editor input,.address-editor textarea { box-sizing:border-box; width:100%; padding:0 22rpx; border:1rpx solid #ead7df; border-radius:18rpx; font-size:24rpx; background:#fff; }.address-editor input { height:76rpx; }.address-editor textarea { min-height:130rpx; padding-top:20rpx; }
 .default-toggle { margin:6rpx 0 24rpx; color:#8e6b78; font-size:22rpx; background:#f7ebef; }.default-toggle.selected { color:#b74473; background:#fde5ee; }
+.heading-row { gap: 20rpx; }.heading-row > view { min-width: 0; flex: 1; }.add-button { flex: 0 0 auto; margin: 0; }
+.contact-row { flex-wrap: wrap; }.contact-row .strong-text,.address-copy { word-break: break-all; }.contact-row .badge-text { flex: 0 0 auto; }
+.editor-heading button { margin: 0; padding: 0; flex: 0 0 auto; }.address-editor .inline-error { margin: 0 0 20rpx; }
+.contact-row .strong-text { color: #351f2b; }

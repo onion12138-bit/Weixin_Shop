@@ -8,7 +8,7 @@ jest.mock('../miniprogram/services/session', () => ({
   guestSessionManager: { invalidate: () => mockInvalidate() },
 }))
 
-import { upload } from '../miniprogram/services/request'
+import { request, upload } from '../miniprogram/services/request'
 
 interface UploadCall {
   header: { Authorization: string }
@@ -88,5 +88,27 @@ describe('customer upload session recovery', () => {
     expect(mockInvalidate).toHaveBeenCalledTimes(1)
     expect(mockRefreshGuestToken).toHaveBeenCalledTimes(1)
     expect(uploadFile).toHaveBeenCalledTimes(2)
+  })
+
+  it('rejects a null upload envelope with a readable API error', async () => {
+    mockEnsureGuestToken.mockResolvedValue('token')
+    uploadFile.mockImplementation((options: UploadCall) => options.success({
+      statusCode: 200,
+      data: 'null',
+    }))
+
+    await expect(upload('/app/files', '/tmp/avatar.png')).rejects.toMatchObject({
+      name: 'ApiError', code: 'COMMON_INTERNAL_ERROR',
+    })
+  })
+
+  it('rejects a null request envelope with a readable API error', async () => {
+    ;(globalThis as any).wx.request = (options: any) => options.success({
+      statusCode: 200, data: null,
+    })
+
+    await expect(request('/public/catalog/categories')).rejects.toMatchObject({
+      name: 'ApiError', code: 'COMMON_INTERNAL_ERROR',
+    })
   })
 })

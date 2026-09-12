@@ -6,19 +6,20 @@
   <view wx:elif="{{!addresses.length}}" class="soft-card state-card"><text>还没有保存的地址</text><button class="secondary-action empty-add" bindtap="addAddress">添加第一条地址</button></view>
   <view wx:else class="address-list">
     <view wx:for="{{addresses}}" wx:key="id" class="soft-card address-item">
-      <view class="address-main"><view class="contact-row"><strong>{{item.receiverName}}</strong><text>{{item.phone}}</text><i wx:if="{{item.isDefault}}">默认</i></view><text class="address-copy">{{item.region}} {{item.detail}}</text></view>
+      <view class="address-main"><view class="contact-row"><text class="strong-text">{{item.receiverName}}</text><text>{{item.phone}}</text><text class="badge-text" wx:if="{{item.isDefault}}">默认</text></view><text class="address-copy">{{item.region}} {{item.detail}}</text></view>
       <view class="address-actions"><button wx:if="{{!item.isDefault}}" data-id="{{item.id}}" bindtap="makeDefault">设为默认</button><button data-id="{{item.id}}" bindtap="editAddress">编辑</button><button data-id="{{item.id}}" bindtap="removeAddress">删除</button></view>
     </view>
   </view>
 
   <view wx:if="{{showEditor}}" class="editor-mask" bindtap="closeEditor">
     <view class="address-editor" catchtap="noop">
-      <view class="editor-heading"><strong>{{editingId ? '编辑地址' : '新增地址'}}</strong><button bindtap="closeEditor">×</button></view>
+      <view class="editor-heading"><text class="strong-text">{{editingId ? '编辑地址' : '新增地址'}}</text><button bindtap="closeEditor">×</button></view>
       <label><text>收货人</text><input value="{{draft.receiverName}}" data-field="receiverName" bindinput="updateDraft" placeholder="请输入姓名" /></label>
       <label><text>联系电话</text><input value="{{draft.phone}}" data-field="phone" bindinput="updateDraft" placeholder="请输入手机或固定电话" /></label>
       <label><text>所在地区</text><input value="{{draft.region}}" data-field="region" bindinput="updateDraft" placeholder="例如：上海市 浦东新区" /></label>
       <label><text>详细地址</text><textarea value="{{draft.detail}}" data-field="detail" bindinput="updateDraft" placeholder="街道、小区、楼栋及门牌号" /></label>
       <button class="default-toggle {{draft.isDefault ? 'selected' : ''}}" bindtap="toggleDraftDefault">{{draft.isDefault ? '✓ 已设为默认地址' : '设为默认地址'}}</button>
+      <view wx:if="{{errorMessage}}" class="inline-error">{{errorMessage}}</view>
       <button class="primary-action" loading="{{saving}}" disabled="{{saving}}" bindtap="saveAddress">保存地址</button>
     </view>
   </view>

@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import OrderView from './OrderView.vue'
+import checkIcon from '../assets/icons/check-line.svg'
 import {
   completeOrderProduction,
   getAdminOrder,
@@ -84,6 +85,7 @@ const productionOrder = {
 describe('OrderView', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    vi.clearAllMocks()
     vi.unstubAllGlobals()
     vi.mocked(listAdminOrders).mockResolvedValue({
       items: [productionOrder], total: 1, page: 1, size: 10,
@@ -102,6 +104,25 @@ describe('OrderView', () => {
         productionCompletedAt: '2026-08-08T11:00:00',
       },
     })
+  })
+
+  it('shows authoritative statistics and the complete amount breakdown without revealing hidden phones', async () => {
+    const wrapper = mount(OrderView, { attachTo: document.body })
+    await flushPromises()
+    await wrapper.get('.statistic-card').trigger('mouseenter')
+    await flushPromises()
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toContain('全部订单：1 单')
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flushPromises()
+    await wrapper.get('.order-amount .data-tooltip-trigger').trigger('focus')
+    await flushPromises()
+    const details = document.querySelector('[role="tooltip"]')?.textContent
+    expect(details).toContain('商品金额：¥304.80')
+    expect(details).toContain('优惠抵扣：¥20.00')
+    expect(details).toContain('实付金额：¥294.80')
+    expect(document.body.textContent).not.toContain('13800000000')
+    wrapper.unmount()
+    expect(document.querySelector('[role="tooltip"]')).toBeNull()
   })
 
   it('renders a compact order table and opens the detail page', async () => {
@@ -126,7 +147,7 @@ describe('OrderView', () => {
     expect(wrapper.text()).toContain('顾客与收货信息')
     expect(wrapper.text()).toContain('珠材 BOM 明细')
     expect(wrapper.findAll('.step-check')).toHaveLength(1)
-    expect(wrapper.get('.step-check').attributes('src')).toContain('check-line.svg')
+    expect(wrapper.get('.step-check').attributes('src')).toBe(checkIcon)
   })
 
   it('renders every completed progress node as a check mark', async () => {

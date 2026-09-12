@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.LocalDate;
@@ -105,7 +106,9 @@ public class LocalFileStorage implements FileStorage {
 
         try {
             Files.createDirectories(target.getParent());
-            Files.write(target, safeContent, StandardOpenOption.CREATE_NEW);
+            rejectSymbolicLinks(target);
+            Files.write(target, safeContent, StandardOpenOption.CREATE_NEW,
+                    LinkOption.NOFOLLOW_LINKS);
         } catch (IOException exception) {
             throw new UncheckedIOException("写入本地文件失败", exception);
         }
@@ -139,14 +142,16 @@ public class LocalFileStorage implements FileStorage {
                     "文件存储键不合法"
             );
         }
-        if (!Files.isRegularFile(target)) {
+        if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)) {
             throw new BusinessException(
                     ErrorCode.COMMON_NOT_FOUND,
                     "文件不存在"
             );
         }
         try {
-            return Files.readAllBytes(target);
+            try (var input = Files.newInputStream(target, LinkOption.NOFOLLOW_LINKS)) {
+                return input.readAllBytes();
+            }
         } catch (IOException exception) {
             throw new UncheckedIOException("读取本地文件失败", exception);
         }
@@ -186,6 +191,17 @@ public class LocalFileStorage implements FileStorage {
         if (!target.startsWith(root)) {
             throw new IllegalArgumentException("存储路径不能超出配置根目录");
         }
+        rejectSymbolicLinks(target);
         return target;
+    }
+
+    private void rejectSymbolicLinks(Path target) {
+        Path current = root;
+        for (Path segment : root.relativize(target)) {
+            current = current.resolve(segment);
+            if (Files.isSymbolicLink(current)) {
+                throw new IllegalArgumentException("存储路径不能包含符号链接");
+            }
+        }
     }
 }

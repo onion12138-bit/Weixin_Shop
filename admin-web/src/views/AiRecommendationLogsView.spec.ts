@@ -44,6 +44,13 @@ const detail: AiRecommendationLogDetail = {
   updatedAt: '2026-08-09T12:00:01',
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no })
+  return { promise, resolve, reject }
+}
+
 describe('AiRecommendationLogsView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -112,5 +119,60 @@ describe('AiRecommendationLogsView', () => {
     expect(confirm).toHaveBeenCalled()
     expect(deleteAiRecommendationLog).toHaveBeenCalledWith(7)
     expect(listAiRecommendationLogs).toHaveBeenCalledTimes(2)
+  })
+
+  it('closes a loading detail without reopening it when the request completes', async () => {
+    const pending = deferred<AiRecommendationLogDetail>()
+    vi.mocked(getAiRecommendationLog).mockReturnValueOnce(pending.promise)
+    const wrapper = mount(AiRecommendationLogsView)
+    await flushPromises()
+    await wrapper.get('[data-test="log-row-7"] .secondary-button').trigger('click')
+
+    await wrapper.get('.ai-log-modal-backdrop').trigger('click')
+    expect(wrapper.find('.ai-log-modal-backdrop').exists()).toBe(false)
+    pending.resolve(detail)
+    await flushPromises()
+    expect(wrapper.find('.ai-log-modal-backdrop').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it.each(['success', 'failure'])('ignores an older detail %s while a newer detail is loading', async (outcome) => {
+    const older = deferred<AiRecommendationLogDetail>()
+    const latest = deferred<AiRecommendationLogDetail>()
+    vi.mocked(getAiRecommendationLog).mockReturnValueOnce(older.promise).mockReturnValueOnce(latest.promise)
+    vi.mocked(listAiRecommendationLogs).mockResolvedValueOnce({
+      items: [summary, { ...summary, id: 8, traceId: 'trace-new-8' }], total: 2, page: 1, size: 20,
+    })
+    const wrapper = mount(AiRecommendationLogsView)
+    await flushPromises()
+    await wrapper.get('[data-test="log-row-7"] .secondary-button').trigger('click')
+    await wrapper.get('.ai-log-modal-backdrop').trigger('click')
+    await wrapper.get('[data-test="log-row-8"] .secondary-button').trigger('click')
+
+    if (outcome === 'success') older.resolve(detail)
+    else older.reject(new Error('older request failed'))
+    await flushPromises()
+    expect(wrapper.get('.ai-log-detail-loading').text()).toContain('正在读取详情')
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+
+    latest.resolve({ ...detail, summary: { ...summary, id: 8, traceId: 'trace-new-8' } })
+    await flushPromises()
+    expect(wrapper.get('[data-test="log-detail"]').text()).toContain('trace-new-8')
+    wrapper.unmount()
+  })
+
+  it('does not publish a detail response after unmount', async () => {
+    const pending = deferred<AiRecommendationLogDetail>()
+    vi.mocked(getAiRecommendationLog).mockReturnValueOnce(pending.promise)
+    const wrapper = mount(AiRecommendationLogsView)
+    await flushPromises()
+    await wrapper.get('[data-test="log-row-7"] .secondary-button').trigger('click')
+    const state = wrapper.vm as unknown as { selected: AiRecommendationLogDetail | null }
+
+    wrapper.unmount()
+    pending.resolve(detail)
+    await flushPromises()
+
+    expect(state.selected).toBeNull()
   })
 })

@@ -111,12 +111,23 @@ public class CatalogExcelImportService {
                 throw badRequest("Excel 中没有商品数据工作表");
             }
             Map<String, Integer> columns = readAndValidateHeader(sheet);
+            validateRowLimit(sheet, columns);
             Map<String, Category> categories = loadCategoriesByName();
             return importRows(sheet, columns, categories);
         } catch (BusinessException exception) {
             throw exception;
         } catch (IOException | POIXMLException exception) {
             throw badRequest("Excel 文件无法读取，请使用下载的 .xlsx 模板");
+        }
+    }
+
+    private void validateRowLimit(Sheet sheet, Map<String, Integer> columns) {
+        int count = 0;
+        for (Row row : sheet) {
+            if (row.getRowNum() > 0 && !isBlankRow(row, columns)
+                    && ++count > MAX_IMPORT_ROWS) {
+                throw badRequest("单次最多导入 " + MAX_IMPORT_ROWS + " 行商品");
+            }
         }
     }
 

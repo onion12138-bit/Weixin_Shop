@@ -23,7 +23,7 @@ public record SaveDiySchemeRequest(
         @NotNull @DecimalMin("0.01") BigDecimal wristCircumferenceMm,
         @NotNull FitType fitType,
         @NotNull @Positive Long cordOptionId,
-        @NotNull @Size(max = 200) List<@Positive Long> sequence,
+        @NotNull @Size(max = 200) List<@NotNull @Positive Long> sequence,
         @NotNull @Min(0) Long version
 ) {
 

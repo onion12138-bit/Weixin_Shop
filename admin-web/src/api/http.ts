@@ -1,3 +1,11 @@
+import { clearAccessToken, getAccessToken } from '../utils/access-token'
+
+export {
+  clearAccessToken,
+  getAccessToken,
+  setAccessToken,
+} from '../utils/access-token'
+
 /**
  * 后端统一响应结构。
  */
@@ -35,8 +43,6 @@ const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081/api'
 ).replace(/\/$/, '')
 
-const TOKEN_KEY = 'diy_bracelet_admin_access_token'
-
 /**
  * 将后端返回的相对资源地址转换为可直接展示的绝对地址。
  *
@@ -52,19 +58,23 @@ export function resolveApiResourceUrl(resourceUrl: string): string {
   return new URL(resourceUrl, apiUrl.origin).toString()
 }
 
-/**
- * 读取本地管理员令牌。令牌只放入 Authorization 请求头，不写入日志。
- */
-export function getAccessToken(): string | null {
-  return window.localStorage.getItem(TOKEN_KEY)
-}
-
-export function setAccessToken(token: string): void {
-  window.localStorage.setItem(TOKEN_KEY, token)
-}
-
-export function clearAccessToken(): void {
-  window.localStorage.removeItem(TOKEN_KEY)
+/** 非 JSON 或结构异常的响应也转换为稳定的 ApiError，不泄露错误页正文。 */
+async function readEnvelope<T>(response: Response): Promise<Partial<ApiEnvelope<T>>> {
+  try {
+    const body: unknown = await response.json()
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return {}
+    }
+    const envelope = body as Record<string, unknown>
+    return {
+      code: typeof envelope.code === 'string' ? envelope.code : undefined,
+      message: typeof envelope.message === 'string' ? envelope.message : undefined,
+      traceId: typeof envelope.traceId === 'string' ? envelope.traceId : undefined,
+      data: envelope.data as T,
+    }
+  } catch {
+    return {}
+  }
 }
 
 /**
@@ -87,12 +97,12 @@ export async function request<T>(
     ...init,
     headers,
   })
-  const envelope = (await response.json()) as ApiEnvelope<T>
+  if (response.status === 401) {
+    clearAccessToken(token)
+  }
+  const envelope = await readEnvelope<T>(response)
 
   if (!response.ok || envelope.code !== 'OK') {
-    if (response.status === 401) {
-      clearAccessToken()
-    }
     throw new ApiError(
       envelope.message || '请求失败',
       envelope.code || 'COMMON_INTERNAL_ERROR',
@@ -101,7 +111,7 @@ export async function request<T>(
     )
   }
 
-  return envelope.data
+  return envelope.data as T
 }
 
 /**
@@ -125,14 +135,9 @@ export async function requestBlob(
   }
 
   if (response.status === 401) {
-    clearAccessToken()
+    clearAccessToken(token)
   }
-  let envelope: Partial<ApiEnvelope<unknown>> = {}
-  try {
-    envelope = await response.json() as Partial<ApiEnvelope<unknown>>
-  } catch {
-    // 非 JSON 错误页也只向界面返回稳定提示，不暴露响应正文。
-  }
+  const envelope = await readEnvelope<unknown>(response)
   throw new ApiError(
     envelope.message || '文件下载失败',
     envelope.code || 'COMMON_INTERNAL_ERROR',

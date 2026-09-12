@@ -210,8 +210,12 @@ class AppOrderControllerTest extends MySqlIntegrationTest {
                 .containsEntry("sold_qty", 0);
     }
 
-    @Test
-    void shouldApplyCouponAndRestoreItWhenPendingOrderIsCancelled()
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({
+            "USER, UNUSED", "ADMIN, UNUSED", "USER, REVOKED", "ADMIN, REVOKED"
+    })
+    void shouldApplyCouponAndRestoreItWhenPendingOrderIsCancelled(
+            String cancelledBy, String expectedCouponStatus)
             throws Exception {
         String token = customerToken("6817d2a6-dd2f-43ec-bab6-478ea91f42b8");
         Long customerId = jdbcTemplate.queryForObject(
@@ -262,14 +266,29 @@ class AppOrderControllerTest extends MySqlIntegrationTest {
                 couponId
         )).isEqualTo("USED");
 
-        mockMvc.perform(post("/api/app/orders/{orderId}/cancel", orderId)
-                        .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk());
+        if ("REVOKED".equals(expectedCouponStatus)) {
+            jdbcTemplate.update("update customer_coupon set status = 'REVOKED' where id = ?", couponId);
+        }
+        String cancellationRoute = "ADMIN".equals(cancelledBy)
+                ? "/api/admin/orders/{orderId}/cancel" : "/api/app/orders/{orderId}/cancel";
+        String cancellationToken = "ADMIN".equals(cancelledBy) ? loginAsAdmin() : token;
+        mockMvc.perform(post(cancellationRoute, orderId)
+                        .header("Authorization", "Bearer " + cancellationToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("CANCELLED"));
+        assertThat(inventory(2001L)).containsEntry("available_qty", 200)
+                .containsEntry("reserved_qty", 0);
         assertThat(jdbcTemplate.queryForObject(
                 "select status from customer_coupon where id = ?",
                 String.class,
                 couponId
-        )).isEqualTo("UNUSED");
+        )).isEqualTo(expectedCouponStatus);
+        if ("REVOKED".equals(expectedCouponStatus)) return;
+        assertThat(jdbcTemplate.queryForObject(
+                "select used_at from customer_coupon where id = ?",
+                java.time.LocalDateTime.class,
+                couponId
+        )).isNull();
 
         Long nextSchemeId = createScheme(token, sequence(12, 9));
         mockMvc.perform(post("/api/app/orders")
