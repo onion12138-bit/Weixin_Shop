@@ -53,7 +53,8 @@ class RecommendationServiceTest {
         logService = mock(AiRecommendationLogService.class);
         when(logService.start(any(), any())).thenReturn(1L);
         service = new RecommendationService(
-            configMapper, candidateMapper, gateway, logService
+            configMapper, candidateMapper, gateway, logService,
+            new RecommendationConcurrencyGuard(4)
         );
     }
 

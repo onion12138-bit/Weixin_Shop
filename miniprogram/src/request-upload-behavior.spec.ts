@@ -1,11 +1,9 @@
 const mockEnsureGuestToken = jest.fn<Promise<string>, []>()
-const mockRefreshGuestToken = jest.fn<Promise<string>, []>()
-const mockInvalidate = jest.fn<void, []>()
+const mockRefreshGuestToken = jest.fn<Promise<string>, [string?]>()
 
 jest.mock('../miniprogram/services/session', () => ({
   ensureGuestToken: () => mockEnsureGuestToken(),
-  refreshGuestToken: () => mockRefreshGuestToken(),
-  guestSessionManager: { invalidate: () => mockInvalidate() },
+  refreshGuestToken: (token?: string) => mockRefreshGuestToken(token),
 }))
 
 import { request, upload } from '../miniprogram/services/request'
@@ -30,7 +28,6 @@ describe('customer upload session recovery', () => {
   beforeEach(() => {
     mockEnsureGuestToken.mockReset()
     mockRefreshGuestToken.mockReset()
-    mockInvalidate.mockReset()
     uploadFile.mockReset()
     ;(globalThis as unknown as { getApp: () => unknown }).getApp = () => ({
       globalData: { apiBaseUrl: 'http://localhost:8081/api' },
@@ -58,7 +55,7 @@ describe('customer upload session recovery', () => {
       '/tmp/preview.png',
     )).resolves.toEqual({ fileId: 42 })
 
-    expect(mockInvalidate).toHaveBeenCalledTimes(1)
+    expect(mockRefreshGuestToken).toHaveBeenCalledWith('stale-token')
     expect(mockRefreshGuestToken).toHaveBeenCalledTimes(1)
     expect(uploadFile).toHaveBeenCalledTimes(2)
     expect(uploadFile.mock.calls[0][0].header.Authorization)
@@ -85,7 +82,7 @@ describe('customer upload session recovery', () => {
       traceId: 'trace-401',
     })
 
-    expect(mockInvalidate).toHaveBeenCalledTimes(1)
+    expect(mockRefreshGuestToken).toHaveBeenCalledWith('stale-token')
     expect(mockRefreshGuestToken).toHaveBeenCalledTimes(1)
     expect(uploadFile).toHaveBeenCalledTimes(2)
   })
@@ -100,6 +97,16 @@ describe('customer upload session recovery', () => {
     await expect(upload('/app/files', '/tmp/avatar.png')).rejects.toMatchObject({
       name: 'ApiError', code: 'COMMON_INTERNAL_ERROR',
     })
+  })
+
+  it('passes the failed request token to guarded session refresh', async () => {
+    mockEnsureGuestToken.mockResolvedValueOnce('stale-token').mockResolvedValueOnce('fresh-token')
+    mockRefreshGuestToken.mockResolvedValue('fresh-token')
+    ;(globalThis as any).wx.request = jest.fn()
+      .mockImplementationOnce((options: any) => options.success({ statusCode: 401, data: {} }))
+      .mockImplementationOnce((options: any) => options.success({ statusCode: 200, data: { code: 'OK', data: 7 } }))
+    await expect(request('/app/orders')).resolves.toBe(7)
+    expect(mockRefreshGuestToken).toHaveBeenCalledWith('stale-token')
   })
 
   it('rejects a null request envelope with a readable API error', async () => {

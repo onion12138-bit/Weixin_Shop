@@ -181,6 +181,8 @@ async function runAction(
   action: () => Promise<AdminOrder>,
   message: string,
 ): Promise<boolean> {
+  // 同一订单的履约操作串行提交，避免快速点击重复发货或更新地址。
+  if (working.value) return false
   working.value = true
   try {
     order.value = await action()
@@ -195,12 +197,12 @@ async function runAction(
 }
 
 function showScheme(): void {
-  const url = order.value?.product.previewUrl
+  const url = resolveApiResourceUrl(order.value?.product.previewUrl || '')
   if (!url) {
     showToast('该订单未保存独立预览图，当前已展示订单商品图')
     return
   }
-  window.open(resolveApiResourceUrl(url), '_blank', 'noopener,noreferrer')
+  window.open(url, '_blank', 'noopener,noreferrer')
 }
 
 onMounted(loadOrder)

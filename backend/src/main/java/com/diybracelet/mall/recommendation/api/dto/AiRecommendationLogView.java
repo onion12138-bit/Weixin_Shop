@@ -2,7 +2,8 @@ package com.diybracelet.mall.recommendation.api.dto;
 
 import java.time.LocalDateTime;
 
-/** Secret-free summary and detail views for administrator recommendation tracing. */
+
+/** 管理员使用的推荐日志摘要和详情视图，不返回密钥。 */
 public final class AiRecommendationLogView {
     private AiRecommendationLogView() { }
 

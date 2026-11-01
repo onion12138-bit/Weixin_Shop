@@ -1,3 +1,4 @@
+// 统一订单查询与履约接口契约，金额和状态以服务端响应为准。
 import { request } from './http'
 import type { PageResponse } from './catalog'
 

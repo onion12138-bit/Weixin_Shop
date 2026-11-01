@@ -5,7 +5,8 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
-/** Admin request for replacing the non-secret AI settings and optionally the key. */
+
+/** 管理员更新 AI 参数的请求，可选择替换密钥。 */
 public record SaveAiConfigurationRequest(
     @NotBlank @Size(max = 255) String baseUrl,
     @NotBlank @Size(max = 120) String modelName,

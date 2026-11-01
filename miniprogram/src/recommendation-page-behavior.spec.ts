@@ -272,12 +272,18 @@ describe('recommendation Page behavior', () => {
 
     const submission = page.submitRecommendation()
     change(page)
+    await page.submitRecommendation()
+    expect(recommendMock).toHaveBeenCalledTimes(1)
+    expect(page.data.submitting).toBe(true)
     pending.resolve(recommendation)
     await submission
 
     expect(page.data.result).toBeNull()
     expect(page.recommendation).toBeNull()
     expect(page.data.submitting).toBe(false)
+    recommendMock.mockResolvedValueOnce(recommendation)
+    await page.submitRecommendation()
+    expect(recommendMock).toHaveBeenCalledTimes(2)
   })
 
   it('does not mutate page state after onUnload while POST is pending', async () => {
@@ -397,6 +403,21 @@ describe('recommendation Page behavior', () => {
     expect(wxMock.navigateTo.mock.calls[0][0].url)
       .toBe('/pages/diy/editor?source=ai')
     wxMock.navigateTo.mock.calls[0][0].success()
+    page.enterDiy(event)
+    expect(wxMock.navigateTo).toHaveBeenCalledTimes(1)
+    page.onShow()
+    page.enterDiy(event)
+    expect(wxMock.navigateTo).toHaveBeenCalledTimes(2)
+  })
+
+  it('allows a failed DIY navigation to be retried without keeping its handoff', async () => {
+    const { page, wxMock } = await availablePage()
+    page.recommendation = recommendation
+    const event = { currentTarget: { dataset: { index: 1 } } }
+    page.enterDiy(event)
+    wxMock.navigateTo.mock.calls[0][0].fail({ errMsg: 'offline' })
+    expect(wxMock.removeStorageSync).toHaveBeenCalledWith('pending_ai_recommendation')
+    expect(page.data.enteringDiy).toBe(false)
     page.enterDiy(event)
     expect(wxMock.navigateTo).toHaveBeenCalledTimes(2)
   })

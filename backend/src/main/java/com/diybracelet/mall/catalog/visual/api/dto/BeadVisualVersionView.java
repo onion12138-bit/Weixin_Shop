@@ -5,6 +5,8 @@ import com.diybracelet.mall.catalog.visual.domain.BeadVisualStatus;
 
 import java.time.LocalDateTime;
 
+
+/** 单个珠子视觉版本及其素材信息。 */
 public record BeadVisualVersionView(
         Long id,
         Integer version,

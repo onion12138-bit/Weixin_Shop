@@ -209,6 +209,22 @@ public class DiySchemeService {
         return getOwnedResponse(id, customerId);
     }
 
+    /** 拒绝旧设计、已删除或已下单方案的迟到预览，不影响后续设计保存。 */
+    @Transactional
+    public DiySchemeResponse bindPreviewVersion(Long id, Long previewAssetId, Long version) {
+        Long customerId = identityResolver.requireCustomerIdentityId();
+        requireOwnedScheme(id, customerId);
+        requireActiveAsset(previewAssetId);
+        if (schemeMapper.bindPreviewForVersion(id, customerId, previewAssetId, version) != 1) {
+            ensureOwnedSchemeExists(id, customerId);
+            throw new BusinessException(
+                    ErrorCode.DIY_SCHEME_VERSION_CONFLICT,
+                    "方案已更新，无需上传旧预览"
+            );
+        }
+        return getOwnedResponse(id, customerId);
+    }
+
     private DiyScheme toEntity(
             Long customerId,
             SaveDiySchemeRequest request

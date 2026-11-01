@@ -3,7 +3,8 @@ package com.diybracelet.mall.recommendation.domain;
 import java.util.List;
 import java.util.function.Consumer;
 
-/** Provider boundary used to inspect models without exposing HTTP details to services. */
+
+/** 隔离模型服务调用细节，为业务层提供模型查询和推荐能力。 */
 public interface AiModelGateway {
 
     /** Returns the provider model identifiers visible to the configured account. */

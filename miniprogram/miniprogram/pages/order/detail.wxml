@@ -13,6 +13,14 @@
       <text class="order-date">{{order.createdAtText}} 创建</text>
     </view>
 
+    <view wx:if="{{order.status === 'PENDING_PAYMENT' && expiresAtText}}" class="detail-card">
+      <text>{{paymentExpired ? '支付期限已到，正在等待关单结果' : '请在 ' + countdownText + ' 内完成支付'}}</text>
+      <text>付款截止：{{expiresAtText}}</text>
+      <text>到期自动释放库存与优惠券占用</text>
+      <button wx:if="{{paymentExpired}}" bindtap="loadOrder">刷新订单状态</button>
+    </view>
+    <view wx:if="{{closedReasonText}}" class="detail-card">{{closedReasonText}}</view>
+
     <view wx:if="{{order.status !== 'CANCELLED' && order.status !== 'AFTER_SALE' && order.status !== 'REFUNDED'}}" class="progress-card">
       <view wx:for="{{steps}}" wx:key="*this" class="step {{index <= order.progressIndex ? 'active' : ''}}">
         <view class="step-dot">{{index + 1}}</view>
@@ -64,6 +72,7 @@
     <view wx:if="{{order.canMockPay || order.canCancel || order.canConfirmReceipt}}" class="action-bar">
       <button
         wx:if="{{order.canCancel}}"
+        loading="{{operating}}"
         disabled="{{operating}}"
         class="secondary-action"
         bindtap="cancel"

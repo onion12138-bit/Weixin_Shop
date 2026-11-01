@@ -143,6 +143,26 @@ describe('catalog view model', () => {
     )
   })
 
+  it('limits large catalogs to three concurrent page requests without dropping pages', async () => {
+    requestMock.mockReset()
+    let active = 0
+    let peak = 0
+    requestMock.mockImplementation(async (path) => {
+      active += 1
+      peak = Math.max(peak, active)
+      await Promise.resolve()
+      const page = Number(path.match(/[?&]page=(\d+)/)?.[1])
+      active -= 1
+      return { total: 901, size: 100, page,
+        items: [{ id: page, name: '珠子', coverUrl: null, diyVisual: null }] }
+    })
+    const items = await listAllPublicBeads()
+    expect(items.map((item) => item.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    expect(peak).toBe(3)
+    expect(requestMock).toHaveBeenCalledTimes(10)
+    requestMock.mockReset()
+  })
+
   it('normalizes cover, tray and canvas URLs in scheme snapshots', async () => {
     requestMock.mockResolvedValueOnce({
       id: 91,

@@ -58,6 +58,7 @@ const ACCEPTED_COVER_TYPES = new Set([
 ])
 let latestCatalogRequest = 0
 let disposed = false
+let latestCoverRequest = 0
 
 const filters = reactive({
   keyword: '',
@@ -228,6 +229,8 @@ function resetForm(): void {
  * 新建和编辑共用同一份表单，打开前始终完整覆盖字段，避免上一次操作残留数据。
  */
 function openCreateForm(): void {
+  if (disposed || saving.value) return
+  invalidateCoverUpload()
   editingBeadId.value = null
   resetForm()
   generateSku()
@@ -235,6 +238,8 @@ function openCreateForm(): void {
 }
 
 function openEditForm(bead: BeadSku): void {
+  if (disposed || saving.value) return
+  invalidateCoverUpload()
   editingBeadId.value = bead.id
   Object.assign(form, {
     categoryId: bead.categoryId,
@@ -275,6 +280,7 @@ function closeInventoryDialog(): void {
 }
 
 async function submitInventory(): Promise<void> {
+  if (disposed || inventorySaving.value) return
   const bead = inventoryBead.value
   const quantity = Number(inventoryQuantity.value)
   if (!bead) return
@@ -318,7 +324,20 @@ function handleVisualPublished(): void {
   void loadCatalog()
 }
 
+// 每次关闭或切换商品都废弃旧上传，避免旧封面写入新商品表单。
+function invalidateCoverUpload(): void {
+  latestCoverRequest++
+  coverUploading.value = false
+}
+
+function closeEditor(): void {
+  if (saving.value) return
+  invalidateCoverUpload()
+  showCreateForm.value = false
+}
+
 async function uploadCoverFile(file: File): Promise<void> {
+  if (disposed || saving.value || coverUploading.value || !showCreateForm.value) return
   if (!ACCEPTED_COVER_TYPES.has(file.type)) {
     errorMessage.value = '封面图片仅支持 PNG、JPEG 或 WebP'
     return
@@ -327,16 +346,18 @@ async function uploadCoverFile(file: File): Promise<void> {
     errorMessage.value = '封面图片不能超过 5 MB'
     return
   }
+  const requestId = ++latestCoverRequest
   coverUploading.value = true
   errorMessage.value = ''
   try {
     const uploaded = await uploadCatalogFile(file)
+    if (disposed || requestId !== latestCoverRequest) return
     form.coverAssetId = uploaded.id
     coverPreviewUrl.value = resolveApiResourceUrl(uploaded.publicUrl)
   } catch (error) {
-    errorMessage.value = readableError(error)
+    if (requestId === latestCoverRequest && !disposed) errorMessage.value = readableError(error)
   } finally {
-    coverUploading.value = false
+    if (requestId === latestCoverRequest) coverUploading.value = false
   }
 }
 
@@ -409,6 +430,7 @@ async function downloadImportTemplate(): Promise<void> {
 }
 
 async function submitImport(): Promise<void> {
+  if (disposed || importing.value) return
   if (!importFile.value) {
     importErrorMessage.value = '请先选择需要导入的 Excel 文件'
     return
@@ -430,6 +452,7 @@ async function submitImport(): Promise<void> {
 }
 
 async function submitBead(): Promise<void> {
+  if (disposed || saving.value || coverUploading.value) return
   saving.value = true
   errorMessage.value = ''
   successMessage.value = ''
@@ -495,6 +518,7 @@ function changePageSize(size: number): void {
 onMounted(loadCatalog)
 onBeforeUnmount(() => {
   disposed = true
+  invalidateCoverUpload()
   latestCatalogRequest++
 })
 </script>
@@ -884,7 +908,7 @@ onBeforeUnmount(() => {
       </section>
     </div>
 
-    <div v-if="showCreateForm" class="modal-backdrop" @click.self="showCreateForm = false">
+    <div v-if="showCreateForm" class="modal-backdrop" @click.self="closeEditor">
       <section class="drawer" aria-labelledby="create-bead-title">
         <header>
           <div>
@@ -895,7 +919,7 @@ onBeforeUnmount(() => {
               {{ editingBeadId ? '编辑商品' : '新增商品' }}
             </h2>
           </div>
-          <button class="icon-button" aria-label="关闭" @click="showCreateForm = false">
+          <button class="icon-button" aria-label="关闭" @click="closeEditor">
             ×
           </button>
         </header>
@@ -1021,7 +1045,7 @@ onBeforeUnmount(() => {
             />
           </label>
           <footer>
-            <button type="button" class="secondary-button" @click="showCreateForm = false">
+            <button type="button" class="secondary-button" @click="closeEditor">
               取消
             </button>
             <button

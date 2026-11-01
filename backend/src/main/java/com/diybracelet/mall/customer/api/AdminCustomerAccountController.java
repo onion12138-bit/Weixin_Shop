@@ -20,6 +20,8 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.UUID;
 
+
+/** 管理员查询顾客账户与会员资料的接口。 */
 @Validated
 @RestController
 @RequestMapping("/api/admin")

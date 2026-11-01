@@ -1,3 +1,4 @@
+/** 以不可变数组更新珠子顺序和选择位置，保持撤销记录与画布状态一致。 */
 import type { BeadSequence } from './diy-types'
 
 export function addBead(

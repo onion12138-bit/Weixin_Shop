@@ -12,7 +12,7 @@ function loadPage(route: string) {
   let definition: any
   let account: any
   let orders: any
-  const wxMock = { showToast: jest.fn(), redirectTo: jest.fn(), navigateTo: jest.fn(), setClipboardData: jest.fn() }
+  const wxMock = { getStorageSync: jest.fn(() => ''), setStorageSync: jest.fn(), removeStorageSync: jest.fn(), getUserCryptoManager: () => ({ getRandomValues: (options: any) => options.success({ randomValues: new ArrayBuffer(16) }) }), showToast: jest.fn(), redirectTo: jest.fn(), navigateTo: jest.fn(), setClipboardData: jest.fn() }
   ;(globalThis as any).wx = wxMock
   ;(globalThis as any).Page = (value: any) => { definition = value }
   jest.isolateModules(() => {
@@ -34,9 +34,10 @@ describe('account and checkout audit regressions', () => {
     const { page, orders } = loadPage('order/confirm')
     let finish!: (value: any) => void
     orders.createOrder.mockImplementation(() => new Promise((resolve: any) => { finish = resolve }))
-    page.setData({ loading: false, schemeId: 1, scheme: { id: 1 }, address, productTotalCents: 3000 })
+    page.setData({ loading: false, schemeId: 1, scheme: { id: 1 }, quote: { quoteFingerprint: 'test-quote' }, address, productTotalCents: 3000 })
     const first = page.submitOrder()
     void page.submitOrder()
+    for (let i = 0; i < 5; i++) await Promise.resolve()
     expect(orders.createOrder).toHaveBeenCalledTimes(1)
     finish({ id: 9 })
     await first
@@ -74,7 +75,7 @@ describe('account and checkout audit regressions', () => {
     let finish!: (value: any) => void
     account.createAddress.mockImplementation(() => new Promise((resolve: any) => { finish = resolve }))
     account.listAddresses.mockResolvedValue([address])
-    page.setData({ loading: false, draft: address })
+    page.setData({ loading: false, showEditor: true, draft: address })
     const first = page.saveAddress()
     void page.saveAddress()
     expect(account.createAddress).toHaveBeenCalledTimes(1)

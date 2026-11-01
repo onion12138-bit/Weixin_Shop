@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.Instant;
 
 /**
  * 顾客订单主表。
@@ -20,6 +21,20 @@ public class CustomerOrder {
     private Long id;
 
     private String orderNo;
+    private String checkoutToken;
+    private String checkoutRequestHash;
+    private Instant expiresAt;
+    private String closedReason;
+
+    public String getCheckoutToken() { return checkoutToken; }
+    public void setCheckoutToken(String value) { checkoutToken = value; }
+    public String getCheckoutRequestHash() { return checkoutRequestHash; }
+    public void setCheckoutRequestHash(String value) { checkoutRequestHash = value; }
+    public Instant getExpiresAt() { return expiresAt; }
+    public void setExpiresAt(Instant value) { expiresAt = value; }
+    public String getClosedReason() { return closedReason; }
+    public void setClosedReason(String value) { closedReason = value; }
+
 
     private Long customerIdentityId;
 

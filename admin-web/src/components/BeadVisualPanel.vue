@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// 视觉素材先上传为草稿，再由管理员显式发布；变更操作保持串行。
 import { computed, onMounted, ref } from 'vue'
 import { ApiError, resolveApiResourceUrl } from '../api/http'
 import {

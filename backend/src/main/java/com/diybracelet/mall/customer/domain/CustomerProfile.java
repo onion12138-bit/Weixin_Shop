@@ -7,6 +7,8 @@ import com.baomidou.mybatisplus.annotation.FieldStrategy;
 
 import java.time.LocalDateTime;
 
+
+/** 顾客头像、昵称等账户资料。 */
 @TableName("customer_profile")
 public class CustomerProfile {
     @TableId("customer_identity_id")

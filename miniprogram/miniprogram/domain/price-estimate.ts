@@ -1,3 +1,4 @@
+/** 按 SKU 汇总数量并以分计算本地估价，实际价格以服务端报价为准。 */
 import type { BeadSequence } from './diy-types'
 
 export function countSkuQuantities(

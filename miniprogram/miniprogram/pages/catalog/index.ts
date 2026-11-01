@@ -1,3 +1,5 @@
+/** 按分类与关键词加载商品，使用请求序号避免旧搜索结果覆盖新筛选。 */
+import { navigateOnce, resetNavigation } from '../../utils/navigation'
 import {
   listBeads,
   listCategories,
@@ -26,9 +28,15 @@ Page({
   },
 
   productsRequestId: 0,
+  pageDisposed: false,
 
   onUnload() {
+    this.pageDisposed = true
     this.productsRequestId += 1
+  },
+
+  onShow() {
+    resetNavigation(this)
   },
 
   async onLoad(options: Record<string, string | undefined> = {}) {
@@ -47,15 +55,18 @@ Page({
     this.setData({ loading: true, errorMessage: '' })
     try {
       const categories = await listCategories()
+      if (this.pageDisposed) return
       this.setData({ categories })
       await this.loadProducts(true)
     } catch (error) {
+      if (this.pageDisposed) return
       this.showError(error)
       this.setData({ loading: false })
     }
   },
 
   async loadProducts(reset = false) {
+    if (this.pageDisposed) return
     if (this.data.loading && !reset) return
     const requestId = ++this.productsRequestId
     const nextPage = reset ? 1 : this.data.page + 1
@@ -140,7 +151,7 @@ Page({
   openDetail(event: WechatMiniprogram.TouchEvent) {
     const id = Number(event.currentTarget.dataset.id)
     const type = event.currentTarget.dataset.type
-    wx.navigateTo({
+    navigateOnce(this, {
       url: `/pages/catalog/detail?id=${id}&type=${type}`,
     })
   },

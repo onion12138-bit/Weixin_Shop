@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// 提示层支持鼠标和键盘访问，关闭时释放全局监听及尺寸观察器。
 import { computed, nextTick, onBeforeUnmount, ref, useAttrs, useId, watch } from 'vue'
 
 defineOptions({ inheritAttrs: false })

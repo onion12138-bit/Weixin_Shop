@@ -22,7 +22,11 @@
         <!-- 保持现有 1.x 测试 API，并支持 Docker Engine 29。 -->
         <testcontainers.version>1.21.4</testcontainers.version>
         <!-- Spring Boot 3.5 的末版之后发布的 Tomcat 10.1 安全修复。 -->
-        <tomcat.version>10.1.59</tomcat.version>
+        <tomcat.version>10.1.61</tomcat.version>
+        <!-- 统一 Jackson 组件补丁版本，修复解析拒绝服务等已公开问题。 -->
+        <jackson-bom.version>2.21.7</jackson-bom.version>
+        <!-- Log4j API 与桥接组件保持一致，避免旧版日志序列化缺陷。 -->
+        <log4j2.version>2.25.5</log4j2.version>
     </properties>
 
     <dependencies>

@@ -6,6 +6,8 @@ import com.baomidou.mybatisplus.annotation.TableName;
 
 import java.time.LocalDateTime;
 
+
+/** 顾客收货信息及默认地址标记。 */
 @TableName("customer_address")
 public class CustomerAddress {
     @TableId(value = "id", type = IdType.AUTO)

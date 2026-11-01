@@ -23,7 +23,7 @@ export interface SessionTransport {
 
 export interface GuestSessionManager {
   ensure(): Promise<string>
-  refresh(): Promise<string>
+  refresh(failedToken?: string): Promise<string>
   invalidate(): void
   currentToken(): string | null
 }
@@ -34,22 +34,31 @@ export const CUSTOMER_TOKEN_KEY = 'diy_customer_access_token'
 export function createGuestSessionManager(
   storage: StringStorage,
   transport: SessionTransport,
-  uuidFactory: () => string = createUuidV4,
+  uuidFactory: () => string | Promise<string> = createUuidV4,
 ): GuestSessionManager {
   let inFlightRefresh: Promise<string> | null = null
 
-  function installationId(): string {
+  async function installationId(): Promise<string> {
     const existing = storage.get(INSTALLATION_ID_KEY)
     if (existing) return existing
-    const generated = uuidFactory()
+    const generated = await uuidFactory()
     storage.set(INSTALLATION_ID_KEY, generated)
     return generated
   }
 
-  async function refresh(): Promise<string> {
+  async function refresh(failedToken?: string): Promise<string> {
+    // 迟到的旧请求不能清掉其他请求刚刷新的令牌。
+    const current = storage.get(CUSTOMER_TOKEN_KEY)
+    if (failedToken && current && current !== failedToken) return current
     if (inFlightRefresh) return inFlightRefresh
-    inFlightRefresh = transport.exchange(installationId())
+    if (failedToken && current === failedToken) storage.remove(CUSTOMER_TOKEN_KEY)
+    // 锁覆盖随机数生成阶段，首次并发请求也只能创建一个安装身份。
+    inFlightRefresh = installationId()
+      .then((id) => transport.exchange(id))
       .then((session) => {
+        if (!session || typeof session.accessToken !== 'string' || !session.accessToken) {
+          throw new Error('建立访客会话失败')
+        }
         storage.set(CUSTOMER_TOKEN_KEY, session.accessToken)
         return session.accessToken
       })
@@ -88,8 +97,8 @@ export function ensureGuestToken(): Promise<string> {
   return guestSessionManager.ensure()
 }
 
-export function refreshGuestToken(): Promise<string> {
-  return guestSessionManager.refresh()
+export function refreshGuestToken(failedToken?: string): Promise<string> {
+  return guestSessionManager.refresh(failedToken)
 }
 
 function exchangeGuestSession(installationId: string): Promise<GuestSession> {
@@ -125,8 +134,8 @@ function apiBaseUrl(): string {
   return app.globalData.apiBaseUrl.replace(/\/$/, '')
 }
 
-function createUuidV4(): string {
-  const bytes = randomBytes()
+export async function createUuidV4(): Promise<string> {
+  const bytes = await randomBytes()
   bytes[6] = (bytes[6] & 0x0f) | 0x40
   bytes[8] = (bytes[8] & 0x3f) | 0x80
   const hex = Array.from(bytes, (byte) =>
@@ -141,14 +150,24 @@ function createUuidV4(): string {
   ].join('-')
 }
 
-function randomBytes(): Uint8Array {
-  const bytes = new Uint8Array(16)
-  if (typeof wx !== 'undefined' && wx.getRandomValues) {
-    wx.getRandomValues(bytes)
-    return bytes
-  }
-  for (let index = 0; index < bytes.length; index += 1) {
-    bytes[index] = Math.floor(Math.random() * 256)
-  }
-  return bytes
+function randomBytes(): Promise<Uint8Array> {
+  // 安装标识可用于恢复访客身份，不能降级为可预测的 Math.random。
+  return new Promise((resolve, reject) => {
+    const manager = typeof wx !== 'undefined' ? wx.getUserCryptoManager?.() : undefined
+    if (!manager?.getRandomValues) {
+      reject(new Error('当前微信版本不支持安全登录，请更新微信后重试'))
+      return
+    }
+    manager.getRandomValues({
+      length: 16,
+      success(result) {
+        if (!(result.randomValues instanceof ArrayBuffer) || result.randomValues.byteLength !== 16) {
+          reject(new Error('安全随机数生成失败，请重试'))
+          return
+        }
+        resolve(new Uint8Array(result.randomValues))
+      },
+      fail() { reject(new Error('安全随机数生成失败，请重试')) },
+    })
+  })
 }

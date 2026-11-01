@@ -112,6 +112,7 @@ class CustomerAccountControllerTest extends MySqlIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "customerIdentityId", customer.id(),
+                                "batchId", java.util.UUID.randomUUID().toString(),
                                 "note", "客服关怀"
                         ))))
                 .andExpect(status().isCreated())
@@ -209,6 +210,7 @@ class CustomerAccountControllerTest extends MySqlIntegrationTest {
                 ).header("Authorization", bearer(adminToken))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
+                                "batchId", java.util.UUID.randomUUID().toString(),
                                 "recipientMode", "SELECTED",
                                 "customerIdentityIds", java.util.List.of(
                                         first.id(), second.id()
@@ -227,6 +229,7 @@ class CustomerAccountControllerTest extends MySqlIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
+                                  "batchId":"test-all-grant-1234567890",
                                   "recipientMode":"ALL",
                                   "customerIdentityIds":[],
                                   "note":"全量发送"

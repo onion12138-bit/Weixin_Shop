@@ -67,7 +67,12 @@ decoded_key_size="$(
   exit 1
 }
 reused_key="$({
-  PROJECT_LOCAL_SECRETS_DIR="${generated_secrets}" \
+  # 与首次生成使用相同的隔离环境，不能继承 verify.sh 已加载的项目主密钥。
+  env -i \
+    HOME="${HOME}" \
+    USER="${USER:-}" \
+    PATH="/usr/bin:/bin:/usr/sbin:/sbin" \
+    PROJECT_LOCAL_SECRETS_DIR="${generated_secrets}" \
     bash -c 'source "$1/scripts/project-env.sh" >/dev/null && printf "%s" "$AI_CONFIG_ENCRYPTION_KEY"' _ "${project_root}"
 })"
 [[ "${generated_key}" == "${reused_key}" ]] || {
@@ -297,11 +302,17 @@ if ! PATH="${fake_bin}:/usr/bin:/bin:/usr/sbin:/sbin" \
   START_LOCAL_RUNTIME_DIR="${runtime_dir}" \
   START_LOCAL_TEST_TRACE="${trace_file}" \
   ADMIN_USERNAME=admin \
-  ADMIN_PASSWORD=Admin@123 \
-  bash "${startup_script}" >/dev/null; then
+  ADMIN_PASSWORD=launcher-test-secret-do-not-print \
+  bash "${startup_script}" >"${test_root}/startup-output" 2>&1; then
   echo "FAIL: startup script returned non-zero" >&2
   cat "${trace_file}" >&2
   test ! -f "${runtime_dir}/backend.log" || cat "${runtime_dir}/backend.log" >&2
+  exit 1
+fi
+
+# 用独立测试密码验证真实启动输出，避免只检查脚本文本而漏掉间接泄露。
+if grep -Fq 'launcher-test-secret-do-not-print' "${test_root}/startup-output"; then
+  echo "FAIL: startup output exposes the administrator password" >&2
   exit 1
 fi
 

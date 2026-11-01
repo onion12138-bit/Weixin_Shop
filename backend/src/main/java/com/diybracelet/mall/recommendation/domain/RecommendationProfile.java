@@ -1,6 +1,6 @@
 package com.diybracelet.mall.recommendation.domain;
 
-/** Derived customer information sent only to the configured model for this request. */
+/** 本次模型请求所需的顾客生日派生信息和搭配偏好。 */
 public record RecommendationProfile(
     String birthDate,
     String constellation,

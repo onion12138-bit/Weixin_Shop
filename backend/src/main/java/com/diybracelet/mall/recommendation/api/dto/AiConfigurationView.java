@@ -1,6 +1,6 @@
 package com.diybracelet.mall.recommendation.api.dto;
 
-/** Secret-free administration view of the singleton AI configuration. */
+/** 后台 AI 配置视图，排除明文密钥。 */
 public record AiConfigurationView(
     String provider,
     String baseUrl,

@@ -85,6 +85,20 @@ describe('catalog Page behavior', () => {
     expect(page.data.hasMore).toBe(false)
   })
 
+  it('does not start product loading after leaving during the category request', async () => {
+    const page = loadPage()
+    let finish!: (value: any) => void
+    jest.mocked(listCategories).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
+    const pending = page.onLoad()
+    page.onUnload()
+    page.setData.mockClear()
+    finish([])
+    await pending
+    expect(page.setData).not.toHaveBeenCalled()
+    expect(listBeads).not.toHaveBeenCalled()
+    expect(listPackages).not.toHaveBeenCalled()
+  })
+
   it('does not skip a page when loading more fails', async () => {
     const page = loadPage()
     page.setData({ page: 1, hasMore: true })

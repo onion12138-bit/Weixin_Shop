@@ -31,6 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @AutoConfigureMockMvc
 @TestPropertySource(properties = {
+        "app.orders.expiry-enabled=false",
         "app.auth.admin.username=admin",
         "app.auth.admin.password=Admin@123",
         "app.auth.jwt-secret=01234567890123456789012345678901",
@@ -99,6 +100,9 @@ class AppOrderControllerTest extends MySqlIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private com.diybracelet.mall.order.application.OrderService orderService;
+
     @Test
     void shouldCreatePendingOrderAndReserveInventoryFromSavedScheme()
             throws Exception {
@@ -108,7 +112,7 @@ class AppOrderControllerTest extends MySqlIntegrationTest {
         mockMvc.perform(post("/api/app/orders")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
+                        .content(orderPayload(token, Map.of(
                                 "schemeId", schemeId,
                                 "contactName", "张三",
                                 "contactPhone", "13800000000",
@@ -152,7 +156,7 @@ class AppOrderControllerTest extends MySqlIntegrationTest {
         mockMvc.perform(post("/api/app/orders")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
+                        .content(orderPayload(token, Map.of(
                                 "schemeId", schemeId,
                                 "contactName", "张三",
                                 "contactPhone", "13800000000",
@@ -174,7 +178,7 @@ class AppOrderControllerTest extends MySqlIntegrationTest {
         mockMvc.perform(post("/api/app/orders")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
+                        .content(orderPayload(token, Map.of(
                                 "schemeId", schemeId,
                                 "contactName", "张三",
                                 "contactPhone", "13800000000",
@@ -193,7 +197,7 @@ class AppOrderControllerTest extends MySqlIntegrationTest {
         mockMvc.perform(post("/api/app/orders")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
+                        .content(orderPayload(token, Map.of(
                                 "schemeId", schemeId,
                                 "contactName", "王六",
                                 "contactPhone", "13600000000",
@@ -212,7 +216,8 @@ class AppOrderControllerTest extends MySqlIntegrationTest {
 
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.CsvSource({
-            "USER, UNUSED", "ADMIN, UNUSED", "USER, REVOKED", "ADMIN, REVOKED"
+            "USER, UNUSED", "ADMIN, UNUSED", "USER, REVOKED", "ADMIN, REVOKED",
+            "TIMEOUT, UNUSED", "TIMEOUT, EXPIRED"
     })
     void shouldApplyCouponAndRestoreItWhenPendingOrderIsCancelled(
             String cancelledBy, String expectedCouponStatus)
@@ -235,19 +240,22 @@ class AppOrderControllerTest extends MySqlIntegrationTest {
         jdbcTemplate.update("""
                 insert into customer_coupon (
                     coupon_template_id, customer_identity_id, status,
-                    issued_at, expires_at
-                ) values (?, ?, 'UNUSED', now(), date_add(now(), interval 30 day))
+                    issued_at, expires_at, coupon_code, coupon_name, coupon_description,
+                    discount_amount, minimum_spend, snapshot_source
+                ) values (?, ?, 'UNUSED', now(), date_add(now(), interval 30 day),
+                          'ORDER-20', '订单立减券', '测试优惠券', 20, 100, 'ISSUED_SNAPSHOT')
                 """, templateId, customerId);
         Long couponId = jdbcTemplate.queryForObject(
                 "select max(id) from customer_coupon",
                 Long.class
         );
+        jdbcTemplate.update("update coupon_template set discount_amount = 1, minimum_spend = 9999, name = '改名停发', status = 'INACTIVE' where id = ?", templateId);
         Long schemeId = createScheme(token, sequence(12, 9));
 
         String response = mockMvc.perform(post("/api/app/orders")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
+                        .content(orderPayload(token, Map.of(
                                 "schemeId", schemeId,
                                 "couponId", couponId,
                                 "contactName", "优惠顾客",
@@ -269,13 +277,23 @@ class AppOrderControllerTest extends MySqlIntegrationTest {
         if ("REVOKED".equals(expectedCouponStatus)) {
             jdbcTemplate.update("update customer_coupon set status = 'REVOKED' where id = ?", couponId);
         }
-        String cancellationRoute = "ADMIN".equals(cancelledBy)
-                ? "/api/admin/orders/{orderId}/cancel" : "/api/app/orders/{orderId}/cancel";
-        String cancellationToken = "ADMIN".equals(cancelledBy) ? loginAsAdmin() : token;
-        mockMvc.perform(post(cancellationRoute, orderId)
-                        .header("Authorization", "Bearer " + cancellationToken))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("CANCELLED"));
+        if ("TIMEOUT".equals(cancelledBy)) {
+            if ("EXPIRED".equals(expectedCouponStatus)) {
+                jdbcTemplate.update("update customer_coupon set expires_at = date_sub(now(), interval 1 minute) where id = ?", couponId);
+            }
+            jdbcTemplate.update("update customer_order set expires_at = date_sub(now(), interval 1 minute) where id = ?", orderId);
+            assertThat(orderService.expiredOrderIds()).contains(orderId);
+            assertThat(orderService.closeExpired(orderId)).isTrue();
+            assertThat(orderService.closeExpired(orderId)).isFalse();
+        } else {
+            String cancellationRoute = "ADMIN".equals(cancelledBy)
+                    ? "/api/admin/orders/{orderId}/cancel" : "/api/app/orders/{orderId}/cancel";
+            String cancellationToken = "ADMIN".equals(cancelledBy) ? loginAsAdmin() : token;
+            mockMvc.perform(post(cancellationRoute, orderId)
+                            .header("Authorization", "Bearer " + cancellationToken))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.status").value("CANCELLED"));
+        }
         assertThat(inventory(2001L)).containsEntry("available_qty", 200)
                 .containsEntry("reserved_qty", 0);
         assertThat(jdbcTemplate.queryForObject(
@@ -283,7 +301,7 @@ class AppOrderControllerTest extends MySqlIntegrationTest {
                 String.class,
                 couponId
         )).isEqualTo(expectedCouponStatus);
-        if ("REVOKED".equals(expectedCouponStatus)) return;
+        if (!"UNUSED".equals(expectedCouponStatus)) return;
         assertThat(jdbcTemplate.queryForObject(
                 "select used_at from customer_coupon where id = ?",
                 java.time.LocalDateTime.class,
@@ -294,7 +312,7 @@ class AppOrderControllerTest extends MySqlIntegrationTest {
         mockMvc.perform(post("/api/app/orders")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
+                        .content(orderPayload(token, Map.of(
                                 "schemeId", nextSchemeId,
                                 "couponId", couponId,
                                 "contactName", "优惠顾客",
@@ -320,7 +338,7 @@ class AppOrderControllerTest extends MySqlIntegrationTest {
         mockMvc.perform(post("/api/app/orders")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
+                        .content(orderPayload(token, Map.of(
                                 "schemeId", schemeId,
                                 "contactName", "李四",
                                 "contactPhone", "13900000000",
@@ -526,6 +544,212 @@ class AppOrderControllerTest extends MySqlIntegrationTest {
                 .andExpect(jsonPath("$.code").value("COMMON_NOT_FOUND"));
     }
 
+    @Test
+    void shouldRecoverSameCheckoutAndRejectChangedPayloadAcrossCustomers() throws Exception {
+        String token = customerToken(java.util.UUID.randomUUID().toString());
+        Long schemeId = createScheme(token, sequence(12, 9));
+        Map<String, Object> request = new java.util.LinkedHashMap<>(Map.of(
+                "schemeId", schemeId, "contactName", "恢复顾客", "contactPhone", "13800000000",
+                "addressDetail", "本单地址B", "checkoutToken", java.util.UUID.randomUUID().toString(),
+                "quoteFingerprint", checkoutQuote(token, schemeId).path("quoteFingerprint").asText()));
+        String body = objectMapper.writeValueAsString(request);
+        JsonNode first = submitCheckout(token, body);
+        assertThat(submitCheckout(token, body).path("id")).isEqualTo(first.path("id"));
+        assertThat(jdbcTemplate.queryForObject("select count(*) from customer_order", Integer.class)).isEqualTo(1);
+        assertThat(inventory(2001L)).containsEntry("reserved_qty", 12);
+        mockMvc.perform(get("/api/app/orders/by-checkout-token/{key}", request.get("checkoutToken"))
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.id").value(first.path("id").asLong()));
+        String other = customerToken(java.util.UUID.randomUUID().toString());
+        mockMvc.perform(get("/api/app/orders/by-checkout-token/{key}", request.get("checkoutToken"))
+                        .header("Authorization", "Bearer " + other)).andExpect(status().isNotFound());
+        request.put("addressDetail", "改过的地址");
+        mockMvc.perform(post("/api/app/orders").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("CHECKOUT_TOKEN_CONFLICT"));
+    }
+
+    @Test
+    void shouldRequireNewConfirmationWhenShippingRuleChanges() throws Exception {
+        String token = customerToken(java.util.UUID.randomUUID().toString());
+        Long schemeId = createScheme(token, sequence(1, 0));
+        String fingerprint = checkoutQuote(token, schemeId).path("quoteFingerprint").asText();
+        jdbcTemplate.update("update commerce_rule_config set base_shipping_fee = 12 where id = 1");
+        mockMvc.perform(post("/api/app/orders").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(Map.of(
+                                "schemeId", schemeId, "contactName", "价格确认", "contactPhone", "13800000000",
+                                "addressDetail", "上海", "checkoutToken", java.util.UUID.randomUUID().toString(),
+                                "quoteFingerprint", fingerprint))))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("QUOTE_EXPIRED"));
+        assertThat(jdbcTemplate.queryForObject("select count(*) from customer_order", Integer.class)).isZero();
+        assertThat(inventory(2001L)).containsEntry("reserved_qty", 0);
+    }
+
+    @Test
+    void shouldCloseExpiredOrderOnPaymentAndReleaseOnlyOnce() throws Exception {
+        String token = customerToken(java.util.UUID.randomUUID().toString());
+        Long schemeId = createScheme(token, sequence(12, 9));
+        JsonNode order = submitCheckout(token, objectMapper.writeValueAsString(Map.of(
+                "schemeId", schemeId, "contactName", "到期顾客", "contactPhone", "13800000000",
+                "addressDetail", "上海", "checkoutToken", java.util.UUID.randomUUID().toString(),
+                "quoteFingerprint", checkoutQuote(token, schemeId).path("quoteFingerprint").asText())));
+        assertThat(order.path("expiresAt").asText()).endsWith("Z");
+        assertThat(order.path("serverTime").asText()).endsWith("Z");
+        assertThat(java.time.Duration.between(java.time.Instant.parse(order.path("serverTime").asText()),
+                java.time.Instant.parse(order.path("expiresAt").asText())).toSeconds()).isBetween(1795L, 1800L);
+        Long orderId = order.path("id").asLong();
+        jdbcTemplate.update("update customer_order set expires_at = date_sub(now(), interval 1 minute) where id = ?", orderId);
+        for (int i = 0; i < 2; i++) {
+            mockMvc.perform(post("/api/app/orders/{id}/mock-pay", orderId)
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.status").value("CANCELLED"))
+                    .andExpect(jsonPath("$.data.closedReason").value("PAYMENT_TIMEOUT"));
+        }
+        assertThat(inventory(2001L)).containsEntry("available_qty", 200).containsEntry("reserved_qty", 0);
+        assertThat(jdbcTemplate.queryForObject("select count(*) from payment_record", Integer.class)).isZero();
+        assertThat(jdbcTemplate.queryForObject("select count(*) from order_operation_log where action_code = 'ORDER_EXPIRED'", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    void shouldSerializeConcurrentRetriesBeforeConsumingSchemeAndInventory() throws Exception {
+        String token = customerToken(java.util.UUID.randomUUID().toString());
+        Long schemeId = createScheme(token, sequence(12, 9));
+        String body = orderPayload(token, Map.of("schemeId", schemeId, "contactName", "并发顾客",
+                "contactPhone", "13800000000", "addressDetail", "上海"));
+        var executor = java.util.concurrent.Executors.newFixedThreadPool(2);
+        var start = new java.util.concurrent.CountDownLatch(1);
+        try {
+            java.util.concurrent.Callable<JsonNode> submit = () -> { start.await(); return submitCheckout(token, body); };
+            var first = executor.submit(submit);
+            var second = executor.submit(submit);
+            start.countDown();
+            assertThat(first.get(15, java.util.concurrent.TimeUnit.SECONDS).path("id"))
+                    .isEqualTo(second.get(15, java.util.concurrent.TimeUnit.SECONDS).path("id"));
+        } finally { executor.shutdownNow(); }
+        assertThat(jdbcTemplate.queryForObject("select count(*) from customer_order", Integer.class)).isEqualTo(1);
+        assertThat(inventory(2001L)).containsEntry("reserved_qty", 12);
+    }
+
+    @Test
+    void shouldSerializePaymentAndExpiryWithoutSellingReleasedStock() throws Exception {
+        String token = customerToken(java.util.UUID.randomUUID().toString());
+        Long schemeId = createScheme(token, sequence(12, 9));
+        Long orderId = createOrder(token, schemeId).path("id").asLong();
+        jdbcTemplate.update("update customer_order set expires_at = date_sub(now(), interval 1 minute) where id = ?", orderId);
+        var executor = java.util.concurrent.Executors.newFixedThreadPool(2);
+        var start = new java.util.concurrent.CountDownLatch(1);
+        try {
+            var expiry = executor.submit(() -> { start.await(); return orderService.closeExpired(orderId); });
+            var payment = executor.submit(() -> {
+                start.await();
+                return mockMvc.perform(post("/api/app/orders/{id}/mock-pay", orderId)
+                        .header("Authorization", "Bearer " + token)).andExpect(status().isOk())
+                        .andExpect(jsonPath("$.data.status").value("CANCELLED"));
+            });
+            start.countDown();
+            expiry.get(15, java.util.concurrent.TimeUnit.SECONDS);
+            payment.get(15, java.util.concurrent.TimeUnit.SECONDS);
+        } finally { executor.shutdownNow(); }
+        assertThat(inventory(2001L)).containsEntry("available_qty", 200)
+                .containsEntry("reserved_qty", 0).containsEntry("sold_qty", 0);
+        assertThat(jdbcTemplate.queryForObject("select count(*) from payment_record", Integer.class)).isZero();
+        assertThat(jdbcTemplate.queryForObject("select count(*) from inventory_ledger where order_id = ? and change_type = 'RELEASE'", Integer.class, orderId)).isEqualTo(2);
+        assertThat(orderService.closeExpired(orderId)).isFalse();
+    }
+
+    @Test
+    void shouldLeavePaidOrderUntouchedWhenExpiryWorkerRunsLater() throws Exception {
+        String token = customerToken(java.util.UUID.randomUUID().toString());
+        Long orderId = createOrder(token, createScheme(token, sequence(12, 9))).path("id").asLong();
+        mockPay(token, orderId);
+        jdbcTemplate.update("update customer_order set expires_at = date_sub(now(), interval 1 minute) where id = ?", orderId);
+        assertThat(orderService.closeExpired(orderId)).isFalse();
+        assertThat(inventory(2001L)).containsEntry("available_qty", 188)
+                .containsEntry("reserved_qty", 0).containsEntry("sold_qty", 12);
+        assertThat(jdbcTemplate.queryForObject("select content from order_operation_log where order_id = ? and action_code = 'MOCK_PAYMENT_SUCCEEDED'", String.class, orderId))
+                .contains("本地模拟支付成功").doesNotContain("微信支付成功");
+    }
+
+    @Test
+    void shouldRejectOldQuoteAfterDesignOrderChangesAtSamePrice() throws Exception {
+        String token = customerToken(java.util.UUID.randomUUID().toString());
+        Long schemeId = createScheme(token, sequence(12, 9));
+        JsonNode originalQuote = checkoutQuote(token, schemeId);
+        Long originalVersion = jdbcTemplate.queryForObject("select version from diy_scheme where id = ?", Long.class, schemeId);
+        assertThat(originalQuote.path("schemeVersion").isIntegralNumber()).isTrue();
+        assertThat(originalQuote.path("schemeVersion").asLong()).isEqualTo(originalVersion);
+        String body = orderPayload(token, Map.of("schemeId", schemeId, "contactName", "设计变更",
+                "contactPhone", "13800000000", "addressDetail", "上海"));
+        List<Long> reversed = sequence(12, 9);
+        Collections.reverse(reversed);
+        jdbcTemplate.update("update diy_scheme set sequence_json = ?, version = version + 1 where id = ?",
+                objectMapper.writeValueAsString(reversed), schemeId);
+        JsonNode updatedQuote = checkoutQuote(token, schemeId);
+        assertThat(updatedQuote.path("schemeVersion").asLong()).isEqualTo(originalVersion + 1);
+        assertThat(updatedQuote.path("quoteFingerprint").asText()).isNotEqualTo(originalQuote.path("quoteFingerprint").asText());
+        assertThat(updatedQuote.path("totalAmount")).isEqualTo(originalQuote.path("totalAmount"));
+        mockMvc.perform(post("/api/app/orders").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("QUOTE_EXPIRED"));
+        assertThat(jdbcTemplate.queryForObject("select count(*) from customer_order", Integer.class)).isZero();
+        assertThat(inventory(2001L)).containsEntry("reserved_qty", 0);
+    }
+
+    @Test
+    void shouldInvalidateConfirmedQuoteWhenOnlySavedSchemeVersionChanges() throws Exception {
+        String token = customerToken(java.util.UUID.randomUUID().toString());
+        Long schemeId = createScheme(token, sequence(12, 9));
+        JsonNode originalQuote = checkoutQuote(token, schemeId);
+        String body = orderPayload(token, Map.of("schemeId", schemeId, "contactName", "版本变更",
+                "contactPhone", "13800000000", "addressDetail", "上海"));
+        jdbcTemplate.update("update diy_scheme set name = '重新保存的方案', version = version + 1 where id = ?", schemeId);
+        JsonNode updatedQuote = checkoutQuote(token, schemeId);
+        assertThat(updatedQuote.path("schemeVersion").asLong()).isEqualTo(originalQuote.path("schemeVersion").asLong() + 1);
+        assertThat(updatedQuote.path("quoteFingerprint").asText()).isNotEqualTo(originalQuote.path("quoteFingerprint").asText());
+        assertThat(updatedQuote.path("totalAmount")).isEqualTo(originalQuote.path("totalAmount"));
+        mockMvc.perform(post("/api/app/orders").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("QUOTE_EXPIRED"));
+        assertThat(jdbcTemplate.queryForObject("select count(*) from customer_order", Integer.class)).isZero();
+    }
+
+    @Test
+    void shouldRequireCheckoutTokenAndConfirmedQuote() throws Exception {
+        String token = customerToken(java.util.UUID.randomUUID().toString());
+        Long schemeId = createScheme(token, sequence(12, 9));
+        mockMvc.perform(post("/api/app/orders").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(Map.of(
+                                "schemeId", schemeId, "contactName", "必填校验", "contactPhone", "13800000000", "addressDetail", "上海"))))
+                .andExpect(status().isBadRequest());
+        assertThat(jdbcTemplate.queryForObject("select count(*) from customer_order", Integer.class)).isZero();
+    }
+
+    private String orderPayload(String token, Map<String, Object> fields) throws Exception {
+        Map<String, Object> quoteFields = new java.util.LinkedHashMap<>();
+        quoteFields.put("schemeId", fields.get("schemeId"));
+        if (fields.containsKey("couponId")) quoteFields.put("couponId", fields.get("couponId"));
+        String quoteBody = mockMvc.perform(post("/api/app/orders/quote").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(quoteFields)))
+                .andReturn().getResponse().getContentAsString();
+        Map<String, Object> request = new java.util.LinkedHashMap<>(fields);
+        request.put("checkoutToken", java.util.UUID.randomUUID().toString());
+        request.put("quoteFingerprint", objectMapper.readTree(quoteBody).path("data").path("quoteFingerprint").asText("0".repeat(64)));
+        return objectMapper.writeValueAsString(request);
+    }
+
+    private JsonNode checkoutQuote(String token, Long schemeId) throws Exception {
+        String body = mockMvc.perform(post("/api/app/orders/quote").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(Map.of("schemeId", schemeId))))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(body).path("data");
+    }
+
+    private JsonNode submitCheckout(String token, String body) throws Exception {
+        return objectMapper.readTree(mockMvc.perform(post("/api/app/orders").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString()).path("data");
+    }
+
     private Map<String, Object> inventory(Long skuId) {
         return jdbcTemplate.queryForMap("""
                 select available_qty, reserved_qty, sold_qty
@@ -543,7 +767,7 @@ class AppOrderControllerTest extends MySqlIntegrationTest {
         String responseBody = mockMvc.perform(post("/api/app/orders")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(Map.of(
+                        .content(orderPayload(token, Map.of(
                                 "schemeId", schemeId,
                                 "contactName", "王五",
                                 "contactPhone", "13700000000",

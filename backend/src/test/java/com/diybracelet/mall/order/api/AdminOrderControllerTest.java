@@ -92,6 +92,27 @@ class AdminOrderControllerTest extends MySqlIntegrationTest {
     private JdbcTemplate jdbcTemplate;
 
     @Test
+    void batchListKeepsEachOrdersFullDetailAndNewestFirst() throws Exception {
+        Long olderId = createPaidOrder("aa882973-566c-4134-942a-0d9a910e6901");
+        Long newerId = createPaidOrder("bb882973-566c-4134-942a-0d9a910e6902");
+        String adminToken = loginAsAdmin();
+        jdbcTemplate.update("update customer_order set order_note = ? where id = ?", "较早订单", olderId);
+        jdbcTemplate.update("update fulfillment_task set tracking_no = ? where order_id = ?", "OLDER-TRACK", olderId);
+        JsonNode page = objectMapper.readTree(mockMvc.perform(get("/api/admin/orders")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString())
+                .path("data").path("items");
+        assertThat(page.size()).isEqualTo(2);
+        assertThat(page.get(0).path("id").asLong()).isEqualTo(newerId);
+        for (JsonNode entry : page) {
+            JsonNode detail = objectMapper.readTree(mockMvc.perform(get("/api/admin/orders/{id}", entry.path("id").asLong())
+                            .header("Authorization", "Bearer " + adminToken))
+                    .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("data");
+            assertThat(entry).isEqualTo(detail);
+        }
+    }
+
+    @Test
     void shouldListOrdersWithBomForAdministrator() throws Exception {
         Long orderId = createPaidOrder("6ba3c376-b1c9-41d2-a14d-f8fbfe6f7997");
         String adminToken = loginAsAdmin();
@@ -218,6 +239,19 @@ class AdminOrderControllerTest extends MySqlIntegrationTest {
         assertThat(orderStatus(orderId)).isEqualTo("IN_PRODUCTION");
     }
 
+    @Test
+    void shouldFilterMockPaymentSeparatelyFromWechatPayment() throws Exception {
+        Long orderId = createPaidOrder(java.util.UUID.randomUUID().toString());
+        String adminToken = loginAsAdmin();
+        mockMvc.perform(get("/api/admin/orders").param("paymentMethod", "MOCK")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items[0].id").value(orderId))
+                .andExpect(jsonPath("$.data.items[0].payment.channel").value("MOCK"));
+        mockMvc.perform(get("/api/admin/orders").param("paymentMethod", "WECHAT")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items").isEmpty());
+    }
+
     private String orderStatus(Long orderId) {
         return jdbcTemplate.queryForObject(
                 "select status from customer_order where id = ?",
@@ -251,11 +285,19 @@ class AdminOrderControllerTest extends MySqlIntegrationTest {
     private Long createPaidOrder(String installationId) throws Exception {
         String customerToken = customerToken(installationId);
         Long schemeId = createScheme(customerToken);
+        String quoteBody = mockMvc.perform(post("/api/app/orders/quote")
+                        .header("Authorization", "Bearer " + customerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("schemeId", schemeId))))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String fingerprint = objectMapper.readTree(quoteBody).path("data").path("quoteFingerprint").asText();
         String orderBody = mockMvc.perform(post("/api/app/orders")
                         .header("Authorization", "Bearer " + customerToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
                                 "schemeId", schemeId,
+                                "checkoutToken", java.util.UUID.randomUUID().toString(),
+                                "quoteFingerprint", fingerprint,
                                 "contactName", "后台测试顾客",
                                 "contactPhone", "13600000000",
                                 "addressDetail", "上海市测试区后台路 1 号"

@@ -10,6 +10,8 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.UUID;
 
+
+/** 当前顾客领取和查询个人优惠券的接口。 */
 @RestController
 @RequestMapping("/api/app/coupons")
 public class AppCouponController {

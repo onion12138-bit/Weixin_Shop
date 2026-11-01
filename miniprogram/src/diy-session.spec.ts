@@ -10,7 +10,8 @@ describe('guest session manager', () => {
   it('rejects an empty session response without crashing its callback', async () => {
     ;(globalThis as any).getApp = () => ({ globalData: { apiBaseUrl: 'http://localhost:8081/api' } })
     ;(globalThis as any).wx = {
-      getStorageSync: () => '', setStorageSync: () => undefined,
+      getStorageSync: (key: string) => key === 'diy_installation_id' ? 'existing-id' : '',
+      setStorageSync: () => undefined,
       request: (options: any) => options.success({ statusCode: 200, data: null }),
     }
     await expect(ensureGuestToken()).rejects.toThrow('建立访客会话失败')
@@ -83,6 +84,78 @@ describe('guest session manager', () => {
 
     expect(transport.exchange).toHaveBeenCalledTimes(2)
     expect(values.get('diy_customer_access_token')).toBe('fresh-token')
+  })
+
+  it('uses the official async crypto API and shares identity creation across requests', async () => {
+    const values = new Map<string, string>()
+    let supplyRandom!: (value: { randomValues: ArrayBuffer }) => void
+    const random = jest.fn((options) => { supplyRandom = options.success })
+    ;(globalThis as any).wx = { getUserCryptoManager: () => ({ getRandomValues: random }) }
+    const exchange = jest.fn().mockResolvedValue({ accessToken: 'secure-token' })
+    const manager = createGuestSessionManager({
+      get: (key) => values.get(key) || null,
+      set: (key, value) => { values.set(key, value) }, remove: (key) => { values.delete(key) },
+    }, { exchange })
+    const requests = [manager.ensure(), manager.ensure(), manager.refresh()]
+    expect(random).toHaveBeenCalledTimes(1)
+    expect(random.mock.calls[0][0].length).toBe(16)
+    expect(exchange).not.toHaveBeenCalled()
+    supplyRandom({ randomValues: Uint8Array.from({ length: 16 }, (_, i) => i + 1).buffer })
+    await expect(Promise.all(requests)).resolves.toEqual(['secure-token', 'secure-token', 'secure-token'])
+    expect(exchange).toHaveBeenCalledTimes(1)
+    expect(exchange).toHaveBeenCalledWith('01020304-0506-4708-890a-0b0c0d0e0f10')
+  })
+
+  it('fails safely without crypto and retries after support becomes available', async () => {
+    ;(globalThis as any).wx = {}
+    const values = new Map<string, string>()
+    const exchange = jest.fn().mockResolvedValue({ accessToken: 'secure-token' })
+    const manager = createGuestSessionManager({
+      get: (key) => values.get(key) || null,
+      set: (key, value) => { values.set(key, value) }, remove: (key) => { values.delete(key) },
+    }, { exchange })
+    await expect(manager.ensure()).rejects.toThrow('请更新微信')
+    expect(values.size).toBe(0)
+    expect(exchange).not.toHaveBeenCalled()
+    ;(globalThis as any).wx = { getUserCryptoManager: () => ({ getRandomValues: (options: any) => {
+      options.success({ randomValues: new Uint8Array(16).buffer })
+    } }) }
+    await expect(manager.ensure()).resolves.toBe('secure-token')
+  })
+
+  it('preserves an existing installation identity even when crypto is unavailable', async () => {
+    ;(globalThis as any).wx = {}
+    const values = new Map([['diy_installation_id', 'existing-installation-id']])
+    const exchange = jest.fn().mockResolvedValue({ accessToken: 'token' })
+    const manager = createGuestSessionManager({
+      get: (key) => values.get(key) || null,
+      set: (key, value) => { values.set(key, value) }, remove: (key) => { values.delete(key) },
+    }, { exchange })
+    await expect(manager.ensure()).resolves.toBe('token')
+    expect(exchange).toHaveBeenCalledWith('existing-installation-id')
+  })
+
+  it('does not invalidate a fresh token when an older request returns 401 later', async () => {
+    const values = new Map([['diy_installation_id', 'id'], ['diy_customer_access_token', 'stale']])
+    const exchange = jest.fn().mockResolvedValue({ accessToken: 'fresh' })
+    const manager = createGuestSessionManager({
+      get: (key) => values.get(key) || null,
+      set: (key, value) => { values.set(key, value) }, remove: (key) => { values.delete(key) },
+    }, { exchange })
+    await expect(manager.refresh('stale')).resolves.toBe('fresh')
+    await expect(manager.refresh('stale')).resolves.toBe('fresh')
+    expect(exchange).toHaveBeenCalledTimes(1)
+    expect(manager.currentToken()).toBe('fresh')
+  })
+
+  it('rejects a malformed successful session without persisting a bad token', async () => {
+    const set = jest.fn()
+    const manager = createGuestSessionManager({
+      get: (key) => key === 'diy_installation_id' ? 'id' : null,
+      set, remove: jest.fn(),
+    }, { exchange: jest.fn().mockResolvedValue({ accessToken: null }) })
+    await expect(manager.ensure()).rejects.toThrow('建立访客会话失败')
+    expect(set).not.toHaveBeenCalled()
   })
 })
 

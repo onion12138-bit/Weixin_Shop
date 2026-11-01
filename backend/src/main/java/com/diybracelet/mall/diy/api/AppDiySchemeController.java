@@ -91,6 +91,17 @@ public class AppDiySchemeController {
         return created(schemeService.bindPreview(id, uploaded.id()));
     }
 
+    /** 独立版本化入口，旧后端不会误将异步上传当成无版本的覆盖操作。 */
+    @PostMapping(value = "/{id}/previews/{version}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<DiySchemeResponse>> uploadVersionedPreview(
+            @PathVariable @Min(1) Long id,
+            @PathVariable @Min(0) Long version,
+            @RequestParam("file") MultipartFile file
+    ) {
+        UploadedFileResponse uploaded = fileStorageService.store(file);
+        return created(schemeService.bindPreviewVersion(id, uploaded.id(), version));
+    }
+
     @DeleteMapping("/{id}")
     public ApiResponse<Boolean> delete(@PathVariable @Min(1) Long id) {
         return success(schemeService.delete(id));

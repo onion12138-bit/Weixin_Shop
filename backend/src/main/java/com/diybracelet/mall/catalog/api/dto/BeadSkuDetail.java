@@ -15,6 +15,7 @@ import java.util.List;
  * @param diameterMm 珠径，单位毫米
  * @param salePrice 销售价，单位元
  * @param coverUrl 封面公开地址，可为空
+ * @param availableQty 当前可用库存，仅供提示，下单时会再次校验并预占
  * @param tags 展示标签
  */
 public record BeadSkuDetail(
@@ -28,7 +29,8 @@ public record BeadSkuDetail(
         BigDecimal salePrice,
         String coverUrl,
         List<String> tags,
-        DiyVisualView diyVisual
+        DiyVisualView diyVisual,
+        int availableQty
 ) {
 
     public BeadSkuDetail(
@@ -45,7 +47,7 @@ public record BeadSkuDetail(
     ) {
         this(
                 id, categoryId, skuCode, name, material, color, diameterMm,
-                salePrice, coverUrl, tags, null
+                salePrice, coverUrl, tags, null, 0
         );
     }
 }

@@ -2,7 +2,8 @@ package com.diybracelet.mall.recommendation.api.dto;
 
 import jakarta.validation.constraints.Size;
 
-/** Birthday is parsed explicitly so the API can return precise birthday errors. */
+
+/** 推荐请求参数；生日由服务层解析以返回明确的校验错误。 */
 public record RecommendationRequest(
     String birthDate,
     @Size(max = 8) String wishInspiration,

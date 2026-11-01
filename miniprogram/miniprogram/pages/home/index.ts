@@ -1,3 +1,5 @@
+/** 组织首页推荐与方案入口，页面恢复显示时刷新数据并释放导航锁。 */
+import { navigateOnce, resetNavigation } from '../../utils/navigation'
 import { listRecommendedPackages } from '../../services/catalog'
 import { listSchemes } from '../../services/diy'
 import {
@@ -51,6 +53,7 @@ Page({
   },
 
   async onShow() {
+    resetNavigation(this)
     await this.loadLatestScheme()
   },
 
@@ -90,7 +93,7 @@ Page({
   },
 
   navigate(url: string) {
-    wx.navigateTo({
+    navigateOnce(this, {
       url,
       fail: () => {
         wx.showToast({

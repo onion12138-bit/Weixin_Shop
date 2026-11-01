@@ -1,3 +1,4 @@
+/** 统一新增、编辑及默认地址操作，提交期间锁定表单并阻止重复请求。 */
 import {
   createAddress,
   deleteAddress,
@@ -7,6 +8,7 @@ import {
   type CustomerAddress,
   type SaveAddress,
 } from '../../services/account'
+import { selectCheckoutAddress } from '../../utils/checkout-state'
 import { ApiError } from '../../services/request'
 
 const blankDraft = (): SaveAddress => ({
@@ -15,8 +17,11 @@ const blankDraft = (): SaveAddress => ({
 
 Page({
   data: {
+    selectForScheme: 0,
     loading: true,
     saving: false,
+    operating: '' as '' | 'default' | 'delete',
+    operatingId: 0,
     addresses: [] as CustomerAddress[],
     showEditor: false,
     editingId: 0,
@@ -24,7 +29,20 @@ Page({
     errorMessage: '',
   },
 
-  onLoad() { void this.loadAddresses() },
+  onLoad(options: Record<string, string> = {}) {
+    this.setData({ selectForScheme: Number(options.selectForScheme || 0) })
+    void this.loadAddresses()
+  },
+
+  chooseForCheckout(event: WechatMiniprogram.TouchEvent) {
+    if (!this.data.selectForScheme || this.data.saving || this.data.operating) return
+    const id = Number(event.currentTarget.dataset.id)
+    if (!this.data.addresses.some(item => item.id === id)) return
+    try {
+      selectCheckoutAddress(this.data.selectForScheme, id)
+      wx.navigateBack({ fail: () => this.setData({ errorMessage: '本单地址已选择，请返回订单确认页' }) })
+    } catch (error) { this.setData({ errorMessage: readableError(error) }) }
+  },
 
   async loadAddresses() {
     this.setData({ loading: true, errorMessage: '' })
@@ -33,9 +51,13 @@ Page({
     finally { this.setData({ loading: false }) }
   },
 
-  addAddress() { this.setData({ showEditor: true, editingId: 0, draft: blankDraft() }) },
+  addAddress() {
+    if (this.data.saving || this.data.operating) return
+    this.setData({ showEditor: true, editingId: 0, draft: blankDraft() })
+  },
 
   editAddress(event: WechatMiniprogram.TouchEvent) {
+    if (this.data.saving || this.data.operating) return
     const id = Number(event.currentTarget.dataset.id)
     const current = this.data.addresses.find((item) => item.id === id)
     if (!current) return
@@ -49,22 +71,27 @@ Page({
     })
   },
 
-  closeEditor() { this.setData({ showEditor: false, editingId: 0 }) },
+  closeEditor() {
+    if (this.data.saving || this.data.operating) return
+    this.setData({ showEditor: false, editingId: 0 })
+  },
 
   noop() {},
 
   updateDraft(event: WechatMiniprogram.Input & WechatMiniprogram.TouchEvent) {
+    if (this.data.saving || this.data.operating) return
     const field = String(event.currentTarget.dataset.field || '')
     if (!field) return
     this.setData({ [`draft.${field}`]: event.detail.value } as never)
   },
 
   toggleDraftDefault() {
+    if (this.data.saving || this.data.operating) return
     this.setData({ 'draft.isDefault': !this.data.draft.isDefault } as never)
   },
 
   async saveAddress() {
-    if (this.data.saving) return
+    if (!this.data.showEditor || this.data.saving || this.data.operating) return
     const draft = {
       ...this.data.draft,
       receiverName: this.data.draft.receiverName.trim(),
@@ -87,24 +114,37 @@ Page({
     finally { this.setData({ saving: false }) }
   },
 
-  makeDefault(event: WechatMiniprogram.TouchEvent) {
+  async makeDefault(event: WechatMiniprogram.TouchEvent) {
+    if (this.data.saving || this.data.operating) return
     const id = Number(event.currentTarget.dataset.id)
-    void setDefaultAddress(id).then(() => this.loadAddresses()).catch((error) => {
-      this.setData({ errorMessage: readableError(error) })
-    })
+    const current = this.data.addresses.find((item) => item.id === id)
+    if (!current || current.isDefault) return
+    this.setData({ operating: 'default', operatingId: id, errorMessage: '' })
+    try {
+      await setDefaultAddress(id)
+      await this.loadAddresses()
+    } catch (error) { this.setData({ errorMessage: readableError(error) }) }
+    finally { this.setData({ operating: '', operatingId: 0 }) }
   },
 
-  removeAddress(event: WechatMiniprogram.TouchEvent) {
+  async removeAddress(event: WechatMiniprogram.TouchEvent) {
+    if (this.data.saving || this.data.operating) return
     const id = Number(event.currentTarget.dataset.id)
-    wx.showModal({
-      title: '删除收货地址', content: '确定删除这条收货地址吗？',
-      success: (response) => {
-        if (!response.confirm) return
-        void deleteAddress(id).then(() => this.loadAddresses()).catch((error) => {
-          this.setData({ errorMessage: readableError(error) })
+    if (!this.data.addresses.some((item) => item.id === id)) return
+    this.setData({ operating: 'delete', operatingId: id, errorMessage: '' })
+    try {
+      const confirmed = await new Promise<boolean>((resolve) => {
+        wx.showModal({
+          title: '删除收货地址', content: '确定删除这条收货地址吗？',
+          success: (response) => resolve(response.confirm),
+          fail: () => resolve(false),
         })
-      },
-    })
+      })
+      if (!confirmed) return
+      await deleteAddress(id)
+      await this.loadAddresses()
+    } catch (error) { this.setData({ errorMessage: readableError(error) }) }
+    finally { this.setData({ operating: '', operatingId: 0 }) }
   },
 })
 

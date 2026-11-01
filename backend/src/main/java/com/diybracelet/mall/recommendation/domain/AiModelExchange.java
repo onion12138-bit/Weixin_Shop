@@ -1,6 +1,6 @@
 package com.diybracelet.mall.recommendation.domain;
 
-/** Sanitized model HTTP exchange captured for the admin recommendation log. */
+/** 记录已排除密钥的模型请求和响应，供管理员诊断。 */
 public record AiModelExchange(
     String requestJson,
     Integer responseStatus,

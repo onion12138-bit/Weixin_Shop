@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// 管理订单列表与详情之间的切换，返回列表时重新加载最新状态。
 import { ref } from 'vue'
 import OrderDetailView from './OrderDetailView.vue'
 import OrderListView from './OrderListView.vue'

@@ -184,6 +184,22 @@ async function flushMicrotasks(): Promise<void> {
 }
 
 describe('DIY editor audit regressions', () => {
+  it('does not update an unloaded editor or ask to restore its draft after slow bootstrap', async () => {
+    const { definition, services, wxMock } = loadEditor()
+    const page = instantiate(definition)
+    let finish!: (beads: unknown[]) => void
+    services.catalog.listAllPublicBeads.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
+    page.resolveInitialDraft = jest.fn()
+    const pending = page.bootstrap({})
+    page.onUnload()
+    page.setData.mockClear()
+    finish([bead])
+    await pending
+    expect(page.setData).not.toHaveBeenCalled()
+    expect(page.resolveInitialDraft).not.toHaveBeenCalled()
+    expect(wxMock.showModal).not.toHaveBeenCalled()
+  })
+
   it('keeps the saved design stable while preview export is pending', () => {
     const { definition } = loadEditor()
     const page = instantiate(definition)
@@ -354,7 +370,7 @@ describe('DIY editor AI handoff behavior', () => {
     expect(template).not.toContain(
       '<view wx:if="{{selectedIndex >= 0}}" class="selected-actions">',
     )
-    expect(template).toContain('disabled="{{selectedIndex < 0}}"')
+    expect(template).toContain('disabled="{{selectedIndex < 0 || saving || checkingOut}}"')
   })
 
   it('loads the bracelet and catalog independently without showing canvas placeholders', () => {

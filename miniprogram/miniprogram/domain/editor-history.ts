@@ -1,6 +1,8 @@
+/** 保存独立的撤销与重做快照，并限制历史条数，避免编辑过程持续占用内存。 */
 export interface EditorHistory<T> {
   current: () => T
   push: (next: T) => void
+  replaceCurrent: (next: T) => void
   undo: () => T
   redo: () => T
   canUndo: () => boolean
@@ -46,6 +48,7 @@ export function createHistory<T>(
   return {
     current: () => clone(currentValue),
     push,
+    replaceCurrent: (next: T) => { currentValue = clone(next) },
     undo,
     redo,
     canUndo: () => past.length > 0,

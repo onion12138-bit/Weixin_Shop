@@ -1,6 +1,7 @@
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import CustomerBenefitsView from './CustomerBenefitsView.vue'
+import { ApiError } from '../api/http'
 import {
   createCouponTemplate,
   grantCouponsBatch,
@@ -63,11 +64,27 @@ const coupon = {
 describe('CustomerBenefitsView', () => {
   beforeEach(() => {
     vi.resetAllMocks()
+    sessionStorage.clear()
     vi.mocked(listCustomers).mockResolvedValue([customer])
     vi.mocked(listCouponTemplates).mockResolvedValue([coupon])
     vi.mocked(listCustomerAddresses).mockResolvedValue([{ id: 21, customerIdentityId: 15, customerNickname: '小丸子', receiverName: '小丸子', phone: '13812345678', region: '上海市徐汇区', detail: '测试路 18 号', isDefault: true, status: 'ACTIVE', updatedAt: '2026-08-08T10:00:00' }])
     vi.mocked(searchCustomersByPhone).mockResolvedValue([customer])
     vi.mocked(grantCouponsBatch).mockResolvedValue({ requestedCount: 1, grantedCount: 1, skippedCount: 0 })
+  })
+
+  it('does not restore stale customer data when an older tab refresh finishes last', async () => {
+    const older = deferred<CustomerSummary[]>()
+    vi.mocked(listCustomers).mockReturnValueOnce(older.promise)
+      .mockResolvedValue([{ ...customer, nickname: '最新客户' }])
+    const wrapper = mount(CustomerBenefitsView)
+    await wrapper.get('.customer-tabs button:last-child').trigger('click')
+    await flushPromises()
+    await wrapper.get('.customer-tabs button:first-child').trigger('click')
+    await flushPromises()
+    older.resolve([{ ...customer, nickname: '过期客户' }])
+    await flushPromises()
+    expect(wrapper.text()).toContain('最新客户')
+    expect(wrapper.text()).not.toContain('过期客户')
   })
 
   it('shows coupon amounts and minimum spend without rounding away cents', async () => {
@@ -112,6 +129,7 @@ describe('CustomerBenefitsView', () => {
     await wrapper.get('[data-test="send-coupon"]').trigger('click')
     await flushPromises()
     expect(grantCouponsBatch).toHaveBeenLastCalledWith(9, {
+      batchId: expect.any(String),
       recipientMode: 'SELECTED',
       customerIdentityIds: [15],
       note: '',
@@ -122,6 +140,7 @@ describe('CustomerBenefitsView', () => {
     await wrapper.get('[data-test="send-coupon"]').trigger('click')
     await flushPromises()
     expect(grantCouponsBatch).toHaveBeenLastCalledWith(9, {
+      batchId: expect.any(String),
       recipientMode: 'ALL',
       customerIdentityIds: [],
       note: '',
@@ -278,6 +297,25 @@ describe('CustomerBenefitsView', () => {
     await flushPromises()
   })
 
+  it('keeps a recoverable grant batch across a failed response and page remount', async () => {
+    vi.mocked(grantCouponsBatch).mockRejectedValueOnce(new Error('连接断开'))
+    const wrapper = await openGrantDialog()
+    await wrapper.get('.customer-option').trigger('click')
+    await wrapper.get('[data-test="send-coupon"]').trigger('click')
+    await flushPromises()
+    const original = vi.mocked(grantCouponsBatch).mock.calls[0]
+    expect(original[1]).toEqual(expect.objectContaining({ batchId: expect.any(String) }))
+    expect(wrapper.text()).toContain('重试确认')
+    wrapper.unmount()
+    const restored = mount(CustomerBenefitsView)
+    await flushPromises()
+    expect(restored.text()).toContain('重试确认')
+    await restored.get('[data-test="send-coupon"]').trigger('click')
+    await flushPromises()
+    expect(grantCouponsBatch).toHaveBeenLastCalledWith(...original)
+    expect(restored.text()).toContain('成功 1 位')
+  })
+
   it('prevents duplicate coupon grants before rendering disables the send button', async () => {
     const pending = deferred<Awaited<ReturnType<typeof grantCouponsBatch>>>()
     vi.mocked(grantCouponsBatch).mockReturnValue(pending.promise)
@@ -290,5 +328,86 @@ describe('CustomerBenefitsView', () => {
     expect(grantCouponsBatch).toHaveBeenCalledTimes(1)
     pending.resolve({ requestedCount: 1, grantedCount: 1, skippedCount: 0 })
     await flushPromises()
+  })
+
+  it('retains the original batch when retry receives an untrusted proxy 404', async () => {
+    vi.mocked(grantCouponsBatch).mockRejectedValueOnce(new Error('响应丢失'))
+      .mockRejectedValueOnce(new ApiError('请求失败', 'COMMON_INTERNAL_ERROR', 404))
+    const wrapper = await openGrantDialog()
+    await wrapper.get('.customer-option').trigger('click')
+    await wrapper.get('[data-test="send-coupon"]').trigger('click')
+    await flushPromises()
+    const original = vi.mocked(grantCouponsBatch).mock.calls[0]
+    const pending = sessionStorage.getItem('diy_admin_pending_coupon_grant_v1')
+    await wrapper.get('[data-test="send-coupon"]').trigger('click')
+    await flushPromises()
+    expect(sessionStorage.getItem('diy_admin_pending_coupon_grant_v1')).toBe(pending)
+    await wrapper.get('[data-test="send-coupon"]').trigger('click')
+    await flushPromises()
+    expect(grantCouponsBatch).toHaveBeenLastCalledWith(...original)
+    expect(wrapper.text()).toContain('成功 1 位')
+  })
+
+  it('preserves a newer batch when an unmounted page receives an older grant response', async () => {
+    const oldRequest = deferred<Awaited<ReturnType<typeof grantCouponsBatch>>>()
+    const newRequest = deferred<Awaited<ReturnType<typeof grantCouponsBatch>>>()
+    vi.mocked(grantCouponsBatch).mockReturnValueOnce(oldRequest.promise)
+      .mockResolvedValueOnce({ requestedCount: 1, grantedCount: 1, skippedCount: 0 })
+      .mockReturnValueOnce(newRequest.promise)
+    const oldPage = await openGrantDialog()
+    await oldPage.get('.customer-option').trigger('click')
+    await oldPage.get('[data-test="send-coupon"]').trigger('click')
+    await flushPromises()
+    oldPage.unmount()
+
+    const newPage = mount(CustomerBenefitsView)
+    await flushPromises()
+    await newPage.get('[data-test="send-coupon"]').trigger('click')
+    await flushPromises()
+    await newPage.get('.customer-tabs button:last-child').trigger('click')
+    await flushPromises()
+    await newPage.get('.coupon-actions .primary-button').trigger('click')
+    await newPage.get('.customer-option').trigger('click')
+    await newPage.get('[data-test="send-coupon"]').trigger('click')
+    const pending = sessionStorage.getItem('diy_admin_pending_coupon_grant_v1')
+    expect(pending).not.toBeNull()
+    expect(JSON.parse(pending!).payload.batchId).toBe(vi.mocked(grantCouponsBatch).mock.calls[2][1].batchId)
+
+    oldRequest.resolve({ requestedCount: 1, grantedCount: 1, skippedCount: 0 })
+    await flushPromises()
+    expect(sessionStorage.getItem('diy_admin_pending_coupon_grant_v1')).toBe(pending)
+    newRequest.reject(new Error('响应丢失'))
+    await flushPromises()
+    expect(sessionStorage.getItem('diy_admin_pending_coupon_grant_v1')).toBe(pending)
+  })
+
+  it('does not clear a newer grant or unlock its request when an earlier success refresh fails', async () => {
+    vi.mocked(listCouponTemplates).mockResolvedValue([coupon, { ...coupon, id: 10, name: '另一张券' }])
+    const wrapper = await openGrantDialog()
+    const refresh = deferred<CouponTemplate[]>()
+    vi.mocked(listCouponTemplates).mockReturnValueOnce(refresh.promise)
+    await wrapper.get('.customer-option').trigger('click')
+    await wrapper.get('[data-test="send-coupon"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('成功 1 位')
+
+    const nextGrant = deferred<Awaited<ReturnType<typeof grantCouponsBatch>>>()
+    vi.mocked(grantCouponsBatch).mockReturnValueOnce(nextGrant.promise)
+    await wrapper.findAll('.coupon-actions .primary-button')[1].trigger('click')
+    await wrapper.get('.customer-option').trigger('click')
+    await wrapper.get('[data-test="send-coupon"]').trigger('click')
+    const pending = sessionStorage.getItem('diy_admin_pending_coupon_grant_v1')
+    expect(pending).not.toBeNull()
+    refresh.reject(new ApiError('列表读取失败', 'COMMON_NOT_FOUND', 404))
+    await flushPromises()
+
+    expect(sessionStorage.getItem('diy_admin_pending_coupon_grant_v1')).toBe(pending)
+    expect(wrapper.get('[data-test="send-coupon"]').attributes('disabled')).toBeDefined()
+    wrapper.get('[data-test="send-coupon"]').element.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await flushPromises()
+    expect(grantCouponsBatch).toHaveBeenCalledTimes(2)
+    nextGrant.reject(new Error('响应丢失'))
+    await flushPromises()
+    expect(sessionStorage.getItem('diy_admin_pending_coupon_grant_v1')).toBe(pending)
   })
 })

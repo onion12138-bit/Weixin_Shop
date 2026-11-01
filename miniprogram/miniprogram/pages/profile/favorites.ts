@@ -1,3 +1,5 @@
+/** 把本地收藏标识映射为商品卡片，并允许移除已失效或不再需要的收藏。 */
+import { navigateOnce, resetNavigation } from '../../utils/navigation'
 import { removeFavoriteBead, readFavoriteBeadIds } from '../../domain/favorite-beads'
 import { listAllPublicBeads } from '../../services/catalog'
 import { ApiError } from '../../services/request'
@@ -10,7 +12,10 @@ Page({
     errorMessage: '',
   },
 
-  onShow() { void this.loadFavorites() },
+  onShow() {
+    resetNavigation(this)
+    void this.loadFavorites()
+  },
 
   async loadFavorites() {
     const ids = new Set(readFavoriteBeadIds())
@@ -37,8 +42,8 @@ Page({
 
   startDesign(event: WechatMiniprogram.TouchEvent) {
     const id = Number(event.currentTarget.dataset.id)
-    wx.navigateTo({ url: `/pages/diy/editor?skuId=${id}` })
+    navigateOnce(this, { url: `/pages/diy/editor?skuId=${id}` })
   },
 
-  browseBeads() { wx.navigateTo({ url: '/pages/diy/editor' }) },
+  browseBeads() { navigateOnce(this, { url: '/pages/diy/editor' }) },
 })

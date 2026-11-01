@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 履约任务数据访问入口。
@@ -24,6 +25,14 @@ public interface FulfillmentTaskMapper extends BaseMapper<FulfillmentTask> {
             where order_id = #{orderId}
             """)
     FulfillmentTask selectByOrderId(@Param("orderId") Long orderId);
+
+    /** 批量获取顾客订单的物流状态，归属条件在数据库侧统一校验。 */
+    @Select("""
+            select task.* from fulfillment_task task
+            join customer_order orders on orders.id = task.order_id
+            where orders.customer_identity_id = #{customerId}
+            """)
+    List<FulfillmentTask> selectOwnedByCustomer(@Param("customerId") Long customerId);
 
     /**
      * 锁定履约任务，保证多个后台操作不能并发跳转状态。

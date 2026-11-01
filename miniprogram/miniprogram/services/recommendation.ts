@@ -1,3 +1,4 @@
+/** 封装推荐生成、状态和问卷接口，页面通过统一请求层复用身份与错误处理。 */
 import type {
   RecommendationProfileResponse,
   RecommendationRequest,

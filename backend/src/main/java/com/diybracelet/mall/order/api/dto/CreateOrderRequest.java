@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.Pattern;
 
 /**
  * 小程序创建订单请求。
@@ -32,6 +33,14 @@ public record CreateOrderRequest(
 
         @NotBlank(message = "收货地址不能为空")
         @Size(max = 500, message = "收货地址不能超过 500 个字符")
-        String addressDetail
+        String addressDetail,
+
+        @NotBlank(message = "结算提交标识不能为空")
+        @Pattern(regexp = "[A-Za-z0-9_-]{16,80}", message = "结算提交标识格式不正确")
+        String checkoutToken,
+
+        @NotBlank(message = "请先确认订单报价")
+        @Pattern(regexp = "[a-f0-9]{64}", message = "订单报价标识格式不正确")
+        String quoteFingerprint
 ) {
 }

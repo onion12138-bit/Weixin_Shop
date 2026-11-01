@@ -6,7 +6,8 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
-/** Reads only currently sellable, positive-inventory model candidates. */
+
+/** 只读取在售且有库存的候选珠子，供模型选择和结果复核。 */
 @Mapper
 public interface RecommendationCandidateMapper {
 

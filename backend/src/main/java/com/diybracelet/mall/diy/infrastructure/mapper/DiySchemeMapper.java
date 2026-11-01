@@ -81,6 +81,7 @@ public interface DiySchemeMapper extends BaseMapper<DiyScheme> {
                 total_amount = #{scheme.totalAmount},
                 quote_fingerprint = #{scheme.quoteFingerprint},
                 quote_status = #{scheme.quoteStatus},
+                preview_asset_id = null,
                 version = version + 1
             where id = #{scheme.id}
               and customer_identity_id = #{customerId}
@@ -124,5 +125,21 @@ public interface DiySchemeMapper extends BaseMapper<DiyScheme> {
             @Param("id") Long id,
             @Param("customerId") Long customerId,
             @Param("previewAssetId") Long previewAssetId
+    );
+
+    /** 预览是指定设计版本的派生数据，异步补图不推进设计版本。 */
+    @Update("""
+            update diy_scheme
+            set preview_asset_id = #{previewAssetId}
+            where id = #{id}
+              and customer_identity_id = #{customerId}
+              and status = 'ACTIVE'
+              and version = #{expectedVersion}
+            """)
+    int bindPreviewForVersion(
+            @Param("id") Long id,
+            @Param("customerId") Long customerId,
+            @Param("previewAssetId") Long previewAssetId,
+            @Param("expectedVersion") Long expectedVersion
     );
 }

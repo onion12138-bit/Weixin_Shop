@@ -1,3 +1,4 @@
+/** 根据服务端报价与优惠券约束生成结算展示，最终成交金额仍由后端校验。 */
 import type { CustomerCoupon } from '../services/account'
 import type { DiySchemeResponse } from '../services/diy'
 

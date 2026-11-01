@@ -48,8 +48,8 @@ class CustomerStateRegressionTest extends MySqlIntegrationTest {
                 """, code);
         long templateId = jdbc.queryForObject("select id from coupon_template where code = ?", Long.class, code);
         jdbc.update("""
-                insert into customer_coupon (coupon_template_id, customer_identity_id, status, issued_at, expires_at)
-                values (?, ?, 'UNUSED', ?, ?)
+                insert into customer_coupon (coupon_template_id, customer_identity_id, status, issued_at, expires_at, coupon_code, coupon_name, coupon_description, discount_amount, minimum_spend, snapshot_source)
+                values (?, ?, 'UNUSED', ?, ?, 'TEST', '测试券', '并发核销回归', 10, 20, 'ISSUED_SNAPSHOT')
                 """, templateId, customerId, LocalDateTime.now().minusDays(1), LocalDateTime.now().minusSeconds(1));
         long couponId = jdbc.queryForObject("select id from customer_coupon where customer_identity_id = ?", Long.class, customerId);
         LocalDateTime usedAt = LocalDateTime.of(2026, 1, 1, 12, 0);

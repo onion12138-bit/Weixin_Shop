@@ -24,6 +24,8 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.UUID;
 
+
+/** 管理员优惠券模板、发放和撤销接口。 */
 @Validated
 @RestController
 @RequestMapping("/api/admin/coupons")

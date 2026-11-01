@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// 长文本按行数截断，完整内容由可键盘访问的提示层展示。
 import DataTooltip from './DataTooltip.vue'
 defineProps<{ text: string; lines?: number }>()
 </script>

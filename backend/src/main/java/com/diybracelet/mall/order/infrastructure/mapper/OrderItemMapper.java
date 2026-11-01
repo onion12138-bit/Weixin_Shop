@@ -21,4 +21,13 @@ public interface OrderItemMapper extends BaseMapper<OrderItem> {
             order by sort_order asc, id asc
             """)
     List<OrderItem> selectByOrderId(@Param("orderId") Long orderId);
+
+    /** 按顾客一次读取列表明细，避免每个订单各发起一次查询。 */
+    @Select("""
+            select item.* from order_item item
+            join customer_order orders on orders.id = item.order_id
+            where orders.customer_identity_id = #{customerId}
+            order by item.order_id, item.sort_order asc, item.id asc
+            """)
+    List<OrderItem> selectOwnedByCustomer(@Param("customerId") Long customerId);
 }

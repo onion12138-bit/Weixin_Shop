@@ -7,6 +7,8 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+
+/** 优惠券面额、使用门槛与有效期配置。 */
 @TableName("coupon_template")
 public class CouponTemplate {
     @TableId(value = "id", type = IdType.AUTO)

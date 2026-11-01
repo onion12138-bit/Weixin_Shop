@@ -51,11 +51,16 @@ const API_BASE_URL = (
  * 5173 端口请求，因此这里统一补齐后端源站。
  */
 export function resolveApiResourceUrl(resourceUrl: string): string {
-  if (!resourceUrl || /^https?:\/\//i.test(resourceUrl)) {
-    return resourceUrl
+  if (!resourceUrl) return ''
+  try {
+    const apiUrl = new URL(API_BASE_URL, window.location.origin)
+    const url = new URL(resourceUrl, apiUrl.origin)
+    // 资源可能用于新窗口打开，只接受网络图片，拒绝脚本和内嵌文档协议。
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return ''
+    return url.toString()
+  } catch {
+    return ''
   }
-  const apiUrl = new URL(API_BASE_URL, window.location.origin)
-  return new URL(resourceUrl, apiUrl.origin).toString()
 }
 
 /** 非 JSON 或结构异常的响应也转换为稳定的 ApiError，不泄露错误页正文。 */
@@ -96,6 +101,8 @@ export async function request<T>(
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers,
+    // 订单、客户地址、API Key 等管理数据不写入浏览器 HTTP 缓存。
+    cache: 'no-store',
   })
   if (response.status === 401) {
     clearAccessToken(token)
@@ -129,6 +136,7 @@ export async function requestBlob(
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers,
+    cache: 'no-store',
   })
   if (response.ok) {
     return response.blob()

@@ -1,6 +1,8 @@
 package com.diybracelet.mall.order.api;
 
 import com.diybracelet.mall.order.api.dto.CreateOrderRequest;
+import com.diybracelet.mall.order.api.dto.CheckoutQuoteRequest;
+import com.diybracelet.mall.order.api.dto.CheckoutQuoteResponse;
 import com.diybracelet.mall.order.api.dto.OrderResponse;
 import com.diybracelet.mall.order.application.OrderService;
 import com.diybracelet.mall.shared.api.ApiResponse;
@@ -44,6 +46,16 @@ public class AppOrderController {
                         orderService.create(request),
                         UUID.randomUUID().toString()
                 ));
+    }
+
+    @PostMapping("/quote")
+    public ApiResponse<CheckoutQuoteResponse> quote(@Valid @RequestBody CheckoutQuoteRequest request) {
+        return ApiResponse.success(orderService.quote(request), UUID.randomUUID().toString());
+    }
+
+    @GetMapping("/by-checkout-token/{token}")
+    public ApiResponse<OrderResponse> recover(@PathVariable String token) {
+        return ApiResponse.success(orderService.getByCheckoutToken(token), UUID.randomUUID().toString());
     }
 
     /**

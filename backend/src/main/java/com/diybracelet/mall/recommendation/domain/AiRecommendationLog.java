@@ -2,7 +2,8 @@ package com.diybracelet.mall.recommendation.domain;
 
 import java.time.LocalDateTime;
 
-/** Persisted, secret-free trace of one recommendation request. */
+
+/** 单次推荐的诊断记录，不保存模型服务密钥。 */
 public class AiRecommendationLog {
     private Long id;
     private String traceId;

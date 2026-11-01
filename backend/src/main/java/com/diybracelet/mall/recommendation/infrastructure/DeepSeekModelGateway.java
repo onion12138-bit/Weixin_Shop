@@ -36,7 +36,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-/** DeepSeek adapter for model discovery and strict multi-plan JSON recommendations. */
+
+/** 调用 DeepSeek 并严格校验多套推荐的 JSON 结构和商品范围。 */
 @Component
 public class DeepSeekModelGateway implements AiModelGateway {
 

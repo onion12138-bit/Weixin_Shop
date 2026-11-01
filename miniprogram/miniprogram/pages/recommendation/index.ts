@@ -1,3 +1,4 @@
+import { navigateOnce, resetNavigation } from '../../utils/navigation'
 import {
   PENDING_AI_RECOMMENDATION_KEY,
   buildRecommendationRequest,
@@ -75,6 +76,8 @@ Page({
   },
 
   onShow() {
+    resetNavigation(this)
+    if (this.diyNavigationInFlight) this.finishDiyNavigation()
     if (this.pageAlive && !this.data.statusLoading) {
       void this.loadStatus()
     }
@@ -223,7 +226,8 @@ Page({
         })
       }
     } finally {
-      if (this.isRecommendationCurrent(token, revision)) {
+      // 改表单只使结果失效；实际请求完成前仍保留提交锁。
+      if (this.pageAlive) {
         this.setData({ submitting: false })
       }
     }
@@ -247,9 +251,8 @@ Page({
         PENDING_AI_RECOMMENDATION_KEY,
         JSON.stringify(handoff),
       )
-      wx.navigateTo({
+      navigateOnce(this, {
         url: '/pages/diy/editor?source=ai',
-        success: () => this.finishDiyNavigation(),
         fail: () => {
           this.clearPendingAiHandoff()
           this.finishDiyNavigation('进入 DIY 失败，请重试')
@@ -274,7 +277,7 @@ Page({
     this.recommendationToken += 1
     this.recommendation = null
     if (this.pageAlive) {
-      this.setData({ result: null, submitting: false })
+      this.setData({ result: null })
     }
   },
 

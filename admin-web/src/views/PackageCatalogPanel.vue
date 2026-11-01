@@ -42,6 +42,7 @@ let toastTimer: ReturnType<typeof setTimeout> | null = null
 let latestPackageRequest = 0
 let latestEditorRequest = 0
 let disposed = false
+let latestCoverRequest = 0
 
 const filters = reactive({
   keyword: '',
@@ -121,7 +122,9 @@ function emptyItem(): { beadSkuId: number; quantity: number } {
 }
 
 async function openCreate(): Promise<void> {
-  if (disposed) return
+  if (disposed || saving.value) return
+  invalidateCoverUpload()
+  showForm.value = false
   const requestId = ++latestEditorRequest
   editingId.value = null
   editorLoading.value = true
@@ -154,7 +157,9 @@ async function openCreate(): Promise<void> {
  * 提交时后端会在一个事务中整体替换明细，避免出现半旧半新的搭配。
  */
 async function openEdit(item: ProductPackage): Promise<void> {
-  if (disposed) return
+  if (disposed || saving.value) return
+  invalidateCoverUpload()
+  showForm.value = false
   const requestId = ++latestEditorRequest
   editingId.value = item.id
   editorLoading.value = true
@@ -206,7 +211,22 @@ function moveItem(index: number, offset: -1 | 1): void {
   form.items.splice(target, 0, current)
 }
 
+// 每次关闭或切换商品都废弃旧上传，避免旧封面写入新商品表单。
+function invalidateCoverUpload(): void {
+  latestCoverRequest++
+  coverUploading.value = false
+}
+
+function closeEditor(): void {
+  if (saving.value) return
+  invalidateCoverUpload()
+  latestEditorRequest++
+  editorLoading.value = false
+  showForm.value = false
+}
+
 async function uploadCoverFile(file: File): Promise<void> {
+  if (disposed || saving.value || coverUploading.value || !showForm.value) return
   if (!ACCEPTED_COVER_TYPES.has(file.type)) {
     errorMessage.value = '封面图片仅支持 PNG、JPEG 或 WebP'
     return
@@ -215,16 +235,18 @@ async function uploadCoverFile(file: File): Promise<void> {
     errorMessage.value = '封面图片不能超过 5 MB'
     return
   }
+  const requestId = ++latestCoverRequest
   coverUploading.value = true
   errorMessage.value = ''
   try {
     const uploaded = await uploadCatalogFile(file)
+    if (disposed || requestId !== latestCoverRequest) return
     form.coverAssetId = uploaded.id
     coverPreviewUrl.value = resolveApiResourceUrl(uploaded.publicUrl)
   } catch (error) {
-    errorMessage.value = readableError(error)
+    if (requestId === latestCoverRequest && !disposed) errorMessage.value = readableError(error)
   } finally {
-    coverUploading.value = false
+    if (requestId === latestCoverRequest) coverUploading.value = false
   }
 }
 
@@ -246,6 +268,7 @@ function handleCoverDrop(event: DragEvent): void {
 }
 
 async function submit(): Promise<void> {
+  if (disposed || saving.value || coverUploading.value || editorLoading.value) return
   saving.value = true
   errorMessage.value = ''
   try {
@@ -334,6 +357,7 @@ function changePageSize(size: number): void {
 onMounted(loadPackages)
 onUnmounted(() => {
   disposed = true
+  invalidateCoverUpload()
   latestPackageRequest++
   latestEditorRequest++
   if (toastTimer !== null) clearTimeout(toastTimer)
@@ -466,7 +490,7 @@ onUnmounted(() => {
       <ListPagination :page="filters.page" :size="filters.size" :total="total" @update:page="changePage" @update:size="changePageSize" />
     </section>
 
-    <div v-if="showForm" class="modal-backdrop" @click.self="showForm = false">
+    <div v-if="showForm" class="modal-backdrop" @click.self="closeEditor">
       <section class="drawer" aria-labelledby="package-form-title">
         <header>
           <div>
@@ -477,7 +501,7 @@ onUnmounted(() => {
               {{ editingId ? '编辑成品搭配' : '新增成品搭配' }}
             </h2>
           </div>
-          <button class="icon-button" aria-label="关闭" @click="showForm = false">×</button>
+          <button class="icon-button" aria-label="关闭" @click="closeEditor">×</button>
         </header>
 
         <form class="catalog-form" @submit.prevent="submit">
@@ -590,7 +614,7 @@ onUnmounted(() => {
           </label>
 
           <footer>
-            <button type="button" class="secondary-button" @click="showForm = false">取消</button>
+            <button type="button" class="secondary-button" @click="closeEditor">取消</button>
             <button
               class="primary-button"
               :disabled="saving || coverUploading || availableBeads.length === 0"

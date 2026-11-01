@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// 编辑尺寸、工艺费和绳材配置，提交前统一校验数值范围。
 import { onMounted, reactive, ref } from 'vue'
 import { ApiError } from '../api/http'
 import {

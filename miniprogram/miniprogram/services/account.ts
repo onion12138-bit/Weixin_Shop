@@ -1,3 +1,4 @@
+/** 封装当前访客的资料、地址和优惠券请求，并统一头像的公开访问地址。 */
 import { absolutePublicUrl, request, upload } from './request'
 
 export interface CustomerProfile {

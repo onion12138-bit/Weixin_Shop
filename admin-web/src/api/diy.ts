@@ -1,3 +1,4 @@
+// 集中封装尺寸、工艺费、绳材与视觉规则的管理接口。
 import { request } from './http'
 
 export type OptionStatus = 'ENABLED' | 'DISABLED'

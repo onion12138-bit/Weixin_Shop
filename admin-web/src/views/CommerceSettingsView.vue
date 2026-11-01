@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// 读取与编辑交易规则，保存成功后使用服务端返回的新版本。
 import { onMounted, reactive, ref } from 'vue'
 import { ApiError } from '../api/http'
 import {
@@ -46,6 +47,7 @@ async function load(): Promise<void> {
 }
 
 async function save(): Promise<void> {
+  if (saving.value) return
   saving.value = true
   errorMessage.value = ''
   successMessage.value = ''

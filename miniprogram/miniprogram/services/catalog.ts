@@ -54,18 +54,21 @@ export async function listBeads(
   }
 }
 
-/** Loads every matching public bead so full trays and AI handoffs are complete. */
+/** 拉取完整珠库供编辑与 AI 接续使用，并限制分页并发以给交互请求留出带宽。 */
 export async function listAllPublicBeads(
   query: Omit<CatalogQuery, 'page' | 'size'> = {},
 ): Promise<PublicBead[]> {
   const pageSize = 100
   const first = await listBeads({ ...query, page: 1, size: pageSize })
   const pageCount = Math.max(1, Math.ceil(first.total / pageSize))
-  const remaining = await Promise.all(
-    Array.from({ length: pageCount - 1 }, (_, index) => (
-      listBeads({ ...query, page: index + 2, size: pageSize })
-    )),
-  )
+  const remaining: Array<PageResponse<PublicBead>> = []
+  for (let page = 2; page <= pageCount; page += 3) {
+    const batch = await Promise.all(Array.from(
+      { length: Math.min(3, pageCount - page + 1) },
+      (_, index) => listBeads({ ...query, page: page + index, size: pageSize }),
+    ))
+    remaining.push(...batch)
+  }
   const byId = new Map<number, PublicBead>()
   for (const bead of [first, ...remaining].flatMap((page) => page.items)) {
     byId.set(bead.id, bead)

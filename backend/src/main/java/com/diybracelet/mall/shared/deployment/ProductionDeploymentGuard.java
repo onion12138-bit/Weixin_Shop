@@ -5,7 +5,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 
-/** Fail before datasource/Flyway startup while identity and payment remain demo-only. */
+
+/** 在数据源和迁移启动前阻止演示身份、模拟支付配置被用于正式部署。 */
 @Configuration(proxyBeanMethods = false)
 @Profile({"prod", "production"})
 public class ProductionDeploymentGuard {

@@ -1,3 +1,4 @@
+/** 集中定义珠序、布局和画布配置的数据结构，统一各绘制环节的单位与字段。 */
 export type BeadSequence = number[]
 
 export interface DiyBeadCatalogItem {

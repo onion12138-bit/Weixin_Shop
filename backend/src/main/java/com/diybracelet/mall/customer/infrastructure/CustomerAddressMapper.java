@@ -8,6 +8,8 @@ import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
 
+
+/** 顾客收货地址数据访问入口。 */
 @Mapper
 public interface CustomerAddressMapper extends BaseMapper<CustomerAddress> {
     @Select("""

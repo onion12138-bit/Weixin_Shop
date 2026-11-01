@@ -1,3 +1,4 @@
+// 订单列表和详情共用状态、金额与手机号脱敏规则。
 import type { AdminOrder, OrderStatus } from '../api/orders'
 import { formatDateTime } from '../utils/date-time'
 

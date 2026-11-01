@@ -8,6 +8,7 @@ import com.diybracelet.mall.customer.api.dto.CustomerDtos.CustomerCouponView;
 import com.diybracelet.mall.customer.api.dto.CustomerDtos.GrantCouponRequest;
 import com.diybracelet.mall.customer.api.dto.CustomerDtos.SaveCouponTemplateRequest;
 import com.diybracelet.mall.customer.domain.CouponTemplate;
+import com.diybracelet.mall.customer.domain.CouponGrantBatch;
 import com.diybracelet.mall.customer.domain.CustomerCoupon;
 import com.diybracelet.mall.customer.infrastructure.CouponTemplateMapper;
 import com.diybracelet.mall.customer.infrastructure.CustomerCouponMapper;
@@ -21,14 +22,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+import java.util.Locale;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
+
+/** 管理优惠券领取、过期状态和发放规则，所有顾客操作均校验归属。 */
 @Service
 public class CouponService {
     private static final String ACTIVE = "ACTIVE";
@@ -98,115 +100,99 @@ public class CouponService {
 
     @Transactional
     public CustomerCouponView grant(Long templateId, GrantCouponRequest request) {
-        CouponTemplate template = requireTemplate(templateId);
-        if (!ACTIVE.equals(template.getStatus())) {
-            throw new BusinessException(
-                    ErrorCode.COMMON_CONFLICT,
-                    "优惠券已停用，不能发送"
-            );
-        }
-        CustomerIdentity identity = identityMapper.selectById(
-                request.customerIdentityId()
-        );
+        CouponGrantBatch batch = beginBatch(request.batchId(), templateId, "SINGLE",
+                List.of(request.customerIdentityId()), request.note());
+        if (batch.requestedCount() != null) return couponView(customerCouponMapper.selectById(batch.couponId()));
+        CouponTemplate template = requireIssuableTemplate(templateId);
+        CustomerIdentity identity = identityMapper.selectById(request.customerIdentityId());
         if (identity == null || !ACTIVE.equals(identity.getStatus())) {
-            throw new BusinessException(
-                    ErrorCode.COMMON_NOT_FOUND,
-                    "顾客不存在或已停用"
-            );
+            throw new BusinessException(ErrorCode.COMMON_NOT_FOUND, "顾客不存在或已停用");
         }
-        LocalDateTime issuedAt = LocalDateTime.now();
-        CustomerCoupon coupon = new CustomerCoupon();
-        coupon.setCouponTemplateId(templateId);
-        coupon.setCustomerIdentityId(identity.getId());
-        coupon.setStatus(UNUSED);
-        coupon.setIssuedAt(issuedAt);
-        coupon.setExpiresAt(issuedAt.plusDays(template.getValidDays()));
-        coupon.setNote(trimToNull(request.note()));
+        CustomerCoupon coupon = issuedCoupon(template, identity.getId(), request.note(), request.batchId(), LocalDateTime.now());
         customerCouponMapper.insert(coupon);
-        return couponView(coupon, template);
+        customerCouponMapper.completeBatch(request.batchId(), 1, 1, 0, coupon.getId());
+        return couponView(coupon);
     }
 
     @Transactional
-    public BatchGrantCouponResult grantBatch(
-            Long templateId,
-            BatchGrantCouponRequest request
-    ) {
-        CouponTemplate template = requireTemplate(templateId);
-        if (!ACTIVE.equals(template.getStatus())) {
-            throw new BusinessException(
-                    ErrorCode.COMMON_CONFLICT,
-                    "优惠券已停用，不能发送"
-            );
-        }
-        String mode = request.recipientMode().trim().toUpperCase();
+    public BatchGrantCouponResult grantBatch(Long templateId, BatchGrantCouponRequest request) {
+        String mode = request.recipientMode().trim().toUpperCase(Locale.ROOT);
         if (!RECIPIENT_SELECTED.equals(mode) && !RECIPIENT_ALL.equals(mode)) {
-            throw new BusinessException(
-                    ErrorCode.COMMON_BAD_REQUEST,
-                    "发送范围只能是 SELECTED 或 ALL"
-            );
+            throw new BusinessException(ErrorCode.COMMON_BAD_REQUEST, "发送范围只能是 SELECTED 或 ALL");
         }
-
-        List<CustomerIdentity> recipients;
-        int requestedCount;
-        if (RECIPIENT_ALL.equals(mode)) {
-            recipients = identityMapper.selectList(
-                    new LambdaQueryWrapper<CustomerIdentity>()
-                            .eq(CustomerIdentity::getStatus, ACTIVE)
-                            .orderByAsc(CustomerIdentity::getId)
-            );
-            requestedCount = recipients.size();
-        } else {
-            Set<Long> requestedIds = new LinkedHashSet<>(
-                    request.customerIdentityIds() == null
-                            ? List.of()
-                            : request.customerIdentityIds()
-            );
-            if (requestedIds.isEmpty()) {
-                throw new BusinessException(
-                        ErrorCode.COMMON_BAD_REQUEST,
-                        "请至少选择一位顾客"
-                );
-            }
-            requestedCount = requestedIds.size();
-            Map<Long, CustomerIdentity> identitiesById = identityMapper
-                    .selectBatchIds(requestedIds)
-                    .stream()
-                    .filter(identity -> ACTIVE.equals(identity.getStatus()))
-                    .collect(Collectors.toMap(
-                            CustomerIdentity::getId,
-                            Function.identity()
-                    ));
-            recipients = requestedIds.stream()
-                    .map(identitiesById::get)
-                    .filter(java.util.Objects::nonNull)
-                    .toList();
+        List<Long> requestedIds = request.customerIdentityIds() == null ? List.of()
+                : request.customerIdentityIds().stream().distinct().sorted().toList();
+        if (RECIPIENT_SELECTED.equals(mode) && requestedIds.isEmpty()) {
+            throw new BusinessException(ErrorCode.COMMON_BAD_REQUEST, "请至少选择一位顾客");
         }
-
-        if (!recipients.isEmpty()) {
-            LocalDateTime issuedAt = LocalDateTime.now();
-            String note = trimToNull(request.note());
-            List<CustomerCoupon> grants = new ArrayList<>(recipients.size());
-            for (CustomerIdentity identity : recipients) {
-                CustomerCoupon coupon = new CustomerCoupon();
-                coupon.setCouponTemplateId(templateId);
-                coupon.setCustomerIdentityId(identity.getId());
-                coupon.setStatus(UNUSED);
-                coupon.setIssuedAt(issuedAt);
-                coupon.setExpiresAt(issuedAt.plusDays(template.getValidDays()));
-                coupon.setNote(note);
-                grants.add(coupon);
-            }
-            for (int start = 0; start < grants.size(); start += INSERT_BATCH_SIZE) {
-                int end = Math.min(start + INSERT_BATCH_SIZE, grants.size());
-                customerCouponMapper.insertBatch(grants.subList(start, end));
-            }
+        if (RECIPIENT_ALL.equals(mode) && !requestedIds.isEmpty()) {
+            throw new BusinessException(ErrorCode.COMMON_BAD_REQUEST, "全量发券不能同时指定顾客");
+        }
+        CouponGrantBatch batch = beginBatch(request.batchId(), templateId, mode, requestedIds, request.note());
+        // 先返回原结果：模板停发、全量客户集合变化均不改变已完成批次。
+        if (batch.requestedCount() != null) {
+            return new BatchGrantCouponResult(batch.requestedCount(), batch.grantedCount(), batch.skippedCount());
+        }
+        CouponTemplate template = requireIssuableTemplate(templateId);
+        List<CustomerIdentity> recipients = RECIPIENT_ALL.equals(mode)
+                ? identityMapper.selectList(new LambdaQueryWrapper<CustomerIdentity>()
+                        .eq(CustomerIdentity::getStatus, ACTIVE).orderByAsc(CustomerIdentity::getId))
+                : identityMapper.selectBatchIds(requestedIds).stream()
+                        .filter(identity -> ACTIVE.equals(identity.getStatus())).toList();
+        int requestedCount = RECIPIENT_ALL.equals(mode) ? recipients.size() : requestedIds.size();
+        LocalDateTime issuedAt = LocalDateTime.now();
+        List<CustomerCoupon> grants = recipients.stream().map(identity ->
+                issuedCoupon(template, identity.getId(), request.note(), request.batchId(), issuedAt)).toList();
+        for (int start = 0; start < grants.size(); start += INSERT_BATCH_SIZE) {
+            customerCouponMapper.insertBatch(grants.subList(start, Math.min(start + INSERT_BATCH_SIZE, grants.size())));
         }
         int grantedCount = recipients.size();
-        return new BatchGrantCouponResult(
-                requestedCount,
-                grantedCount,
-                requestedCount - grantedCount
-        );
+        customerCouponMapper.completeBatch(request.batchId(), requestedCount, grantedCount,
+                requestedCount - grantedCount, null);
+        return new BatchGrantCouponResult(requestedCount, grantedCount, requestedCount - grantedCount);
+    }
+
+    private CouponTemplate requireIssuableTemplate(Long templateId) {
+        CouponTemplate template = requireTemplate(templateId);
+        if (!ACTIVE.equals(template.getStatus())) {
+            throw new BusinessException(ErrorCode.COMMON_CONFLICT, "优惠券已停用，不能发送");
+        }
+        return template;
+    }
+
+    private CouponGrantBatch beginBatch(String batchId, Long templateId, String mode, List<Long> ids, String note) {
+        if (batchId == null || !batchId.matches("[A-Za-z0-9_-]{16,80}")) {
+            throw new BusinessException(ErrorCode.COMMON_BAD_REQUEST, "发券批次格式不正确");
+        }
+        String canonical = templateId + "|" + mode + "|" + ids + "|" + (trimToNull(note) == null ? "" : note.trim());
+        String hash;
+        try {
+            hash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(canonical.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException exception) { throw new IllegalStateException(exception); }
+        customerCouponMapper.reserveBatch(batchId, hash);
+        CouponGrantBatch batch = customerCouponMapper.lockBatch(batchId);
+        if (!hash.equals(batch.requestHash())) {
+            throw new BusinessException(ErrorCode.COUPON_BATCH_CONFLICT, "该发券批次已用于不同内容，请先确认原批次结果");
+        }
+        return batch;
+    }
+
+    private CustomerCoupon issuedCoupon(CouponTemplate template, Long customerId, String note, String batchId, LocalDateTime issuedAt) {
+        CustomerCoupon coupon = new CustomerCoupon();
+        coupon.setCouponTemplateId(template.getId());
+        coupon.setCustomerIdentityId(customerId);
+        coupon.setCouponCode(template.getCode());
+        coupon.setCouponName(template.getName());
+        coupon.setCouponDescription(template.getDescription());
+        coupon.setDiscountAmount(template.getDiscountAmount());
+        coupon.setMinimumSpend(template.getMinimumSpend());
+        coupon.setSnapshotSource("ISSUED_SNAPSHOT");
+        coupon.setGrantBatchId(batchId);
+        coupon.setStatus(UNUSED);
+        coupon.setIssuedAt(issuedAt);
+        coupon.setExpiresAt(issuedAt.plusDays(template.getValidDays()));
+        coupon.setNote(trimToNull(note));
+        return coupon;
     }
 
     @Transactional(readOnly = true)
@@ -227,19 +213,7 @@ public class CouponService {
                 coupon.setStatus(EXPIRED);
             }
         }
-        Map<Long, CouponTemplate> templates = templateMapper.selectBatchIds(
-                coupons.stream().map(CustomerCoupon::getCouponTemplateId).distinct().toList()
-        ).stream().collect(Collectors.toMap(
-                CouponTemplate::getId,
-                Function.identity()
-        ));
-        return coupons.stream()
-                .filter(coupon -> templates.containsKey(coupon.getCouponTemplateId()))
-                .map(coupon -> couponView(
-                        coupon,
-                        templates.get(coupon.getCouponTemplateId())
-                ))
-                .toList();
+        return coupons.stream().map(this::couponView).toList();
     }
 
     private CouponTemplate requireTemplate(Long templateId) {
@@ -287,17 +261,10 @@ public class CouponService {
         );
     }
 
-    private CustomerCouponView couponView(
-            CustomerCoupon coupon,
-            CouponTemplate template
-    ) {
-        return new CustomerCouponView(
-                coupon.getId(), template.getId(), template.getCode(),
-                template.getName(), template.getDescription(),
-                template.getDiscountAmount(), template.getMinimumSpend(),
-                coupon.getStatus(), coupon.getIssuedAt(), coupon.getExpiresAt(),
-                coupon.getNote()
-        );
+    private CustomerCouponView couponView(CustomerCoupon coupon) {
+        return new CustomerCouponView(coupon.getId(), coupon.getCouponTemplateId(), coupon.getCouponCode(),
+                coupon.getCouponName(), coupon.getCouponDescription(), coupon.getDiscountAmount(), coupon.getMinimumSpend(),
+                coupon.getStatus(), coupon.getIssuedAt(), coupon.getExpiresAt(), coupon.getNote());
     }
 
     private String trimToNull(String value) {

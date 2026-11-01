@@ -1,3 +1,4 @@
+/** 清洗本地收藏数据并筛选珠库，非法标识不进入页面的收藏状态。 */
 export const DIY_FAVORITE_STORAGE_KEY = 'diy_favorite_bead_ids'
 
 export function normalizeFavoriteBeadIds(value: unknown): number[] {

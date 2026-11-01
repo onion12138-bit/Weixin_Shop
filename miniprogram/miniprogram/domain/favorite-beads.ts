@@ -1,3 +1,4 @@
+/** 持久化当前安装的珠子收藏，读取时去重并忽略损坏的缓存内容。 */
 const FAVORITE_BEAD_IDS_KEY = 'diy_favorite_bead_ids'
 
 export function readFavoriteBeadIds(): number[] {

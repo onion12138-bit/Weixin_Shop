@@ -25,6 +25,10 @@ public enum ErrorCode {
     /** 请求与资源当前状态发生冲突。 */
     COMMON_CONFLICT(HttpStatus.CONFLICT),
 
+    CHECKOUT_TOKEN_CONFLICT(HttpStatus.CONFLICT),
+    QUOTE_EXPIRED(HttpStatus.CONFLICT),
+    COUPON_BATCH_CONFLICT(HttpStatus.CONFLICT),
+
     /** DIY 方案更新版本与服务端当前版本不一致。 */
     DIY_SCHEME_VERSION_CONFLICT(HttpStatus.CONFLICT),
 

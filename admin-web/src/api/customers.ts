@@ -1,3 +1,4 @@
+// 集中封装客户资料和发券请求，手机号等查询参数统一进行 URL 编码。
 import { request } from './http'
 
 export interface CustomerSummary {
@@ -122,10 +123,11 @@ export function grantCoupon(
   templateId: number,
   customerIdentityId: number,
   note: string,
+  batchId: string,
 ): Promise<GrantedCoupon> {
   return request<GrantedCoupon>(`/admin/coupons/${templateId}/grants`, {
     method: 'POST',
-    body: JSON.stringify({ customerIdentityId, note }),
+    body: JSON.stringify({ customerIdentityId, note, batchId }),
   })
 }
 
@@ -138,6 +140,7 @@ export interface BatchGrantCouponResult {
 export function grantCouponsBatch(
   templateId: number,
   payload: {
+    batchId: string
     recipientMode: 'SELECTED' | 'ALL'
     customerIdentityIds: number[]
     note: string

@@ -27,3 +27,7 @@ playwright-report/
 test-results/
 .local-run/
 .local-secrets/
+
+# 上传文件和包管理缓存属于本机运行数据，避免新增内容被误提交。
+backend/storage/
+.pnpm-store/

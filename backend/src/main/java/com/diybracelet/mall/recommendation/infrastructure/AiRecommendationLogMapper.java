@@ -10,7 +10,8 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
-/** Admin recommendation-log persistence with bounded list queries. */
+
+/** AI 推荐日志持久化，列表查询限制返回数量。 */
 @Mapper
 public interface AiRecommendationLogMapper {
 
@@ -50,9 +51,13 @@ public interface AiRecommendationLogMapper {
     @Select("select * from ai_recommendation_log where id = #{id}")
     AiRecommendationLog selectById(@Param("id") long id);
 
+    /** 列表只取摘要字段，完整提示词、候选集和响应 JSON 留到详情再读取。 */
     @Select("""
         <script>
-        select * from ai_recommendation_log
+        select id, trace_id, status, model_name, wish_summary, preference_summary,
+            candidate_count, matched_candidate_count, matched_plan_count,
+            plan_count, attempt_count, duration_ms, error_code, created_at
+        from ai_recommendation_log
         where 1 = 1
         <if test="status != null and status != ''">
           and status = #{status}

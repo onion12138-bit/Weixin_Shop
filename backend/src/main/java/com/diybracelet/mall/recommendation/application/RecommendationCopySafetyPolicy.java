@@ -3,7 +3,8 @@ package com.diybracelet.mall.recommendation.application;
 import java.util.List;
 import java.util.regex.Pattern;
 
-/** Categorized deny-list for deterministic fortune and health claims. */
+
+/** 过滤确定性运势和健康效果承诺，约束推荐文案。 */
 final class RecommendationCopySafetyPolicy {
 
     private static final int FLAGS = Pattern.CASE_INSENSITIVE

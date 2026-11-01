@@ -31,6 +31,9 @@ class PublicCatalogControllerTest extends MySqlIntegrationTest {
     @Autowired
     private ProductPackageMapper productPackageMapper;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
     @Test
     void shouldListVisibleBeadsWithStablePageContract() throws Exception {
         mockMvc.perform(get("/api/public/catalog/beads")
@@ -44,6 +47,45 @@ class PublicCatalogControllerTest extends MySqlIntegrationTest {
                 .andExpect(jsonPath("$.data.total").isNumber())
                 .andExpect(jsonPath("$.data.page").value(1))
                 .andExpect(jsonPath("$.data.size").value(20));
+    }
+
+    @Test
+    @Transactional
+    void shouldExposeOnlyAvailableInventoryInBeadListAndDetail() throws Exception {
+        jdbcTemplate.update("update inventory_balance set available_qty = 23, reserved_qty = 7, sold_qty = 19 where bead_sku_id = 2001");
+        mockMvc.perform(get("/api/public/catalog/beads").queryParam("keyword", "白水晶"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].id").value(2001))
+                .andExpect(jsonPath("$.data.items[0].availableQty").value(23))
+                .andExpect(jsonPath("$.data.items[0].reservedQty").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].soldQty").doesNotExist())
+                .andExpect(jsonPath("$.data.items[0].costPrice").doesNotExist());
+        mockMvc.perform(get("/api/public/catalog/beads/2001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.availableQty").value(23))
+                .andExpect(jsonPath("$.data.reservedQty").doesNotExist())
+                .andExpect(jsonPath("$.data.soldQty").doesNotExist())
+                .andExpect(jsonPath("$.data.costPrice").doesNotExist());
+    }
+
+    @Test
+    @Transactional
+    void shouldTreatMissingInventoryBalanceAsUnavailable() throws Exception {
+        jdbcTemplate.update("delete from inventory_balance where bead_sku_id = 2001");
+        mockMvc.perform(get("/api/public/catalog/beads/2001"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.availableQty").value(0));
+        mockMvc.perform(get("/api/public/catalog/beads").queryParam("keyword", "白水晶"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items[0].availableQty").value(0));
+    }
+
+    @Test
+    @Transactional
+    void shouldExcludeOffSaleBeadsEvenWhenInventoryIsAvailable() throws Exception {
+        jdbcTemplate.update("update bead_sku set status = 'OFF_SALE' where id = 2001");
+        mockMvc.perform(get("/api/public/catalog/beads/2001"))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/public/catalog/beads").queryParam("keyword", "白水晶"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.items").isEmpty());
     }
 
     @Test

@@ -1,6 +1,7 @@
 package com.diybracelet.mall.catalog.application;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.diybracelet.mall.catalog.api.dto.BeadSkuDetail;
 import com.diybracelet.mall.catalog.api.dto.BeadSkuSummary;
 import com.diybracelet.mall.catalog.api.dto.CategorySummary;
@@ -19,6 +20,8 @@ import com.diybracelet.mall.catalog.visual.query.PublishedBeadVisualQuery;
 import com.diybracelet.mall.catalog.api.dto.DiyVisualView;
 import com.diybracelet.mall.file.domain.AssetFile;
 import com.diybracelet.mall.file.infrastructure.AssetFileMapper;
+import com.diybracelet.mall.inventory.domain.InventoryBalance;
+import com.diybracelet.mall.inventory.infrastructure.mapper.InventoryBalanceMapper;
 import com.diybracelet.mall.shared.error.BusinessException;
 import com.diybracelet.mall.shared.error.ErrorCode;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -55,6 +58,7 @@ public class CatalogQueryService {
     private final AssetFileMapper assetFileMapper;
     private final PublishedBeadVisualQuery publishedBeadVisualQuery;
     private final ObjectMapper objectMapper;
+    private final InventoryBalanceMapper inventoryBalanceMapper;
 
     public CatalogQueryService(
             CategoryMapper categoryMapper,
@@ -63,7 +67,8 @@ public class CatalogQueryService {
             PackageItemMapper packageItemMapper,
             AssetFileMapper assetFileMapper,
             PublishedBeadVisualQuery publishedBeadVisualQuery,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            InventoryBalanceMapper inventoryBalanceMapper
     ) {
         this.categoryMapper = categoryMapper;
         this.beadSkuMapper = beadSkuMapper;
@@ -72,6 +77,7 @@ public class CatalogQueryService {
         this.assetFileMapper = assetFileMapper;
         this.publishedBeadVisualQuery = publishedBeadVisualQuery;
         this.objectMapper = objectMapper;
+        this.inventoryBalanceMapper = inventoryBalanceMapper;
     }
 
     /**
@@ -114,9 +120,10 @@ public class CatalogQueryService {
         );
         Map<Long, DiyVisualView> diyVisuals = publishedBeadVisualQuery
                 .resolve(beads);
+        Map<Long, Integer> availableQuantities = loadAvailableQuantities(beads.stream().map(BeadSku::getId).toList());
         List<BeadSkuSummary> items = beads
                 .stream()
-                .map(bead -> toBeadSummary(bead, coverUrls, diyVisuals))
+                .map(bead -> toBeadSummary(bead, coverUrls, diyVisuals, availableQuantities))
                 .toList();
         return new PageResponse<>(items, total, page, size);
     }
@@ -143,7 +150,8 @@ public class CatalogQueryService {
                 bead.getSalePrice(),
                 coverUrl(bead.getCoverAssetId()),
                 parseTags(bead.getTagsJson()),
-                publishedBeadVisualQuery.resolve(List.of(bead)).get(bead.getId())
+                publishedBeadVisualQuery.resolve(List.of(bead)).get(bead.getId()),
+                loadAvailableQuantities(List.of(bead.getId())).getOrDefault(bead.getId(), 0)
         );
     }
 
@@ -218,6 +226,7 @@ public class CatalogQueryService {
         Map<Long, DiyVisualView> diyVisuals = publishedBeadVisualQuery.resolve(
                 new ArrayList<>(beadsById.values())
         );
+        Map<Long, Integer> availableQuantities = loadAvailableQuantities(new ArrayList<>(beadsById.keySet()));
         List<PackageDetail.Item> items = packageItems.stream()
                 .map(item -> new PackageDetail.Item(
                         item.getId(),
@@ -227,7 +236,8 @@ public class CatalogQueryService {
                         toBeadSummary(
                                 requireBead(beadsById, item),
                                 coverUrls,
-                                diyVisuals
+                                diyVisuals,
+                                availableQuantities
                         )
                 ))
                 .toList();
@@ -277,7 +287,8 @@ public class CatalogQueryService {
     private BeadSkuSummary toBeadSummary(
             BeadSku bead,
             Map<Long, String> coverUrls,
-            Map<Long, DiyVisualView> diyVisuals
+            Map<Long, DiyVisualView> diyVisuals,
+            Map<Long, Integer> availableQuantities
     ) {
         return new BeadSkuSummary(
                 bead.getId(),
@@ -290,8 +301,17 @@ public class CatalogQueryService {
                 bead.getSalePrice(),
                 coverUrls.get(bead.getCoverAssetId()),
                 parseTags(bead.getTagsJson()),
-                diyVisuals.get(bead.getId())
+                diyVisuals.get(bead.getId()),
+                availableQuantities.getOrDefault(bead.getId(), 0)
         );
+    }
+
+    /** One inventory read per page, selecting only the public availability field. */
+    private Map<Long, Integer> loadAvailableQuantities(List<Long> beadIds) {
+        if (beadIds.isEmpty()) return Collections.emptyMap();
+        return inventoryBalanceMapper.selectList(new QueryWrapper<InventoryBalance>()
+                        .select("bead_sku_id", "available_qty").in("bead_sku_id", beadIds))
+                .stream().collect(Collectors.toMap(InventoryBalance::getBeadSkuId, InventoryBalance::getAvailableQty));
     }
 
     private PackageSummary toPackageSummary(

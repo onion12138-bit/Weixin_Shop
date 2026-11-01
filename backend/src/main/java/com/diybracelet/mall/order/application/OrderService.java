@@ -4,9 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.diybracelet.mall.catalog.domain.BeadSku;
 import com.diybracelet.mall.catalog.infrastructure.mapper.BeadSkuMapper;
 import com.diybracelet.mall.commerce.application.CommerceRuleService;
-import com.diybracelet.mall.customer.domain.CouponTemplate;
 import com.diybracelet.mall.customer.domain.CustomerCoupon;
-import com.diybracelet.mall.customer.infrastructure.CouponTemplateMapper;
 import com.diybracelet.mall.customer.infrastructure.CustomerCouponMapper;
 import com.diybracelet.mall.diy.domain.DiyDesignCommand;
 import com.diybracelet.mall.diy.domain.DiyEvaluation;
@@ -16,6 +14,8 @@ import com.diybracelet.mall.diy.application.DiyPricingService;
 import com.diybracelet.mall.identity.domain.CustomerIdentityResolver;
 import com.diybracelet.mall.inventory.application.InventoryReservationService;
 import com.diybracelet.mall.order.api.dto.CreateOrderRequest;
+import com.diybracelet.mall.order.api.dto.CheckoutQuoteRequest;
+import com.diybracelet.mall.order.api.dto.CheckoutQuoteResponse;
 import com.diybracelet.mall.order.api.dto.OrderResponse;
 import com.diybracelet.mall.order.domain.CustomerOrder;
 import com.diybracelet.mall.order.domain.FulfillmentTask;
@@ -34,10 +34,18 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.Duration;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -72,10 +80,12 @@ public class OrderService {
     private final FulfillmentTaskMapper fulfillmentMapper;
     private final OrderOperationLogMapper operationMapper;
     private final CustomerCouponMapper customerCouponMapper;
-    private final CouponTemplateMapper couponTemplateMapper;
     private final CommerceRuleService commerceRuleService;
     private final InventoryReservationService inventoryReservationService;
     private final ObjectMapper objectMapper;
+
+    @Value("${app.orders.payment-timeout:PT30M}")
+    private Duration paymentTimeout = Duration.ofMinutes(30);
 
     public OrderService(
             CustomerIdentityResolver identityResolver,
@@ -88,7 +98,6 @@ public class OrderService {
             FulfillmentTaskMapper fulfillmentMapper,
             OrderOperationLogMapper operationMapper,
             CustomerCouponMapper customerCouponMapper,
-            CouponTemplateMapper couponTemplateMapper,
             CommerceRuleService commerceRuleService,
             InventoryReservationService inventoryReservationService,
             ObjectMapper objectMapper
@@ -103,7 +112,6 @@ public class OrderService {
         this.fulfillmentMapper = fulfillmentMapper;
         this.operationMapper = operationMapper;
         this.customerCouponMapper = customerCouponMapper;
-        this.couponTemplateMapper = couponTemplateMapper;
         this.commerceRuleService = commerceRuleService;
         this.inventoryReservationService = inventoryReservationService;
         this.objectMapper = objectMapper;
@@ -112,44 +120,31 @@ public class OrderService {
     /**
      * 基于当前顾客拥有的 DIY 方案创建待支付订单并预占库存。
      */
-    @Transactional
+    @Transactional(isolation = Isolation.REPEATABLE_READ)
     public OrderResponse create(CreateOrderRequest request) {
         Long customerId = identityResolver.requireCustomerIdentityId();
-        DiyScheme scheme = requireOwnedScheme(request.schemeId(), customerId);
-        List<Long> sequence = parseSequence(scheme.getSequenceJson());
-        DiyEvaluation evaluation = pricingService.evaluate(new DiyDesignCommand(
-                scheme.getWristCircumferenceMm(),
-                scheme.getFitType(),
-                scheme.getCordOptionId(),
-                sequence
-        ));
-        if (!evaluation.quotable()) {
-            throw new BusinessException(
-                    ErrorCode.DIY_DESIGN_NOT_QUOTABLE,
-                    "当前方案不可报价，不能下单"
-            );
+        // Serialize same-customer submissions before the first consistent snapshot read.
+        // An already committed result is recovered before the consumed scheme/coupon is read.
+        orderMapper.lockCheckoutCustomer(customerId);
+        String requestHash = sha256(writeJson(request));
+        CustomerOrder existing = orderMapper.selectByCheckoutTokenForUpdate(customerId, request.checkoutToken());
+        if (existing != null) {
+            if (!requestHash.equals(existing.getCheckoutRequestHash())) {
+                throw new BusinessException(ErrorCode.CHECKOUT_TOKEN_CONFLICT, "同一提交标识不能用于不同订单内容");
+            }
+            return toResponse(existing, itemMapper.selectByOrderId(existing.getId()));
         }
-        CommerceRuleService.CheckoutRule checkoutRule =
-                commerceRuleService.checkoutRule();
-        if (evaluation.totalAmount().compareTo(
-                checkoutRule.minimumOrderAmount()
-        ) < 0) {
-            throw new BusinessException(
-                    ErrorCode.COMMON_BAD_REQUEST,
-                    "订单商品金额需满 "
-                            + checkoutRule.minimumOrderAmount()
-                                    .stripTrailingZeros().toPlainString()
-                            + " 元才能下单"
-            );
+        Checkout checkout = prepareCheckout(request.schemeId(), request.couponId(), customerId);
+        if (!checkout.response().quoteFingerprint().equals(request.quoteFingerprint())) {
+            throw new BusinessException(ErrorCode.QUOTE_EXPIRED, "订单价格或方案已变化，请重新确认报价");
         }
-
+        DiyScheme scheme = checkout.scheme();
+        List<Long> sequence = checkout.sequence();
+        DiyEvaluation evaluation = checkout.evaluation();
+        CommerceRuleService.CheckoutRule checkoutRule = checkout.rule();
+        CouponSelection coupon = checkout.coupon();
         Map<Long, Integer> quantities = quantitiesByFirstAppearance(sequence);
         Map<Long, BeadSku> beadsById = loadSellableBeads(quantities);
-        CouponSelection coupon = selectCoupon(
-                request.couponId(),
-                customerId,
-                evaluation.totalAmount()
-        );
         CustomerOrder order = buildOrder(
                 customerId,
                 scheme,
@@ -160,6 +155,12 @@ public class OrderService {
                 coupon,
                 checkoutRule
         );
+        if (paymentTimeout.isNegative() || paymentTimeout.isZero()) {
+            throw new IllegalStateException("app.orders.payment-timeout must be positive");
+        }
+        order.setCheckoutToken(request.checkoutToken());
+        order.setCheckoutRequestHash(requestHash);
+        order.setExpiresAt(Instant.now().plus(paymentTimeout));
         orderMapper.insert(order);
         addOperation(
                 order.getId(), "ORDER_CREATED", "USER", "用户", "提交订单",
@@ -181,16 +182,80 @@ public class OrderService {
         return toResponse(saved, itemMapper.selectByOrderId(order.getId()));
     }
 
+    /** A quote includes the saved design, frozen coupon and current shipping rules. */
+    @Transactional(isolation = Isolation.REPEATABLE_READ)
+    public CheckoutQuoteResponse quote(CheckoutQuoteRequest request) {
+        return prepareCheckout(request.schemeId(), request.couponId(),
+                identityResolver.requireCustomerIdentityId()).response();
+    }
+
+    @Transactional(readOnly = true)
+    public OrderResponse getByCheckoutToken(String token) {
+        CustomerOrder order = orderMapper.selectByCheckoutToken(
+                identityResolver.requireCustomerIdentityId(), token);
+        if (order == null) throw new BusinessException(ErrorCode.COMMON_NOT_FOUND, "尚未找到本次提交的订单");
+        return toResponse(order, itemMapper.selectByOrderId(order.getId()));
+    }
+
+    private Checkout prepareCheckout(Long schemeId, Long couponId, Long customerId) {
+        DiyScheme scheme = requireOwnedScheme(schemeId, customerId);
+        List<Long> sequence = parseSequence(scheme.getSequenceJson());
+        DiyEvaluation evaluation = pricingService.evaluate(new DiyDesignCommand(
+                scheme.getWristCircumferenceMm(), scheme.getFitType(), scheme.getCordOptionId(), sequence));
+        if (!evaluation.quotable()) {
+            throw new BusinessException(ErrorCode.DIY_DESIGN_NOT_QUOTABLE, "当前方案不可报价，不能下单");
+        }
+        CommerceRuleService.CheckoutRule rule = commerceRuleService.checkoutRule();
+        if (evaluation.totalAmount().compareTo(rule.minimumOrderAmount()) < 0) {
+            throw new BusinessException(ErrorCode.COMMON_BAD_REQUEST, "订单商品金额需满 "
+                    + rule.minimumOrderAmount().stripTrailingZeros().toPlainString() + " 元才能下单");
+        }
+        CouponSelection coupon = selectCoupon(couponId, customerId, evaluation.totalAmount());
+        BigDecimal discounted = evaluation.totalAmount().subtract(coupon.discountAmount());
+        BigDecimal shipping = rule.shippingFee(discounted);
+        // Include the entire ordered design and every checkout amount; changes require confirmation.
+        String fingerprint = sha256(writeJson(java.util.Arrays.asList(customerId, schemeId, scheme.getVersion(),
+                scheme.getWristCircumferenceMm(), scheme.getFitType(), scheme.getCordOptionId(), sequence,
+                evaluation.quoteFingerprint(), evaluation.beadAmount(), evaluation.craftFee(), evaluation.cordFee(),
+                couponId, coupon.discountAmount(), rule.minimumOrderAmount(), rule.freeShippingThreshold(),
+                rule.baseShippingFee(), shipping, discounted.add(shipping))));
+        return new Checkout(scheme, sequence, evaluation, rule, coupon,
+                new CheckoutQuoteResponse(fingerprint, scheme.getVersion(), evaluation.beadAmount(), evaluation.craftFee(),
+                        evaluation.cordFee(), coupon.discountAmount(), shipping, discounted.add(shipping)));
+    }
+
+    private record Checkout(DiyScheme scheme, List<Long> sequence, DiyEvaluation evaluation,
+                            CommerceRuleService.CheckoutRule rule, CouponSelection coupon,
+                            CheckoutQuoteResponse response) { }
+
+    private String sha256(String value) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is required", exception);
+        }
+    }
+
     /**
      * 查询当前顾客的订单列表，最新创建的订单排在最前。
      */
     @Transactional(readOnly = true)
     public List<OrderResponse> listOwned() {
         Long customerId = identityResolver.requireCustomerIdentityId();
-        return orderMapper.selectOwnedOrders(customerId).stream()
+        List<CustomerOrder> orders = orderMapper.selectOwnedOrders(customerId);
+        if (orders.isEmpty()) return List.of();
+        // 列表固定读取订单、明细、物流三次，避免订单越多数据库往返越多。
+        Map<Long, List<OrderItem>> itemsByOrder = itemMapper.selectOwnedByCustomer(customerId)
+                .stream().collect(Collectors.groupingBy(OrderItem::getOrderId));
+        Map<Long, FulfillmentTask> fulfillmentByOrder = fulfillmentMapper
+                .selectOwnedByCustomer(customerId).stream()
+                .collect(Collectors.toMap(FulfillmentTask::getOrderId, Function.identity()));
+        return orders.stream()
                 .map(order -> toResponse(
                         order,
-                        itemMapper.selectByOrderId(order.getId())
+                        itemsByOrder.getOrDefault(order.getId(), List.of()),
+                        fulfillmentByOrder.get(order.getId())
                 ))
                 .toList();
     }
@@ -224,6 +289,11 @@ public class OrderService {
     public OrderResponse mockPay(Long orderId) {
         CustomerOrder order = requireOwnedOrderForUpdate(orderId);
         List<OrderItem> items = itemMapper.selectByOrderId(orderId);
+        if ("PAYMENT_TIMEOUT".equals(order.getClosedReason())) return toResponse(order, items);
+        if (isExpired(order)) {
+            closePending(order, items, "PAYMENT_TIMEOUT", "SYSTEM", "系统");
+            return currentResponse(orderId);
+        }
         if (order.getPaidAt() != null
                 && order.getStatus() != OrderStatus.CANCELLED) {
             return toResponse(order, items);
@@ -249,8 +319,8 @@ public class OrderService {
             );
         }
         addOperation(
-                orderId, "PAYMENT_SUCCEEDED", "SYSTEM", "系统",
-                "微信支付成功", paidAt
+                orderId, "MOCK_PAYMENT_SUCCEEDED", "SYSTEM", "系统",
+                "本地模拟支付成功（未接入微信支付）", paidAt
         );
         addOperation(
                 orderId, "BOM_GENERATED", "SYSTEM", "系统",
@@ -276,20 +346,41 @@ public class OrderService {
             );
         }
 
+        closePending(order, items, isExpired(order) ? "PAYMENT_TIMEOUT" : "CUSTOMER_CANCELLED", "USER", "用户");
+        return currentResponse(orderId);
+    }
+
+    public List<Long> expiredOrderIds() {
+        return orderMapper.selectExpiredIds(Instant.now());
+    }
+
+    /** Each scheduler attempt owns its own transaction, sharing the payment/cancel row lock. */
+    @Transactional
+    public boolean closeExpired(Long orderId) {
+        CustomerOrder order = orderMapper.selectByIdForUpdate(orderId);
+        if (order == null || !isExpired(order)) return false;
+        closePending(order, itemMapper.selectByOrderId(orderId), "PAYMENT_TIMEOUT", "SYSTEM", "系统");
+        return true;
+    }
+
+    private boolean isExpired(CustomerOrder order) {
+        return order.getStatus() == OrderStatus.PENDING_PAYMENT && order.getExpiresAt() != null
+                && !order.getExpiresAt().isAfter(Instant.now());
+    }
+
+    private void closePending(CustomerOrder order, List<OrderItem> items, String reason,
+                              String operatorType, String operatorName) {
+        Long orderId = order.getId();
         inventoryReservationService.release(orderId, itemQuantities(items));
         restoreCoupon(order);
         LocalDateTime cancelledAt = LocalDateTime.now();
-        if (orderMapper.markCancelled(orderId, cancelledAt) != 1) {
-            throw new BusinessException(
-                    ErrorCode.COMMON_CONFLICT,
-                    "订单取消状态更新失败"
-            );
+        if (orderMapper.markCancelled(orderId, cancelledAt, reason) != 1) {
+            throw new BusinessException(ErrorCode.COMMON_CONFLICT, "订单取消状态更新失败");
         }
-        addOperation(
-                orderId, "ORDER_CANCELLED", "USER", "用户",
-                "取消订单", cancelledAt
-        );
-        return currentResponse(orderId);
+        boolean expired = "PAYMENT_TIMEOUT".equals(reason);
+        addOperation(orderId, expired ? "ORDER_EXPIRED" : "ORDER_CANCELLED",
+                expired ? "SYSTEM" : operatorType, expired ? "系统" : operatorName,
+                expired ? "支付超时自动关闭，释放库存与可恢复优惠券" : "取消订单", cancelledAt);
     }
 
     /** 顾客确认收货后，后台与小程序同步进入已完成。 */
@@ -402,7 +493,9 @@ public class OrderService {
     }
 
     private DiyScheme requireOwnedScheme(Long schemeId, Long customerId) {
-        DiyScheme scheme = schemeMapper.selectOwnedById(schemeId, customerId);
+        DiyScheme scheme = schemeMapper.selectOne(new LambdaQueryWrapper<DiyScheme>()
+                .eq(DiyScheme::getId, schemeId).eq(DiyScheme::getCustomerIdentityId, customerId)
+                .eq(DiyScheme::getStatus, "ACTIVE").last("for update"));
         if (scheme == null) {
             throw new BusinessException(
                     ErrorCode.COMMON_NOT_FOUND,
@@ -492,8 +585,14 @@ public class OrderService {
             CustomerOrder order,
             List<OrderItem> items
     ) {
-        FulfillmentTask fulfillment =
-                fulfillmentMapper.selectByOrderId(order.getId());
+        return toResponse(order, items, fulfillmentMapper.selectByOrderId(order.getId()));
+    }
+
+    private OrderResponse toResponse(
+            CustomerOrder order,
+            List<OrderItem> items,
+            FulfillmentTask fulfillment
+    ) {
         return new OrderResponse(
                 order.getId(),
                 order.getOrderNo(),
@@ -523,7 +622,10 @@ public class OrderService {
                 order.getShippedAt(),
                 order.getCompletedAt(),
                 order.getCreatedAt(),
-                order.getUpdatedAt()
+                order.getUpdatedAt(),
+                order.getExpiresAt(),
+                order.getClosedReason(),
+                Instant.now()
         );
     }
 
@@ -589,23 +691,12 @@ public class OrderService {
             );
         }
         if (!customerCoupon.getExpiresAt().isAfter(LocalDateTime.now())) {
-            customerCoupon.setStatus("EXPIRED");
-            customerCouponMapper.updateById(customerCoupon);
             throw new BusinessException(
                     ErrorCode.COMMON_CONFLICT,
                     "优惠券已过期"
             );
         }
-        CouponTemplate template = couponTemplateMapper.selectById(
-                customerCoupon.getCouponTemplateId()
-        );
-        if (template == null) {
-            throw new BusinessException(
-                    ErrorCode.COMMON_NOT_FOUND,
-                    "优惠券模板不存在"
-            );
-        }
-        if (orderAmount.compareTo(template.getMinimumSpend()) < 0) {
+        if (orderAmount.compareTo(customerCoupon.getMinimumSpend()) < 0) {
             throw new BusinessException(
                     ErrorCode.COMMON_CONFLICT,
                     "订单金额未达到优惠券使用门槛"
@@ -613,7 +704,7 @@ public class OrderService {
         }
         return new CouponSelection(
                 customerCoupon,
-                template.getDiscountAmount().min(orderAmount)
+                customerCoupon.getDiscountAmount().min(orderAmount)
         );
     }
 

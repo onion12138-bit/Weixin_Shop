@@ -1,3 +1,4 @@
+/** 按珠子尺寸及可用画布计算环形位置，供画布渲染和点击命中检测共用。 */
 import type {
   BeadLayoutPoint,
   BeadSequence,

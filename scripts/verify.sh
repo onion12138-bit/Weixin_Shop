@@ -30,6 +30,8 @@ echo "[3/4] 小程序类型检查与逻辑测试"
 (cd "${project_root}/miniprogram" && run_node_script typecheck && run_node_script test)
 
 echo "[4/4] 冒烟脚本静态契约"
+bash "${project_root}/scripts/start-local.test.sh"
+bash "${project_root}/scripts/demo-assets.test.sh"
 bash -n "${project_root}/scripts/diy-visual-smoke.sh"
 grep -Fq '/visuals/manual' "${project_root}/scripts/diy-visual-smoke.sh"
 grep -Fq '/publish' "${project_root}/scripts/diy-visual-smoke.sh"

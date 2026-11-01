@@ -1,3 +1,4 @@
+// 统一交易规则接口，版本号从服务端读取并供页面展示。
 import { request } from './http'
 
 export interface CommerceRule {

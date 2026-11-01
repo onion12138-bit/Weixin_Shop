@@ -1,3 +1,4 @@
+/** 按渲染计划绘制绳线、珠子及阴影，素材未就绪时使用颜色占位。 */
 import type {
   BeadRenderItem,
   BraceletRenderPlan,

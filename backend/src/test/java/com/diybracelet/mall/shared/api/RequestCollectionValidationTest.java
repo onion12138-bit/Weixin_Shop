@@ -27,7 +27,7 @@ class RequestCollectionValidationTest {
                 new SaveCraftFeeRulesRequest(Collections.singletonList(null)),
                 new SavePackageRequest("PACKAGE-1", "手串", "说明", BigDecimal.TEN,
                         null, CatalogStatus.DRAFT, Collections.singletonList(null)),
-                new BatchGrantCouponRequest("SELECTED", Collections.singletonList(null), null)
+                new BatchGrantCouponRequest("test-batch-1234567890", "SELECTED", Collections.singletonList(null), null)
         );
         try (var factory = Validation.buildDefaultValidatorFactory()) {
             var validator = factory.getValidator();

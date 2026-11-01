@@ -67,15 +67,13 @@ describe('order checkout view model', () => {
     expect(shippingFeeCents(6800, 0, 6000, 800)).toBe(0)
   })
 
-  it('enforces the configurable minimum at every checkout entry and displays shipping', () => {
+  it('keeps minimum hints at editor entries and displays authoritative shipping at checkout', () => {
     const editor = readFileSync('miniprogram/pages/diy/editor.ts', 'utf8')
     const schemes = readFileSync('miniprogram/pages/diy/schemes.ts', 'utf8')
-    const confirm = readFileSync('miniprogram/pages/order/confirm.ts', 'utf8')
     const markup = readFileSync('miniprogram/pages/order/confirm.wxml', 'utf8')
 
     expect(editor).toMatch(/goCheckout\(\)[\s\S]*minimumOrderAmountCents/)
     expect(schemes).toMatch(/createOrder\([\s\S]*minimumOrderAmountCents/)
-    expect(confirm).toMatch(/submitOrder\(\)[\s\S]*minimumOrderCents/)
     expect(markup).toContain('{{shippingFeeText}}')
     expect(markup).toContain('{{shippingHint}}')
   })

@@ -1,6 +1,6 @@
 # API 接口文档
 
-最后更新：2026-08-08
+最后更新：2026-10-23
 
 默认后端：`http://localhost:8081`。
 
@@ -58,7 +58,7 @@
 | GET | `/api/public/catalog/packages` | `page size` | 已上架套餐分页 |
 | GET | `/api/public/catalog/packages/{id}` | 无 | 套餐及有序明细 |
 
-公共 DTO 返回 `coverUrl`，不会返回 `costPrice`、本地文件路径或草稿商品。
+公共 DTO 返回 `coverUrl`；公开散珠列表、详情以及套餐嵌套散珠返回 `availableQty`（当前可用库存），只作选材提示，不预留库存，下单时仍在事务中重新校验和预占。不会返回 `costPrice`、本地文件路径或草稿商品。
 
 ## 4. 管理商品目录
 
@@ -232,26 +232,67 @@
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/api/app/orders` | 基于本人 DIY 方案创建待支付订单并预占库存，成功返回 201 |
+| POST | `/api/app/orders/quote` | 获取含优惠券和运费的结算报价与报价指纹 |
+| POST | `/api/app/orders` | 基于本人方案、报价指纹和提交令牌创建待支付订单并预占库存，成功返回 201 |
+| GET | `/api/app/orders/by-checkout-token/{token}` | 按当前顾客的提交令牌找回订单 |
 | GET | `/api/app/orders` | 当前顾客订单列表，按创建时间倒序 |
 | GET | `/api/app/orders/{id}` | 当前顾客订单详情与 SKU 聚合明细 |
 | POST | `/api/app/orders/{id}/mock-pay` | 本地模拟支付；重复调用幂等 |
 | POST | `/api/app/orders/{id}/cancel` | 取消待支付订单并释放预占库存 |
 | POST | `/api/app/orders/{id}/confirm-receipt` | 顾客确认收货，`SHIPPED → COMPLETED` |
 
-创建订单请求：
+先获取结算报价（与 `/api/app/diy/quotes` 的设计报价不同，结算报价包含券及运费）：
+
+```json
+{"schemeId":123,"couponId":456}
+```
+
+响应 `data`：
+
+```json
+{
+  "schemeVersion": 3,
+  "quoteFingerprint": "返回的64位小写十六进制指纹",
+  "beadAmount": 40.00,
+  "craftFee": 10.00,
+  "cordFee": 0.00,
+  "discountAmount": 5.00,
+  "shippingFee": 8.00,
+  "totalAmount": 53.00
+}
+```
+
+`couponId` 可省略。报价校验最低起订金额、方案可报价性及本人优惠券使用条件；不预占库存，也不承诺报价后库存仍可用。`schemeVersion` 是本次报价读取的方案版本，并参与指纹计算。客户端必须与展示方案的 `version` 比对；不一致时重读设计、刷新预览和珠子摘要，并要求用户确认新设计，不能把新指纹配旧设计直接提交。
+
+创建订单请求（`quoteFingerprint` 必须原样使用上一步的真实返回值）：
 
 ```json
 {
   "schemeId": 123,
   "couponId": 456,
+  "checkoutToken": "550e8400-e29b-41d4-a716-446655440000",
+  "quoteFingerprint": "请替换为上一步返回的64位小写十六进制指纹",
   "contactName": "张三",
   "contactPhone": "13800000000",
   "addressDetail": "上海市浦东新区演示路 1 号"
 }
 ```
 
-`couponId` 可省略。创建订单时不接收前端金额。后端重新读取方案、SKU、价格、配置和顾客优惠券完成权威结算，并在同一事务内写入订单、明细、优惠金额、优惠券核销状态和库存预占。取消待支付订单时会退回优惠券，之后可以再次使用。库存不足返回 HTTP 409 与业务码 `INVENTORY_INSUFFICIENT`。
+`checkoutToken` 必填，格式为 `[A-Za-z0-9_-]{16,80}`，建议安全随机 UUID；它用于去重，不替代顾客 JWT。`quoteFingerprint` 必填且为 64 位小写十六进制。后端不接收前端金额，而是重新读取当前方案、SKU、配置和顾客券冻结规则，在同一事务内保存订单快照、金额、券核销与库存预占。创建成功会软删除来源方案，因此响应丢失后应使用令牌找回，不能重新保存一份方案后另下单。
+
+同一顾客、同一令牌、相同请求返回原订单；同令牌更改方案、收货信息、券或报价指纹返回 HTTP 409 + `CHECKOUT_TOKEN_CONFLICT`。报价或相关规则变化返回 HTTP 409 + `QUOTE_EXPIRED`，不创建订单；客户端重新报价、展示变化并明确再次确认后，使用新令牌提交。库存不足为 HTTP 409 + `INVENTORY_INSUFFICIENT`。低于最低起订金额为 HTTP 400 + `COMMON_BAD_REQUEST`。
+
+找回接口只查询当前顾客；不存在或令牌属于另一顾客均为 HTTP 404 + `COMMON_NOT_FOUND`。超时、网络失败或未知服务端错误不是“未创建”：小程序在发送前持久保存完整请求，重新进入先查结果，确认为未找到后也只复用原令牌和原参数重试。未确认结果前锁定地址和券，防止改参数误发另一单。
+
+创建、列表、详情、找回与动作响应的订单均增加：
+
+| 字段 | 说明 |
+| --- | --- |
+| `expiresAt` | 支付截止时间，ISO 8601 UTC，如 `2026-10-23T02:30:00Z`；历史非待支付单可为 `null` |
+| `serverTime` | 当前服务端时间，ISO 8601 UTC；客户端据此校准倒计时 |
+| `closedReason` | `PAYMENT_TIMEOUT`、`CUSTOMER_CANCELLED`、`ADMIN_CANCELLED`，未关闭或历史未记录时为 `null` |
+
+新增待支付订单默认 30 分钟到期，可由 `app.orders.payment-timeout` 配置；默认每 30 秒扫描到期订单，每批最多 100 单、每单独立事务。支付、取消和自动关闭共用订单行锁，重复扫描不重复归还库存或券。关闭后为 `CANCELLED`；仍为 `USED` 的券恢复到可用或已过期状态，已撤销或已过期的券不会复活。小程序到期停止支付入口并刷新结果，最终状态以后端为准。历史待支付单在 V18 迁移时统一获得 30 分钟宽限。
 
 ### 8.2 管理后台订单
 
@@ -262,7 +303,7 @@
 | GET | `/api/admin/orders` | 分页查询订单；支持订单号、收件人、手机号、状态、日期、金额、支付方式和排序筛选 |
 | GET | `/api/admin/orders/statistics` | 按当前筛选条件统计各订单状态数量 |
 | GET | `/api/admin/orders/{id}` | 订单、顾客收货信息、商品方案、BOM、支付、履约和操作记录详情 |
-| POST | `/api/admin/orders/{id}/remind-payment` | 记录待付款提醒操作 |
+| POST | `/api/admin/orders/{id}/remind-payment` | 仅记录付款提醒操作，未接入消息发送 |
 | POST | `/api/admin/orders/{id}/complete-production` | `IN_PRODUCTION → PENDING_SHIPMENT` |
 | POST | `/api/admin/orders/{id}/ship` | `PENDING_SHIPMENT → SHIPPED`，保存物流信息 |
 | POST | `/api/admin/orders/{id}/complete` | `SHIPPED → COMPLETED` |
@@ -282,10 +323,11 @@
 
 ### 8.3 模拟支付边界
 
-- 当前支付记录渠道兼容本地 `MOCK`/微信演示标识，不会调用真实微信支付或产生真实扣款。
+- 新模拟支付记录使用渠道 `MOCK` 和操作类型 `MOCK_PAYMENT_SUCCEEDED`，不会调用真实微信支付或产生真实扣款；后台 `WECHAT` 筛选为预留渠道，不包含 `MOCK` 订单。
 - 支付成功创建唯一 `payment_record` 和唯一 `fulfillment_task`。
 - 支付成功后订单与履约任务直接进入 `IN_PRODUCTION`。
 - 同一订单重复模拟支付直接返回当前已支付订单，不重复扣库存。
+- 待支付订单已经到期时，模拟支付接口在事务内关闭订单并返回 `CANCELLED/PAYMENT_TIMEOUT`，不产生支付记录；客户端必须按响应状态展示，不能仅凭 HTTP 成功提示支付成功。
 - 后续接微信支付时应保持订单、库存和幂等语义不变，通过支付网关适配器接入下单与回调。
 
 ## 9. DeepSeek 配置与多套推荐
@@ -419,7 +461,7 @@ Provider 固定为 `DEEPSEEK`，Base URL 只接受 DeepSeek 官方 HTTPS origin�
 
 `trayUrl` 与 `canvasUrl` 可独立读取；客户端分别降级到 `coverUrl`，再降级为颜色占位。
 
-## 12. 管理端顾客地址与批量发券
+## 12. 顾客地址、优惠券与可靠发放
 
 以下接口均需要管理员 JWT：
 
@@ -429,16 +471,38 @@ Provider 固定为 `DEEPSEEK`，Base URL 只接受 DeepSeek 官方 HTTPS origin�
 | GET | `/api/admin/customers/search?phone={keyword}&limit=50` | 按手机号片段服务端模糊搜索顾客，最多返回 100 位 |
 | GET | `/api/admin/customer-addresses?customerIdentityId={id}&status={status}` | 查询指定顾客的多个地址，可选 `ACTIVE/DELETED` 状态 |
 | PATCH | `/api/admin/customer-addresses/{id}/status` | 停用或恢复地址 |
-| POST | `/api/admin/coupons/{templateId}/grants/batch` | 向多选顾客或全部有效顾客发送优惠券 |
+| GET/POST | `/api/admin/coupons` | 查询/创建优惠券模板 |
+| PUT | `/api/admin/coupons/{templateId}` | 修改模板；只影响后续新发券 |
+| POST | `/api/admin/coupons/{templateId}/grants` | 向一位有效顾客发券，必须提交批次标识 |
+| POST | `/api/admin/coupons/{templateId}/grants/batch` | 向多选顾客或全部有效顾客发送优惠券，必须提交批次标识 |
 
 多选发送请求：
 
 ```json
 {
+  "batchId": "850e8400-e29b-41d4-a716-446655440000",
   "recipientMode": "SELECTED",
   "customerIdentityIds": [12, 15, 18],
   "note": "客服关怀"
 }
 ```
 
-全量发送将 `recipientMode` 改为 `ALL`，`customerIdentityIds` 传空数组。服务端按 500 条一批写入，响应返回 `requestedCount`、`grantedCount` 和 `skippedCount`；多选模式会去重并跳过不存在或已停用的顾客。
+单人接口请求为 `{"batchId":"850e8400-e29b-41d4-a716-446655440001","customerIdentityId":12,"note":"客服关怀"}`，返回该张 `CustomerCouponView`。两个发券接口成功均返回 201。
+
+`batchId` 必填，格式为 `[A-Za-z0-9_-]{16,80}`。全量模式为 `ALL`，`customerIdentityIds` 必须为空或省略；多选模式为 `SELECTED`，原始列表最多 5000 项，去重、排序后跳过不存在或停用的顾客。批量响应返回 `requestedCount/grantedCount/skippedCount`，服务端每 500 条执行一次插入，但整次发券与批次结果在同一事务中提交，失败整批回滚。
+
+批次标识全局唯一。同批次、相同模板/模式/顾客集合/备注重试直接返回已完成结果，不再发券；全量模式也不因新增顾客而扩大原批次。相同批次改参数返回 HTTP 409 + `COUPON_BATCH_CONFLICT`。名单顺序和重复项不影响请求身份；备注按去除首尾空白后比较。模板后来停发也不妨碍找回原批次结果，只有真正的新发放才要求模板 `ACTIVE`。后台在发请求前将批次与参数保存在当前浏览器会话，未知结果时锁定范围和备注，使用原批次重试确认。
+
+发券时冻结编码、名称、说明、优惠金额、最低消费与到期时间；改模板价格、门槛、有效天数或停发不会改写已发权益。旧券在 V19 迁移时按当时模板回填，数据库 `snapshot_source=MIGRATED_CURRENT_TEMPLATE`，不代表原发券时的规则；新券为 `ISSUED_SNAPSHOT`。该来源是数据库审计字段，当前顾客券响应未新增 `snapshotSource` 字段。
+
+小程序账户接口均要求顾客 JWT：
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET/PUT | `/api/app/profile` | 读取/保存本人资料 |
+| GET/POST | `/api/app/addresses` | 本人有效地址列表/新增地址 |
+| PUT/DELETE | `/api/app/addresses/{id}` | 编辑/软删除本人地址 |
+| PUT | `/api/app/addresses/{id}/default` | 单独设置默认地址 |
+| GET | `/api/app/coupons` | 查询本人券，名称、金额和门槛读取发券快照 |
+
+结算页“本单使用”只在本机记录选择并提交收货信息快照，不调用设置默认地址接口。地址和券各有独立失败提示与重试；请求失败不会被显示为“没有地址/没有优惠券”。

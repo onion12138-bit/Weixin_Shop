@@ -12,6 +12,8 @@ export interface PublicBead {
   color: string
   diameterMm: number
   salePrice: number
+  /** Current read-only availability; absent on older responses. Never an inventory reservation. */
+  availableQty?: number
   coverUrl: string | null
   diyVisual: DiyVisual | null
   tags: string[]

@@ -1,3 +1,4 @@
+// 集中封装 AI 配置与日志接口；密钥明文仅在显式查看时请求。
 import { request } from './http'
 
 export interface AiConfiguration {

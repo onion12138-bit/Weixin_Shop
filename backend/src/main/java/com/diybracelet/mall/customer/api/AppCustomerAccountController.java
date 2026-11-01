@@ -23,6 +23,8 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.UUID;
 
+
+/** 当前顾客维护个人资料和收货地址的接口。 */
 @Validated
 @RestController
 @RequestMapping("/api/app")

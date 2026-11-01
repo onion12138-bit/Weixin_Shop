@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// 页码始终限制在有效范围，数据总数减少时同步修正当前页。
 import { computed, ref, watch } from 'vue'
 
 const props = withDefaults(defineProps<{

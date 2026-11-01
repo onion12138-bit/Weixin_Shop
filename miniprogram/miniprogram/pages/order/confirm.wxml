@@ -1,4 +1,8 @@
 <view class="order-page">
+  <view wx:if="{{!loading && !scheme && (recoveryPending || createdOrderId)}}" class="section-card">
+    <text>{{errorMessage || '发现上次提交记录，请先找回订单结果。'}}</text>
+    <button loading="{{submitting}}" disabled="{{submitting}}" bindtap="submitOrder">{{createdOrderId ? '查看订单' : '找回或重试提交'}}</button>
+  </view>
   <view wx:if="{{loading}}" class="page-state">正在准备订单…</view>
   <view wx:elif="{{errorMessage && !scheme}}" class="page-state error-state">
     <text>{{errorMessage}}</text>
@@ -9,8 +13,10 @@
     <view class="section-card address-section">
       <view class="section-heading">
         <text>收货地址</text>
-        <button bindtap="openAddresses">{{address ? '修改' : '添加地址'}}</button>
+        <button disabled="{{submitting || createdOrderId || recoveryPending}}" bindtap="openAddresses">{{address ? '选择地址' : '添加地址'}}</button>
       </view>
+      <view wx:if="{{addressLoading}}" class="inline-error">正在加载地址…</view>
+      <view wx:elif="{{addressError}}" class="inline-error">{{addressError}}<button bindtap="refreshAddress">重试加载地址</button></view>
       <view wx:if="{{address}}" class="address-ticket">
         <image src="/assets/images/profile/address.webp" mode="aspectFit" />
         <view class="address-copy">
@@ -19,7 +25,7 @@
         </view>
         <image class="row-arrow" src="/assets/icons/home/arrow-right-s-line.svg" mode="aspectFit" />
       </view>
-      <button wx:else class="empty-address" bindtap="openAddresses">添加常用收货地址</button>
+      <button wx:elif="{{addressLoaded && !addressError && !addressLoading}}" class="empty-address" bindtap="openAddresses">添加常用收货地址</button>
     </view>
 
     <view class="section-card product-section">
@@ -49,10 +55,12 @@
         <text>选择优惠券</text>
         <text>{{selectedCouponName}}</text>
       </view>
-      <text class="coupon-value">{{discountCents ? discountText : coupons.length + ' 张可查看'}}</text>
+      <text class="coupon-value">{{couponLoading ? '加载中' : couponError ? '加载失败 · 点击重试' : discountCents ? discountText : coupons.length + ' 张可查看'}}</text>
       <image class="row-arrow" src="/assets/icons/home/arrow-right-s-line.svg" mode="aspectFit" />
     </view>
 
+    <view wx:if="{{quoteLoading}}" class="inline-error">正在获取最新结算报价…</view>
+    <view wx:elif="{{quoteError}}" class="inline-error">{{quoteError}}<button bindtap="refreshQuote">重试报价</button></view>
     <view class="section-card amount-section">
       <view><text>商品金额</text><text>{{productTotalText}}</text></view>
       <view><text>优惠券抵扣</text><text class="discount-value">{{discountText}}</text></view>
@@ -61,6 +69,14 @@
       <view class="amount-total"><text>应付金额</text><text>{{payableText}}</text></view>
     </view>
 
+    <view wx:if="{{recoveryPending}}" class="inline-error">上次提交结果待确认，原请求已保存。请先找回结果后再修改地址或优惠券。</view>
+    <view wx:if="{{quoteChanges.length}}" class="section-card amount-section">
+      <view class="section-heading"><text>结算金额变化</text></view>
+      <view wx:for="{{quoteChanges}}" wx:key="label"><text>{{item.label}}</text><text>{{item.before}} → {{item.after}}</text></view>
+      <text class="shipping-hint">请核对变化后重新确认提交</text>
+    </view>
+    <view wx:if="{{designNeedsConfirmation}}" class="inline-error">方案设计已更新，请核对预览、珠子和金额并重新确认。</view>
+    <view wx:if="{{quoteNeedsConfirmation && !designNeedsConfirmation && !quoteChanges.length}}" class="inline-error">结算规则已更新，请重新确认。</view>
     <view wx:if="{{errorMessage}}" class="inline-error">{{errorMessage}}</view>
 
     <view class="checkout-bar">
@@ -68,7 +84,7 @@
         <text>{{savedText}}</text>
         <view><text>合计</text><text class="strong-text">{{payableText}}</text></view>
       </view>
-      <button loading="{{submitting}}" disabled="{{submitting}}" bindtap="submitOrder">提交订单</button>
+      <button loading="{{submitting}}" disabled="{{submitting || (!createdOrderId && !recoveryPending && (quoteLoading || !quote || addressLoading || addressError))}}" bindtap="submitOrder">{{createdOrderId ? '查看订单' : recoveryPending ? '找回或重试提交' : designNeedsConfirmation ? '确认新设计并提交' : quoteNeedsConfirmation ? '确认新报价并提交' : '提交订单'}}</button>
     </view>
   </block>
 
@@ -80,6 +96,8 @@
         <button bindtap="closeCouponModal">关闭</button>
       </view>
       <scroll-view scroll-y class="coupon-scroll">
+        <view wx:if="{{couponLoading}}" class="empty-coupons">正在加载优惠券…</view>
+        <view wx:elif="{{couponError}}" class="inline-error">{{couponError}}<button bindtap="refreshCoupons">重试加载优惠券</button></view>
         <view class="coupon-option no-coupon" data-id="0" bindtap="selectCoupon">
           <view><text>暂不使用优惠券</text><text>按商品原价结算</text></view>
           <radio checked="{{selectedCouponId === 0}}" color="#a74d70" />
@@ -92,7 +110,7 @@
             <radio checked="{{item.selected}}" color="#a74d70" />
           </view>
         </view>
-        <view wx:if="{{!coupons.length}}" class="empty-coupons">暂时没有优惠券</view>
+        <view wx:if="{{couponsLoaded && !couponLoading && !couponError && !coupons.length}}" class="empty-coupons">暂时没有优惠券</view>
       </scroll-view>
     </view>
   </view>

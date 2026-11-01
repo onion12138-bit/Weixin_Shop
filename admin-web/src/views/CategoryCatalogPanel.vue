@@ -100,6 +100,7 @@ function openEdit(category: Category): void {
  * 分类 slug 是公共接口和后续运营链接的稳定标识，编辑时不由名称自动覆盖。
  */
 async function submit(): Promise<void> {
+  if (saving.value) return
   saving.value = true
   errorMessage.value = ''
   successMessage.value = ''

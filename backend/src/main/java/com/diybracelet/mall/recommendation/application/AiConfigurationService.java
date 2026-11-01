@@ -15,7 +15,8 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Maintains the singleton AI configuration and its explicit admin-only reveal flow. */
+
+/** 维护 AI 单例配置，密钥仅在管理员主动查看时解密返回。 */
 @Service
 public class AiConfigurationService {
 

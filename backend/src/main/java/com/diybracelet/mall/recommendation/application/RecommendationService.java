@@ -26,7 +26,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 
-/** Builds birthday-derived, inventory-backed material recommendations without pricing. */
+/** 基于生日偏好和实时库存生成推荐，定价由 DIY 服务独立负责。 */
 @Service
 public class RecommendationService {
 
@@ -54,17 +54,20 @@ public class RecommendationService {
     private final RecommendationCandidateMapper candidateMapper;
     private final AiModelGateway modelGateway;
     private final AiRecommendationLogService logService;
+    private final RecommendationConcurrencyGuard concurrencyGuard;
 
     public RecommendationService(
             AiModelConfigMapper configMapper,
             RecommendationCandidateMapper candidateMapper,
             AiModelGateway modelGateway,
-            AiRecommendationLogService logService
+            AiRecommendationLogService logService,
+            RecommendationConcurrencyGuard concurrencyGuard
     ) {
         this.configMapper = configMapper;
         this.candidateMapper = candidateMapper;
         this.modelGateway = modelGateway;
         this.logService = logService;
+        this.concurrencyGuard = concurrencyGuard;
     }
 
     public RecommendationStatusResponse status() {
@@ -96,6 +99,13 @@ public class RecommendationService {
 
     /** Runs a recommendation and reuses its persisted trace in the HTTP response. */
     public RecommendationExecution recommendWithTrace(RecommendationRequest request) {
+        // 在日志和上游调用之前限流；所有退出路径都自动释放并发名额。
+        try (var lease = concurrencyGuard.acquire()) {
+            return executeRecommendation(request);
+        }
+    }
+
+    private RecommendationExecution executeRecommendation(RecommendationRequest request) {
         String traceId = UUID.randomUUID().toString();
         long startedAt = System.nanoTime();
         long logId = logService.start(traceId, request);

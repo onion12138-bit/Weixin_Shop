@@ -94,7 +94,13 @@ declare const wx: {
 
   removeStorageSync(key: string): void
 
-  getRandomValues?(array: Uint8Array): Uint8Array
+  getUserCryptoManager?(): {
+    getRandomValues(options: {
+      length: number
+      success(result: { randomValues: ArrayBuffer }): void
+      fail(error: { errMsg: string }): void
+    }): void
+  }
 
   navigateTo(options: {
     url: string
@@ -107,6 +113,8 @@ declare const wx: {
     success?(): void
     fail?(error: { errMsg: string }): void
   }): void
+
+  navigateBack(options?: { delta?: number; fail?(error: { errMsg: string }): void }): void
 
   stopPullDownRefresh(): void
 

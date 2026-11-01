@@ -4,6 +4,7 @@ import com.diybracelet.mall.order.domain.OrderStatus;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 /**
@@ -31,7 +32,10 @@ public record OrderResponse(
         LocalDateTime shippedAt,
         LocalDateTime completedAt,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        Instant expiresAt,
+        String closedReason,
+        Instant serverTime
 ) {
 
     /**

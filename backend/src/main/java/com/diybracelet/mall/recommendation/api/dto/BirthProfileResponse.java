@@ -1,6 +1,6 @@
 package com.diybracelet.mall.recommendation.api.dto;
 
-/** Server-derived birthday profile displayed before a recommendation is submitted. */
+/** 服务端根据生日计算的展示信息。 */
 public record BirthProfileResponse(
     String birthDate,
     String constellation,

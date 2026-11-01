@@ -132,6 +132,9 @@ public final class CustomerDtos {
     ) { }
 
     public record GrantCouponRequest(
+            @NotBlank(message = "发券批次不能为空")
+            @Pattern(regexp = "[A-Za-z0-9_-]{16,80}", message = "发券批次格式不正确")
+            String batchId,
             @NotNull(message = "顾客不能为空")
             @Positive(message = "顾客主键必须大于零")
             Long customerIdentityId,
@@ -140,6 +143,9 @@ public final class CustomerDtos {
     ) { }
 
     public record BatchGrantCouponRequest(
+            @NotBlank(message = "发券批次不能为空")
+            @Pattern(regexp = "[A-Za-z0-9_-]{16,80}", message = "发券批次格式不正确")
+            String batchId,
             @NotBlank(message = "发送范围不能为空")
             String recipientMode,
             @Size(max = 5000, message = "单次最多选择 5000 位顾客")

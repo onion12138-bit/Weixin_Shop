@@ -29,6 +29,8 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+
+/** 维护顾客资料和收货地址，并在事务内保持默认地址唯一。 */
 @Service
 public class CustomerAccountService {
     private static final String ACTIVE = "ACTIVE";

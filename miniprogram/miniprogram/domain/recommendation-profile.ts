@@ -1,3 +1,4 @@
+/** 定义推荐问卷、选择范围及草稿校验规则，避免不完整推荐直接进入编辑器。 */
 export type RecommendationFitType = 'SNUG' | 'STANDARD' | 'LOOSE'
 
 export const WISH_INSPIRATION_OPTIONS = [

@@ -27,8 +27,8 @@ require_minimum_major() {
 
 require_command java "安装 JDK 17 并执行 source ./scripts/project-env.sh"
 require_command mvn "确认项目根目录存在 apache-maven-3.9.16 并加载项目环境"
-require_command node "安装 Node.js 20+"
-require_command pnpm "安装 pnpm 9+"
+require_command node "安装 Node.js 24 LTS，或至少 22.13 的 Node.js 22"
+require_command pnpm "通过 corepack 启用项目锁定的 pnpm 11.7.0"
 require_command docker "启动 Docker Desktop 并加载项目环境"
 
 if command -v java >/dev/null 2>&1; then
@@ -42,13 +42,16 @@ if command -v mvn >/dev/null 2>&1; then
 fi
 
 if command -v node >/dev/null 2>&1; then
-  node_major="$(node -p 'process.versions.node.split(".")[0]')"
-  require_minimum_major "Node.js" "${node_major}" 20
+  # 与前端 engines 保持一致：Node 23 不受测试工具支持，不能仅判断主版本下限。
+  if ! node -e 'const [major, minor] = process.versions.node.split(".").map(Number); process.exit((major === 22 && minor >= 13) || major >= 24 ? 0 : 1)'; then
+    echo "Node.js 版本不兼容，请使用 24 LTS 或 >=22.13 的 22.x。" >&2
+    failures=$((failures + 1))
+  fi
 fi
 
 if command -v pnpm >/dev/null 2>&1; then
   pnpm_major="$(pnpm --version | awk -F '.' '{print $1}')"
-  require_minimum_major "pnpm" "${pnpm_major}" 9
+  require_minimum_major "pnpm" "${pnpm_major}" 11
 fi
 
 if command -v docker >/dev/null 2>&1; then

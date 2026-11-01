@@ -1,3 +1,5 @@
+/** 展示商品或套餐详情，并把选中商品带入 DIY 编辑流程。 */
+import { navigateOnce, resetNavigation } from '../../utils/navigation'
 import {
   getBead,
   getPackage,
@@ -18,6 +20,10 @@ Page({
     bead: null as ReturnType<typeof toBeadCard> | null,
     packageCard: null as ReturnType<typeof toPackageCard> | null,
     packageDetail: null as PublicPackageDetail | null,
+  },
+
+  onShow() {
+    resetNavigation(this)
   },
 
   onLoad(options: Record<string, string>) {
@@ -60,7 +66,7 @@ Page({
     const parameter = this.data.type === 'package'
       ? `packageId=${this.data.id}`
       : `skuId=${this.data.id}`
-    wx.navigateTo({
+    navigateOnce(this, {
       url: `/pages/diy/editor?${parameter}`,
     })
   },

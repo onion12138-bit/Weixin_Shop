@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// 按当前登录状态切换工作台；菜单切换销毁旧页面，释放敏感页面数据。
 import { ref, watch } from 'vue'
 import { useAuthStore } from './stores/auth'
 import AiConfigurationView from './views/AiConfigurationView.vue'

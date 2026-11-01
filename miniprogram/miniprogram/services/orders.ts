@@ -12,6 +12,8 @@ export type OrderStatus =
 
 export interface CreateOrderPayload {
   schemeId: number
+  checkoutToken: string
+  quoteFingerprint: string
   contactName: string
   contactPhone: string
   addressDetail: string
@@ -50,6 +52,9 @@ export interface OrderResponse {
   completedAt: string | null
   createdAt: string
   updatedAt: string
+  expiresAt?: string | null
+  closedReason?: string | null
+  serverTime?: string
 }
 
 /** 创建待支付订单，价格由后端重新计算。 */
@@ -91,4 +96,25 @@ export function confirmOrderReceipt(id: number): Promise<OrderResponse> {
   return request<OrderResponse>(`/app/orders/${id}/confirm-receipt`, {
     method: 'POST',
   })
+}
+
+export interface OrderQuote {
+  schemeVersion: number
+  quoteFingerprint: string
+  beadAmount: number
+  craftFee: number
+  cordFee: number
+  discountAmount: number
+  shippingFee: number
+  totalAmount: number
+}
+
+export function getOrderQuote(schemeId: number, couponId?: number): Promise<OrderQuote> {
+  return request<OrderQuote>('/app/orders/quote', {
+    method: 'POST', data: { schemeId, couponId },
+  })
+}
+
+export function findOrderByCheckoutToken(token: string): Promise<OrderResponse> {
+  return request<OrderResponse>(`/app/orders/by-checkout-token/${encodeURIComponent(token)}`)
 }

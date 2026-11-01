@@ -13,6 +13,8 @@ import com.diybracelet.mall.file.application.FileStorageService;
 import com.diybracelet.mall.identity.infrastructure.CustomerJwtAuthenticationFilter;
 import com.diybracelet.mall.identity.infrastructure.CustomerJwtService;
 import com.diybracelet.mall.shared.error.GlobalExceptionHandler;
+import com.diybracelet.mall.shared.error.BusinessException;
+import com.diybracelet.mall.shared.error.ErrorCode;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -29,6 +31,8 @@ import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -67,6 +71,43 @@ class AppDiyPreviewControllerTest {
 
     @MockBean
     private FileStorageService fileStorageService;
+
+    @Test
+    void shouldPassVersionZeroToTheGuardedPreviewBinding() throws Exception {
+        when(fileStorageService.store(any())).thenReturn(new UploadedFileResponse(
+                9001L, "preview.png", "preview.png", "image/png", 7, "/preview.png"
+        ));
+        mockMvc.perform(multipart("/api/app/diy/schemes/7001/previews/0")
+                        .file(new MockMultipartFile("file", "preview.png", "image/png", new byte[]{1}))
+                        .header("Authorization", "Bearer " + customerJwtService.issue(3001L)))
+                .andExpect(status().isCreated());
+        verify(schemeService).bindPreviewVersion(7001L, 9001L, 0L);
+        verify(schemeService, never()).bindPreview(any(), any());
+    }
+
+    @Test
+    void shouldRejectNegativePreviewVersionBeforeStoringFile() throws Exception {
+        mockMvc.perform(multipart("/api/app/diy/schemes/7001/previews/-1")
+                        .file(new MockMultipartFile("file", "preview.png", "image/png", new byte[]{1}))
+                        .header("Authorization", "Bearer " + customerJwtService.issue(3001L)))
+                .andExpect(status().isBadRequest());
+        verify(fileStorageService, never()).store(any());
+    }
+
+    @Test
+    void shouldExposeStalePreviewConflictSoClientCanDiscardTheJob() throws Exception {
+        when(fileStorageService.store(any())).thenReturn(new UploadedFileResponse(
+                9001L, "preview.png", "preview.png", "image/png", 7, "/preview.png"
+        ));
+        when(schemeService.bindPreviewVersion(7001L, 9001L, 0L)).thenThrow(
+                new BusinessException(ErrorCode.DIY_SCHEME_VERSION_CONFLICT, "方案已更新")
+        );
+        mockMvc.perform(multipart("/api/app/diy/schemes/7001/previews/0")
+                        .file(new MockMultipartFile("file", "preview.png", "image/png", new byte[]{1}))
+                        .header("Authorization", "Bearer " + customerJwtService.issue(3001L)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("DIY_SCHEME_VERSION_CONFLICT"));
+    }
 
     @Test
     void shouldUploadPreviewAndBindItToOwnedScheme() throws Exception {

@@ -23,7 +23,8 @@ import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Persists complete, admin-only recommendation diagnostics without provider secrets. */
+
+/** 保存仅管理员可读的推荐诊断记录，排除上游密钥。 */
 @Service
 public class AiRecommendationLogService {
 

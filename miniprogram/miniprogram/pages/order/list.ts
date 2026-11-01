@@ -1,3 +1,5 @@
+/** 加载当前访客的订单卡片，支持下拉刷新和订单详情导航。 */
+import { navigateOnce, resetNavigation } from '../../utils/navigation'
 import { listOrders } from '../../services/orders'
 import { ApiError } from '../../services/request'
 import {
@@ -13,6 +15,7 @@ Page({
   },
 
   onShow() {
+    resetNavigation(this)
     void this.loadOrders()
   },
 
@@ -34,11 +37,11 @@ Page({
   openOrder(event: WechatMiniprogram.TouchEvent) {
     const id = Number(event.currentTarget.dataset.id || 0)
     if (!id) return
-    wx.navigateTo({ url: `/pages/order/detail?id=${id}` })
+    navigateOnce(this, { url: `/pages/order/detail?id=${id}` })
   },
 
   openSchemes() {
-    wx.navigateTo({ url: '/pages/diy/schemes' })
+    navigateOnce(this, { url: '/pages/diy/schemes' })
   },
 })
 

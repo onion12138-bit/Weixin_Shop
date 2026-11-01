@@ -1,5 +1,5 @@
 package com.diybracelet.mall.recommendation.api.dto;
 
-/** Explicit availability state used by the customer form before submission. */
+/** 小程序提交推荐前使用的 AI 可用状态。 */
 public record RecommendationStatusResponse(String status, boolean available) {
 }

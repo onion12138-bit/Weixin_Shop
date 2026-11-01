@@ -1,17 +1,22 @@
 {
+  "projectname": "diy-bracelet-mall",
+  "miniprogramRoot": "miniprogram/miniprogram/",
   "setting": {
     "es6": true,
-    "postcss": true,
-    "minified": true,
+    "postcss": false,
+    "minified": false,
+    "urlCheck": false,
     "uglifyFileName": false,
-    "enhance": true,
+    "enhance": false,
     "packNpmRelationList": [],
     "babelSetting": {
       "ignore": [],
       "disablePlugins": [],
       "outputPath": ""
     },
-    "useCompilerPlugins": false,
+    "useCompilerPlugins": [
+      "typescript"
+    ],
     "minifyWXML": true
   },
   "compileType": "miniprogram",
@@ -20,6 +25,6 @@
     "ignore": [],
     "include": []
   },
-  "appid": "touristappid",
+  "appid": "wx9864f5f5c7870c36",
   "editorSetting": {}
 }

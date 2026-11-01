@@ -165,9 +165,10 @@ describe('DIY preview controls', () => {
     expect(template).toContain('<button class="preview-toggle"')
     expect(template).toContain('bindtap="togglePreview"')
     expect(template).toContain("previewExpanded ? '收起预览' : '展开预览'")
-    expect(template).not.toContain('class="history-actions"')
-    expect(template).not.toContain('bindtap="undo"')
-    expect(template).not.toContain('bindtap="redo"')
+    expect(template).toContain('class="history-actions"')
+    expect(template).toContain('bindtap="undoEdit"')
+    expect(template).toContain('bindtap="redoEdit"')
+    expect(template).toContain('bindtap="confirmReplacement"')
     expect(styles).toMatch(
       /\.preview-toolbar\s*{[^}]*position:\s*absolute;[^}]*right:\s*16rpx;/,
     )
@@ -312,7 +313,7 @@ describe('DIY preview controls', () => {
     expect(definition.data).not.toHaveProperty('trayExpanded')
     expect(definition.toggleTrayExpanded).toBeUndefined()
     expect(template).toContain('<view class="bead-grid">')
-    expect(template).toContain('class="bead-card expanded"')
+    expect(template).toContain('class="bead-card expanded ')
     expect(template).not.toContain('class="bead-tray"')
     expect(template).not.toContain('bindtap="toggleTrayExpanded"')
     expect(template).not.toContain('展开全部珠子')

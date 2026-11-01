@@ -1,3 +1,4 @@
+/** 先上传待更新头像再保存资料，保存期间阻止再次提交。 */
 import {
   getProfile,
   saveProfile,

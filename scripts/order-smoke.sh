@@ -54,14 +54,22 @@ if (response.code !== "OK" || !response.data?.id) {
 process.stdout.write(String(response.data.id))
 ' "${scheme}")"
 
+quote_payload="$(node -e 'process.stdout.write(JSON.stringify({schemeId: Number(process.argv[1])}))' "${scheme_id}")"
+quote="$(curl -fsS -H "Authorization: Bearer ${customer_token}" -H "Content-Type: application/json" \
+  -d "${quote_payload}" "${base_url}/api/app/orders/quote")"
+quote_fingerprint="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).data.quoteFingerprint)' "${quote}")"
+checkout_token="$(node -e 'process.stdout.write(crypto.randomUUID())')"
+
 order_payload="$(node -e '
 process.stdout.write(JSON.stringify({
   schemeId: Number(process.argv[1]),
+  checkoutToken: process.argv[2],
+  quoteFingerprint: process.argv[3],
   contactName: "订单冒烟顾客",
   contactPhone: "13800000000",
   addressDetail: "上海市演示区真实接口路 1 号",
 }))
-' "${scheme_id}")"
+' "${scheme_id}" "${checkout_token}" "${quote_fingerprint}")"
 order="$(curl -fsS \
   -H "Authorization: Bearer ${customer_token}" \
   -H "Content-Type: application/json" \
@@ -114,11 +122,11 @@ process.stdout.write(response.data.accessToken)
 
 admin_orders="$(curl -fsS \
   -H "Authorization: Bearer ${admin_token}" \
-  "${base_url}/api/admin/orders?status=PAID&page=1&size=100")"
+  "${base_url}/api/admin/orders?status=IN_PRODUCTION&page=1&size=100")"
 production="$(curl -fsS \
   -H "Authorization: Bearer ${admin_token}" \
   -X POST \
-  "${base_url}/api/admin/orders/${order_id}/start-production")"
+  "${base_url}/api/admin/orders/${order_id}/complete-production")"
 ship_payload='{"logisticsCompany":"顺丰速运","trackingNo":"SF-ORDER-SMOKE-001"}'
 shipped="$(curl -fsS \
   -H "Authorization: Bearer ${admin_token}" \
@@ -133,11 +141,36 @@ completed_for_customer="$(curl -fsS \
   -H "Authorization: Bearer ${customer_token}" \
   "${base_url}/api/app/orders/${order_id}")"
 
-# 创建第二笔订单后取消，验证预占释放分支。使用同一方案即可，因为订单会保存独立快照。
+# 响应丢失时可按提交标识找回；相同提交再次发送只返回原订单。
+recovered="$(curl -fsS -H "Authorization: Bearer ${customer_token}" \
+  "${base_url}/api/app/orders/by-checkout-token/${checkout_token}")"
+retried="$(curl -fsS -H "Authorization: Bearer ${customer_token}" -H "Content-Type: application/json" \
+  -d "${order_payload}" "${base_url}/api/app/orders")"
+node -e '
+const id = Number(process.argv[1])
+for (const body of process.argv.slice(2)) {
+  if (JSON.parse(body).data?.id !== id) throw new Error("checkout recovery returned a different order")
+}
+' "${order_id}" "${recovered}" "${retried}"
+
+# 成功下单会消耗方案；取消分支必须保存新方案、获取新报价并使用新提交标识。
+cancel_scheme="$(curl -fsS -H "Authorization: Bearer ${customer_token}" -H "Content-Type: application/json" \
+  -d "${scheme_payload}" "${base_url}/api/app/diy/schemes")"
+cancel_scheme_id="$(node -e 'process.stdout.write(String(JSON.parse(process.argv[1]).data.id))' "${cancel_scheme}")"
+cancel_quote_payload="$(node -e 'process.stdout.write(JSON.stringify({schemeId: Number(process.argv[1])}))' "${cancel_scheme_id}")"
+cancel_quote="$(curl -fsS -H "Authorization: Bearer ${customer_token}" -H "Content-Type: application/json" \
+  -d "${cancel_quote_payload}" "${base_url}/api/app/orders/quote")"
+cancel_payload="$(node -e '
+const request = JSON.parse(process.argv[1])
+request.schemeId = Number(process.argv[2])
+request.quoteFingerprint = JSON.parse(process.argv[3]).data.quoteFingerprint
+request.checkoutToken = crypto.randomUUID()
+process.stdout.write(JSON.stringify(request))
+' "${order_payload}" "${cancel_scheme_id}" "${cancel_quote}")"
 cancel_order="$(curl -fsS \
   -H "Authorization: Bearer ${customer_token}" \
   -H "Content-Type: application/json" \
-  -d "${order_payload}" \
+  -d "${cancel_payload}" \
   "${base_url}/api/app/orders")"
 cancel_order_id="$(node -e '
 const response = JSON.parse(process.argv[1])
@@ -174,14 +207,14 @@ if (!customerOrders.data?.some((item) => item.id === orderId)) {
 if (customerDetail.data?.id !== orderId) {
   throw new Error("customer order detail is not readable")
 }
-if (paidOnce.data?.status !== "PAID" || paidTwice.data?.status !== "PAID") {
+if (paidOnce.data?.status !== "IN_PRODUCTION" || paidTwice.data?.status !== "IN_PRODUCTION") {
   throw new Error("mock payment is not successful and idempotent")
 }
 if (!adminOrders.data?.items?.some((item) => item.id === orderId)) {
   throw new Error("paid order is not visible to administrator")
 }
-if (production.data?.status !== "IN_PRODUCTION") {
-  throw new Error("order did not enter production")
+if (production.data?.status !== "PENDING_SHIPMENT") {
+  throw new Error("completed production did not enter pending shipment")
 }
 if (
   shipped.data?.status !== "SHIPPED" ||

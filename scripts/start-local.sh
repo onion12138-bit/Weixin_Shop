@@ -208,7 +208,8 @@ fi
 echo
 echo "管理后台已就绪：${admin_url}"
 echo "默认账号：${ADMIN_USERNAME:-admin}"
-echo "默认密码：${ADMIN_PASSWORD:-Admin@123}"
+# 不把环境中的实际密码写入终端历史、截图或自动收集的启动日志。
+echo "登录密码：请查看本机 .env 中的 ADMIN_PASSWORD 配置"
 echo "后端端口：${backend_port}"
 echo "后端日志：${backend_log}"
 echo "后台日志：${admin_log}"

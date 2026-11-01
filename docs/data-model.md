@@ -1,6 +1,6 @@
 # 数据模型
 
-最后更新：2026-08-09
+最后更新：2026-10-23
 
 本文件只记录已经通过 Flyway 落地的表。当前迁移：
 
@@ -12,7 +12,18 @@
 - `V6__ai_model_config.sql`：唯一一行 DeepSeek 配置、默认模型和密钥密文列。
 - `V7__ai_recommendation_preferences.sql`：后台推荐提示词与推荐套数。
 - `V8__catalog_product_types_and_inventory_warning.sql`：分类商品类型、绳类/其他饰品分类和可空的非珠子直径。
+- `V9__bead_visual_manual_schema.sql`：手工视觉版本与全局视觉配置。
+- `V10__package_home_recommendation.sql`：套餐首页推荐标记。
+- `V11__customer_account_and_benefits.sql`：顾客资料、地址、优惠券模板与顾客券。
+- `V12__order_coupon_discount.sql`：订单券关联与抵扣金额。
+- `V13__allow_coupon_reuse_after_cancel.sql`：取消后券可再次使用，移除订单历史上的券唯一约束。
+- `V14__unified_order_fulfillment.sql`：统一订单履约与操作记录。
 - `V15__ai_recommendation_observability.sql`：软偏好提示配置和管理员 AI 推荐调优日志。
+
+- `V16__reduce_bead_shadow_opacity.sql`：珠子阴影默认值调整。
+- `V17__commerce_rule_config_and_shipping_fee.sql`：交易门槛、运费配置与订单运费快照。
+- `V18__reliable_checkout_and_order_expiry.sql`：结算令牌/请求摘要、支付截止时间、关闭原因与扫描索引。
+- `V19__coupon_rules_and_grant_batches.sql`：已发券规则快照、历史来源与发券批次去重。
 
 ## 1. 关系
 
@@ -26,6 +37,13 @@ diy_scheme 1 ── n customer_order
 bead_sku 1 ── 1 inventory_balance 1 ── n inventory_ledger
 customer_order 1 ── 1 payment_record
 customer_order 1 ── 1 fulfillment_task
+customer_order 1 ── n order_operation_log
+customer_identity 1 ── 1 customer_profile
+customer_identity 1 ── n customer_address
+coupon_template 1 ── n customer_coupon n ── 1 customer_identity
+coupon_grant_batch 1 ── n customer_coupon（按 grant_batch_id 逻辑关联）
+customer_coupon 1 ── n customer_order（取消后可再次使用）
+commerce_rule_config 1 ── 当前结算门槛和运费规则
 diy_rule_config 1 ── 当前全局 DIY 规则
 craft_fee_rule n ── 按珠数区间匹配工艺费
 ai_model_config 1 ── 全局唯一 DeepSeek 配置
@@ -114,7 +132,9 @@ ai_recommendation_log n ── 管理员可见的推荐输入、处理与输出�
 - 前端临时序号不进入数据库。
 - SKU 数量由 `sequence_json` 分组派生，不保存第二份可冲突数量表。
 - 旧方案读取时重新按当前 SKU 与配置评估，价格变化标记为 `STALE`。
-- 删除为软删除，不物理移除方案记录。
+- 删除为软删除，不物理移除方案记录；下单成功同事务软删除来源方案。
+- 编辑器撤销/重做是本次页面的有界内存历史，不增加数据库表，不回退方案 ID 或乐观锁版本；重载草稿或方案后从当前设计建立新的历史边界。
+- 结算报价另返回当前 `schemeVersion` 并将其纳入结算指纹，避免同价但设计已变化时沿用旧确认。
 
 ## 6. 库存、订单、支付和履约表
 
@@ -127,7 +147,7 @@ ai_recommendation_log n ── 管理员可见的推荐输入、处理与输出�
 - `sold_qty`：支付成功确认销售的累计数量。
 - `version`：每次库存流转递增。
 
-后台商品分页会批量读取当前页库存余额并返回 `availableQty/reservedQty/soldQty/stockWarningStatus`；`stockWarningStatus` 在可用库存达到或低于 SKU 预警值时为 `RESTOCK`，否则为 `NORMAL`。这属于实时列表状态，不另建重复的预警状态列。
+后台商品分页会批量读取当前页库存余额并返回 `availableQty/reservedQty/soldQty/stockWarningStatus`；`stockWarningStatus` 在可用库存达到或低于 SKU 预警值时为 `RESTOCK`，否则为 `NORMAL`。这属于实时列表状态，不另建重复的预警状态列。公开散珠列表、详情、套餐内散珠也读取 `available_qty` 并输出 `availableQty` 用于选材提示，不暴露成本/后台预警阈值，不新增另一份库存数据；提示不构成预留承诺。
 
 `inventory_ledger` 记录每次流转前后的三类余额，类型包括 `INIT`、`RESERVE`、`PAY_CONFIRM`、`RELEASE`、`ADJUST`。下单、支付和取消均先锁定余额行，再执行带数量下限条件的更新；事务失败时余额、流水和订单一起回滚。
 
@@ -143,13 +163,36 @@ PENDING_PAYMENT -> CANCELLED
 
 `scheme_snapshot_json` 保留原始 SKU 顺序和数量统计；`order_item` 按 SKU 聚合保存编码、名称、数量、单价、总价和稳定排序，作为生产 BOM 与历史价格快照。商品后续调价、改名或下架不会改变已有订单。
 
+V18 新增：
+
+| 字段/约束 | 说明 |
+| --- | --- |
+| `checkout_token` | 顾客提交令牌，ASCII 大小写敏感，历史订单为 `null` |
+| `checkout_request_hash` | 完整结算请求的 SHA-256 摘要；相同令牌变参数拒绝 |
+| `expires_at` | 支付截止时间，毫秒精度 `timestamp(3)`；应用以 `Instant` 读写 |
+| `closed_reason` | `PAYMENT_TIMEOUT`、`CUSTOMER_CANCELLED`、`ADMIN_CANCELLED` 或 `null` |
+| `uk_customer_order_checkout` | `(customer_identity_id, checkout_token)` 唯一，顾客间令牌隔离 |
+| `idx_customer_order_expiry` | `(status, expires_at, id)`，支持限量扫描待支付到期单 |
+
+新单截止时间按创建时的支付超时配置生成，默认 30 分钟；配置变化不回写已创建订单。V18 只为历史 `PENDING_PAYMENT` 单设置“迁移执行时间 + 30 分钟”，其余历史订单不补造截止或关闭原因。`serverTime` 是响应时生成的 UTC 时间，不是持久化列。
+
+超时关闭与支付共用订单锁；释放库存、恢复仍为 `USED` 的券、更新关闭状态与写入 `ORDER_EXPIRED` 操作在同一事务中完成。重复执行对已关闭/已支付单不重复处理。
+
+V12/V17 的 `coupon_id/discount_amount/shipping_fee` 保存成交时的券关联、实际抵扣和运费。V13 将 `coupon_id` 改为非唯一索引，允许取消后券用于新单；当前可核销性由顾客券行锁和状态校验保证。
+
 ### `payment_record`
 
-每个订单最多一条支付记录，`order_id` 与 `payment_no` 均唯一。当前渠道只允许 `MOCK`，状态为 `INIT`、`SUCCESS`、`FAILED`，并保存金额、支付时间和原始响应 JSON。唯一约束与订单行锁共同保证模拟支付幂等。
+每个订单最多一条支付记录，`order_id` 与 `payment_no` 均唯一。当前数据库渠道约束仅允许 `MOCK`，模拟支付明确写入该值；后台的 `WECHAT` 筛选为预留选项，不再把模拟支付计入该筛选。状态为 `INIT`、`SUCCESS`、`FAILED`，并保存金额、支付时间和原始响应 JSON。唯一约束与订单行锁共同保证模拟支付幂等。
 
 ### `fulfillment_task`
 
 支付成功后每个订单创建唯一履约任务。`bom_json` 保存订单 SKU 数量快照；状态为 `IN_PRODUCTION`、`PENDING_SHIPMENT`、`SHIPPED`、`COMPLETED`，并保存制作开始、制作完成、发货和完成时间。发货保存物流公司和运单号。
+
+### `order_operation_log`
+
+保存订单操作类型、操作者类型/名称、说明和发生时间。新增模拟支付写 `MOCK_PAYMENT_SUCCEEDED`，超时关闭写 `ORDER_EXPIRED`；付款提醒说明明确为“记录付款提醒操作（未接入消息发送）”。该表是操作日志，尚不记录消息渠道回执或用户已读状态。
+
+现有 `fulfillment_task` 的数量 BOM 与状态流转不包含本轮未实施的 R05 按位置制造规格、质检通过/返工、打印工单。
 
 ### V5 演示库存
 
@@ -221,3 +264,31 @@ Flyway V6 固定创建 `id=1`、`provider=DEEPSEEK` 的单例行；V7 新增非�
 - 手串阴影：0.0～0.4；
 - 珠子阴影：0.0～0.5；
 - 珠子重叠：0.0～0.15。
+
+
+## 10. 顾客地址、冻结权益与发券批次
+
+### `customer_profile` 与 `customer_address`
+
+资料按 `customer_identity_id` 唯一，保存昵称和可选头像。地址保存顾客归属、收件人、电话、地区、详情、默认标记和 `ACTIVE/DELETED` 状态。本单地址选择保存在小程序本机，创建订单时写入收货快照；不修改 `is_default`，也不新增共享默认地址字段。
+
+### `coupon_template` 与 `customer_coupon`
+
+模板用于后续发放，保存编码、名称、说明、抵扣金额、最低消费、有效天数及 `ACTIVE/INACTIVE`。顾客券保存顾客、模板关联、`UNUSED/USED/EXPIRED/REVOKED` 状态、发放/到期/使用时间和备注。
+
+V19 为顾客券新增并回填非空冻结列 `coupon_code/coupon_name/coupon_description/discount_amount/minimum_spend/snapshot_source`；新发券还保存 `grant_batch_id`。规则和到期时间以发券时为准，后续模板改价、改门槛、改有效天数或停发，不改变已经发出的券。下单核销和顾客券展示读取这些冻结列，模板只保留来源关联。
+
+- `ISSUED_SNAPSHOT`：新发券当时复制的规则。
+- `MIGRATED_CURRENT_TEMPLATE`：V19 执行时按当前模板回填的旧券；历史原始规则无法追溯，不能视为原发放时版本。原 `issued_at/expires_at` 保留。
+- `uk_coupon_grant_recipient(grant_batch_id, customer_identity_id)`：同批次每位顾客最多一张；历史券的批次为 `null`。
+- 金额约束要求优惠金额大于零、最低消费非负。取消/超时仅恢复仍为 `USED` 的券，到期者恢复为 `EXPIRED`；已撤销/已过期状态不被复活。
+
+### `coupon_grant_batch`
+
+`batch_id` 为全局大小写敏感主键；`request_hash` 保存模板、规范化发放模式、去重排序的收件 ID 和去首尾空白备注的摘要。结果列为 `requested_count/granted_count/skipped_count`，单人发放额外保存 `coupon_id`；审计时间为 `created_at`。
+
+批次预留、行锁校验、顾客券插入和结果回填同事务提交；插入每 500 条分段执行不改变整批原子性。结果计数非空表示批次完成，同批次同参数直接读取旧结果；参数摘要不符拒绝。全量发放的实际收件集合由该批次顾客券行保留，重试不会重新纳入新注册顾客。失败事务不会留下已完成批次或部分券。
+
+### `commerce_rule_config`
+
+`id=1` 的配置保存 `minimum_order_amount/free_shipping_threshold/base_shipping_fee/config_version`。最低起订金额按优惠前商品额校验，包邮门槛按优惠后商品额校验；运费写入订单快照。设计报价与结算报价分开：后者包含冻结券规则与运费，并使用当前方案版本参与指纹。

@@ -1,3 +1,5 @@
+import { isNavigationPending, navigateOnce, resetNavigation } from '../../utils/navigation'
+import { createHistory, type EditorHistory } from '../../domain/editor-history'
 import {
   getBead,
   getPackage,
@@ -12,7 +14,6 @@ import {
   getScheme,
   quoteDiy,
   updateScheme,
-  uploadSchemePreview,
   yuanToCents,
   type DiyConfiguration,
   type DiyQuoteResponse,
@@ -20,6 +21,7 @@ import {
   type FitType,
   type SizeStatus,
 } from '../../services/diy'
+import { hasPendingSchemePreview, queueSchemePreview, retryPendingSchemePreviews } from '../../services/scheme-preview'
 import {
   addBead,
   adjustSkuQuantity,
@@ -68,6 +70,8 @@ interface CatalogItem {
   color: string
   diameterMm: number
   salePriceCents: number
+  availableQty: number | null
+  unavailable: boolean
   trayImageUrl: string
   canvasImageUrl: string
   coverImageUrl: string
@@ -100,11 +104,22 @@ interface DraftCache {
   selectedIndex: number
 }
 
+// History includes editable design and selection only. Saved identity/version must never rewind.
+type EditorSnapshot = Pick<DraftCache,
+  'sequence' | 'selectedIndex' | 'wristCircumferenceMm' | 'fitType' | 'cordOptionId'>
+
 interface CanvasNode {
   width: number
   height: number
   getContext(type: '2d'): CanvasRenderingContext
   createImage?(): CanvasImage
+}
+
+interface PreviewSnapshot {
+  sequence: number[]
+  catalog: CatalogItem[]
+  visualConfig: DiyConfiguration['visualConfig'] | undefined
+  cordColor: string | undefined
 }
 
 interface CanvasImage {
@@ -152,7 +167,6 @@ interface CanvasRenderingContext {
 }
 
 const DRAFT_CACHE_KEY = 'diy_editor_draft'
-const PREVIEW_PENDING_KEY = 'diy_preview_pending'
 const DEFAULT_NAME = '我的手串'
 const FIT_TYPES: FitType[] = ['SNUG', 'STANDARD', 'LOOSE']
 const FIT_TYPE_LABELS = ['贴手', '标准', '宽松']
@@ -161,6 +175,9 @@ const CANVAS_REDRAW_FRAME_MS = 16
 const PREVIEW_TRANSITION_MS = 240
 const EXPORT_CANVAS_SIZE = 620
 const EXPORT_IMAGE_WAIT_MS = 1500
+const DRAFT_WRITE_INTERVAL_MS = 250
+const COMPACT_PREVIEW_IDLE_MS = 150
+const EXPORT_PREPARE_IDLE_MS = 600
 
 Page({
   data: {
@@ -188,6 +205,15 @@ Page({
     totalBeadCount: 0,
     selectedIndex: -1,
     selectedNumber: 0,
+    canUndo: false,
+    canRedo: false,
+    replacementIndex: -1,
+    replacementOriginalName: '',
+    replacementCandidateId: 0,
+    replacementCandidateName: '',
+    replacementChangeText: '',
+    replacementStockText: '',
+    materialWarnings: [] as string[],
     previewExpanded: true,
     catalog: [] as CatalogItem[],
     visibleCatalog: [] as CatalogItem[],
@@ -248,13 +274,25 @@ Page({
   previewTransitionTimer: null as ReturnType<typeof setTimeout> | null,
   catalogRequestId: 0,
   designRevision: 0,
+  quoteRequestId: 0,
+  editHistory: null as EditorHistory<EditorSnapshot> | null,
+  replacementRevision: -1,
+  draftWriteTimer: null as ReturnType<typeof setTimeout> | null,
+  draftDirty: false,
+  previewPrepareTimer: null as ReturnType<typeof setTimeout> | null,
+  preparedPreview: null as { key: string; promise: Promise<string> } | null,
+  editorHidden: false,
+  editorDisposed: false,
 
   onLoad(options: Record<string, string>) {
     this.cancelCanvasRedraw()
     this.cancelCompactPreviewCapture()
     this.cancelPreviewTransition()
     this.editorActive = true
+    this.editorHidden = false
+    this.editorDisposed = false
     this.editorGeneration += 1
+    this.editHistory = null
     this.canvasNode = null
     this.canvasContext = null
     this.canvasLogicalWidth = 0
@@ -305,10 +343,29 @@ Page({
   },
 
   onShow() {
+    resetNavigation(this)
+    this.editorHidden = false
     this.refreshFavoriteState()
+    if (this.editorActive && !this.data.loading) {
+      this.scheduleCanvasRedraw()
+      this.schedulePreviewPreparation()
+    }
+    void retryPendingSchemePreviews()
+  },
+
+  onHide() {
+    this.flushDraftCache()
+    this.editorHidden = true
+    this.cancelCanvasRedraw()
+    this.cancelCompactPreviewCapture()
+    this.cancelPreviewPreparation()
   },
 
   onUnload() {
+    this.flushDraftCache()
+    this.editorDisposed = true
+    this.cancelPreviewPreparation()
+    this.preparedPreview = null
     this.catalogRequestId += 1
     this.designRevision += 1
     this.cancelCanvasRedraw()
@@ -345,6 +402,7 @@ Page({
       const beadsPromise = listAllPublicBeads()
       void getCommerceRule()
         .then((rule) => {
+          if (this.editorDisposed) return
           const minimumOrderAmountCents = yuanToCents(rule.minimumOrderAmount)
           this.setData({
             minimumOrderAmountCents,
@@ -359,6 +417,7 @@ Page({
           config.rule.minWristMm,
           config.rule.maxWristMm,
         )
+        if (this.editorDisposed) return { cordOptions, wristOptions }
         this.setData({
           cordOptions,
           cordOptionNames: cordOptions.map((item) => item.name),
@@ -374,9 +433,10 @@ Page({
         return { cordOptions, wristOptions }
       })
       void listCategories()
-        .then((categories) => this.setData({ categories }))
-        .catch(() => this.setData({ categories: [] }))
+        .then((categories) => { if (!this.editorDisposed) this.setData({ categories }) })
+        .catch(() => { if (!this.editorDisposed) this.setData({ categories: [] }) })
       const catalogPromise = beadsPromise.then((beads) => {
+        if (this.editorDisposed) return []
         const favoriteIds = new Set(readFavoriteBeadIds())
         const catalog = beads.map(toCatalogItem).map((item) => ({
           ...item,
@@ -394,7 +454,10 @@ Page({
         catalogPromise,
       ])
 
+      // 页面离开后不再弹出恢复草稿提示，也不把迟到的数据送入视图层。
+      if (this.editorDisposed) return
       const initial = await this.resolveInitialDraft(options)
+      if (this.editorDisposed) return
       if (!cordOptions.some((item) => item.id === initial.cordOptionId)) {
         initial.cordOptionId = cordOptions[0]?.id || initial.cordOptionId
       }
@@ -421,7 +484,16 @@ Page({
         authoritative: false,
         persistDraft: false,
       })
+      this.editHistory = createHistory(this.editorSnapshot())
+      this.setData({ canUndo: false, canRedo: false })
+      this.cancelReplacement()
+      // 只对刚从服务端载入的保存版本补图，不能用未保存的本地草稿替代。
+      if (Number(options.schemeId) > 0 && hasPendingSchemePreview(initial.schemeId)) {
+        const snapshot = this.previewSnapshot()
+        queueSchemePreview(initial.schemeId, initial.schemeVersion, () => this.exportPreview(snapshot))
+      }
     } catch (error) {
+      if (this.editorDisposed) return
       this.initialVisualLoading = false
       this.setData({
         loading: false,
@@ -498,6 +570,8 @@ Page({
       color: item.color || '方案珠',
       diameterMm: item.diameterMm || 8,
       salePriceCents: 0,
+      availableQty: null,
+      unavailable: true,
       ...visualImageFields(item),
       colorHex: colorFromText(item.color || item.name),
       isFavorite: false,
@@ -515,6 +589,7 @@ Page({
   },
 
   mergeCatalog(items: CatalogItem[], replaceVisible = false) {
+    if (this.editorDisposed) return
     const merged = new Map(this.data.catalog.map((item) => [item.id, item]))
     const favoriteIds = new Set(readFavoriteBeadIds())
     const markedItems = items.map((item) => ({
@@ -530,6 +605,8 @@ Page({
         ? visibleSource.filter((item) => item.isFavorite)
         : visibleSource,
     })
+    this.setData({ materialWarnings: this.materialWarningsFor(this.data.sequence) })
+    if (this.data.replacementCandidateId) this.chooseReplacement(this.data.replacementCandidateId)
   },
 
   refreshFavoriteState() {
@@ -596,6 +673,7 @@ Page({
 
   async searchCatalog() {
     const requestId = ++this.catalogRequestId
+    const completeDirectory = !this.data.categoryId && !this.data.keyword.trim()
     this.setData({ catalogLoading: true })
     try {
       const items = await listAllPublicBeads({
@@ -603,6 +681,11 @@ Page({
         keyword: this.data.keyword.trim() || undefined,
       })
       if (requestId !== this.catalogRequestId) return
+      if (completeDirectory) {
+        const publicIds = new Set(items.map((item) => item.id))
+        this.setData({ catalog: this.data.catalog.map((item) => publicIds.has(item.id)
+          ? item : { ...item, unavailable: true, availableQty: null }) })
+      }
       this.mergeCatalog(items.map(toCatalogItem), true)
     } catch (error) {
       if (requestId !== this.catalogRequestId) return
@@ -646,8 +729,17 @@ Page({
   },
 
   addCatalogBead(event: WechatMiniprogram.TouchEvent) {
+    if (this.editingBlocked()) return
     const skuId = Number(event.currentTarget.dataset.id || 0)
-    if (!skuId) return
+    if (!skuId || !this.data.catalog.some((item) => item.id === skuId)) return
+    if (this.data.catalog.find((item) => item.id === skuId)?.unavailable) {
+      wx.showToast({ title: '该珠子已下架，不能新加入', icon: 'none' })
+      return
+    }
+    if (this.data.replacementIndex >= 0) {
+      this.chooseReplacement(skuId)
+      return
+    }
     const selectedIndex = this.data.selectedIndex >= 0
       ? this.data.selectedIndex
       : null
@@ -693,17 +785,124 @@ Page({
   },
 
   replaceSelected() {
-    if (this.data.selectedIndex < 0 || this.data.catalog.length === 0) return
-    const currentSkuId = this.selectedSkuId()
-    const replacement = this.data.catalog.find((item) => item.id !== currentSkuId)
-      || this.data.catalog[0]
+    if (this.editingBlocked() || this.data.selectedIndex < 0) return
+    const original = this.data.catalog.find((item) => item.id === this.selectedSkuId())
+    if (!original) return
+    this.replacementRevision = this.designRevision
+    this.setData({
+      replacementIndex: this.data.selectedIndex,
+      replacementOriginalName: original.name,
+      replacementCandidateId: 0,
+      replacementCandidateName: '',
+      replacementChangeText: '',
+      replacementStockText: '',
+    })
+  },
+
+  chooseReplacement(skuId: number) {
+    if (this.editingBlocked() || this.replacementRevision !== this.designRevision) return
+    const candidateItem = this.data.catalog.find((item) => item.id === skuId)
+    if (!candidateItem || candidateItem.unavailable) {
+      wx.showToast({ title: '该珠子已下架，不能替换为它', icon: 'none' })
+      return
+    }
+    const original = this.catalogMap()[this.data.sequence[this.data.replacementIndex]]
+    const candidate = this.catalogMap()[skuId]
+    if (!original || !candidate) return
+    if (skuId === this.data.sequence[this.data.replacementIndex]) {
+      wx.showToast({ title: '请选择另一种珠子', icon: 'none' })
+      return
+    }
+    const delta = candidate.salePriceCents - original.salePriceCents
+    const currentLength = this.data.sequence.reduce((sum, id) => sum + (this.catalogMap()[id]?.diameterMm || 0), 0)
+    const nextLength = currentLength + candidate.diameterMm - original.diameterMm
+    const originalUnavailable = this.data.catalog.find((item) => item.id === this.data.sequence[this.data.replacementIndex])?.unavailable
+    const priceChangeText = originalUnavailable ? '原珠已下架，差价暂无法估算'
+      : `预估差价 ${delta >= 0 ? '+' : '−'}¥${(Math.abs(delta) / 100).toFixed(2)}`
+    this.setData({
+      replacementCandidateId: skuId,
+      replacementCandidateName: candidate.name,
+      replacementChangeText: `${priceChangeText} · 单珠 ${original.diameterMm} → ${candidate.diameterMm} mm · 手串 ${currentLength} → ${nextLength} mm`,
+      replacementStockText: this.materialWarningsFor(replaceBead(this.data.sequence, this.data.replacementIndex, skuId)).join('；'),
+    })
+  },
+
+  confirmReplacement() {
+    if (this.editingBlocked() || this.data.replacementIndex < 0
+      || !this.data.replacementCandidateId || this.replacementRevision !== this.designRevision) return
+    const index = this.data.replacementIndex
     this.refreshDerivedState(
-      replaceBead(this.data.sequence, this.data.selectedIndex, replacement.id),
+      replaceBead(this.data.sequence, index, this.data.replacementCandidateId),
       {
         authoritative: false,
         persistDraft: true,
+        selectedIndex: index,
       },
     )
+  },
+
+  cancelReplacement() {
+    this.replacementRevision = -1
+    this.setData({
+      replacementIndex: -1,
+      replacementOriginalName: '',
+      replacementCandidateId: 0,
+      replacementCandidateName: '',
+      replacementChangeText: '',
+      replacementStockText: '',
+    })
+  },
+
+  editingBlocked(): boolean {
+    return this.data.loading || this.data.saving || this.data.checkingOut || this.editorDisposed
+  },
+
+  materialWarningsFor(sequence: BeadSequence): string[] {
+    const counts = new Map<number, number>()
+    sequence.forEach((id) => counts.set(id, (counts.get(id) || 0) + 1))
+    const warnings: string[] = []
+    for (const [id, count] of counts) {
+      const item = this.data.catalog.find((candidate) => candidate.id === id)
+      if (!item || item.unavailable) {
+        warnings.push(`${item?.name || `材料 #${id}`}已下架或不可售，请删除或替换`)
+      } else if (typeof item.availableQty === 'number' && Number.isSafeInteger(item.availableQty)
+        && item.availableQty >= 0 && count > item.availableQty) {
+        warnings.push(`${item.name}需要 ${count} 颗，当前可用 ${item.availableQty} 颗，库存不足`)
+      }
+    }
+    return warnings
+  },
+
+  editorSnapshot(): EditorSnapshot {
+    return {
+      sequence: [...this.data.sequence],
+      selectedIndex: this.data.selectedIndex,
+      wristCircumferenceMm: this.data.wristCircumferenceMm,
+      fitType: this.data.fitType,
+      cordOptionId: this.data.cordOptionId,
+    }
+  },
+
+  undoEdit() {
+    if (this.editingBlocked() || !this.editHistory?.canUndo()) return
+    this.restoreEditorSnapshot(this.editHistory.undo())
+  },
+
+  redoEdit() {
+    if (this.editingBlocked() || !this.editHistory?.canRedo()) return
+    this.restoreEditorSnapshot(this.editHistory.redo())
+  },
+
+  restoreEditorSnapshot(snapshot: EditorSnapshot) {
+    this.dragFromIndex = -1
+    this.dragToIndex = -1
+    this.refreshDerivedState(snapshot.sequence, {
+      authoritative: false,
+      persistDraft: true,
+      selectedIndex: snapshot.selectedIndex,
+      configuration: snapshot,
+      recordHistory: false,
+    })
   },
 
   changeWrist(event: WechatMiniprogram.PickerChange) {
@@ -711,14 +910,10 @@ Page({
     const index = Number(event.detail.value || 0)
     const wristCircumferenceMm = this.data.wristOptions[index]
       || this.data.wristCircumferenceMm
-    this.setData({
-      wristCircumferenceMm,
-      wristCircumferenceText: formatWristLabel(wristCircumferenceMm),
-      wristOptionIndex: index,
-    })
     this.refreshDerivedState(this.data.sequence, {
       authoritative: false,
       persistDraft: true,
+      configuration: { wristCircumferenceMm },
     })
   },
 
@@ -726,10 +921,10 @@ Page({
     if (this.data.saving || this.data.checkingOut) return
     const index = Number(event.detail.value || 0)
     const fitType = FIT_TYPES[index] || 'STANDARD'
-    this.setData({ fitType, fitTypeIndex: index })
     this.refreshDerivedState(this.data.sequence, {
       authoritative: false,
       persistDraft: true,
+      configuration: { fitType },
     })
   },
 
@@ -738,17 +933,16 @@ Page({
     const index = Number(event.detail.value || 0)
     const cordOption = this.data.cordOptions[index]
     if (!cordOption) return
-    this.setData({
-      cordOptionId: cordOption.id,
-      cordOptionIndex: index,
-    })
     this.refreshDerivedState(this.data.sequence, {
       authoritative: false,
       persistDraft: true,
+      configuration: { cordOptionId: cordOption.id },
     })
   },
 
   onCanvasTouchStart(event: WechatMiniprogram.TouchEvent) {
+    if (this.editingBlocked()) return
+    if (this.data.replacementIndex >= 0) this.cancelReplacement()
     const point = event.touches[0]
     if (!point) return
     const index = this.hitTest(point.x, point.y)
@@ -758,7 +952,7 @@ Page({
       selectedIndex: index,
       selectedNumber: index >= 0 ? index + 1 : 0,
     })
-    this.drawBracelet()
+    this.scheduleCanvasRedraw()
   },
 
   onCanvasTouchMove(event: WechatMiniprogram.TouchEvent) {
@@ -782,49 +976,61 @@ Page({
     })
   },
 
+  onCanvasTouchCancel() {
+    this.dragFromIndex = -1
+    this.dragToIndex = -1
+  },
+
   async persistScheme(): Promise<number> {
+    this.flushDraftCache()
+    const draftAtSave = this.currentDraft()
+    const snapshot = this.previewSnapshot()
+    const previewKey = JSON.stringify(snapshot)
+    const prepared = this.preparedPreview?.key === previewKey
+      ? this.preparedPreview.promise : null
     const payload = {
       name: this.data.name || DEFAULT_NAME,
       version: this.data.schemeVersion,
       wristCircumferenceMm: this.data.wristCircumferenceMm,
       fitType: this.data.fitType,
       cordOptionId: this.data.cordOptionId,
-      sequence: this.data.sequence,
+      sequence: [...this.data.sequence],
     }
     const saved = this.data.schemeId
       ? await updateScheme(this.data.schemeId, payload)
       : await createScheme(payload)
-    this.setData({
-      schemeId: saved.id,
-      schemeVersion: saved.version,
-      name: saved.name,
-    })
-    wx.removeStorageSync(DRAFT_CACHE_KEY)
-    await this.uploadPreviewSafely(saved.id)
+    if (!this.editorDisposed) {
+      this.setData({ schemeId: saved.id, schemeVersion: saved.version, name: saved.name })
+    }
+    this.clearSavedDraft(draftAtSave)
+    queueSchemePreview(saved.id, saved.version, () => prepared || this.exportPreview(snapshot))
     return saved.id
   },
 
   async saveDraft() {
-    if (this.data.saving || this.data.checkingOut) return
+    if (this.data.saving || this.data.checkingOut || isNavigationPending(this)) return
     if (!this.data.sequence.length) {
       wx.showToast({ title: '请选择您喜欢的珠子', icon: 'none' })
       return
     }
+    this.cancelReplacement()
     this.setData({ saving: true, errorMessage: '' })
     try {
       await this.persistScheme()
+      if (this.editorDisposed) return
       wx.showToast({ title: '方案保存成功', icon: 'success' })
     } catch (error) {
+      if (this.editorDisposed) return
       this.setData({
         errorMessage: error instanceof Error ? error.message : '保存失败',
       })
     } finally {
-      this.setData({ saving: false })
+      if (!this.editorDisposed) this.setData({ saving: false })
     }
   },
 
   async goCheckout() {
-    if (this.data.checkingOut || this.data.saving) return
+    if (this.data.checkingOut || this.data.saving || isNavigationPending(this)) return
     if (!this.data.sequence.length) {
       wx.showToast({ title: '请先添加珠子', icon: 'none' })
       return
@@ -836,16 +1042,19 @@ Page({
       })
       return
     }
+    this.cancelReplacement()
     this.setData({ checkingOut: true, errorMessage: '' })
     try {
       const schemeId = await this.persistScheme()
-      wx.navigateTo({ url: `/pages/order/confirm?schemeId=${schemeId}` })
+      if (this.editorDisposed) return
+      navigateOnce(this, { url: `/pages/order/confirm?schemeId=${schemeId}` })
     } catch (error) {
+      if (this.editorDisposed) return
       this.setData({
         errorMessage: error instanceof Error ? error.message : '方案保存失败',
       })
     } finally {
-      this.setData({ checkingOut: false })
+      if (!this.editorDisposed) this.setData({ checkingOut: false })
     }
   },
 
@@ -900,6 +1109,11 @@ Page({
     this.previewAutoCollapseTriggered = true
     this.previewExpansionScrollResetting = false
     this.cancelPreviewTransition()
+    // 收起前先画出本帧最后一次编辑，避免复用尚未重绘的旧缩略图。
+    if (this.canvasRedrawTimer !== null) {
+      this.cancelCanvasRedraw()
+      this.drawBracelet()
+    }
     const collapse = () => this.setData({ previewExpanded: false })
     if (
       !this.canvasNode
@@ -960,8 +1174,9 @@ Page({
   },
 
   async confirmQuote() {
-    if (this.data.quoting) return
+    if (this.data.quoting || this.editorDisposed) return
     const revision = this.designRevision
+    const requestId = ++this.quoteRequestId
     this.setData({ quoting: true, errorMessage: '' })
     try {
       const quote = await quoteDiy({
@@ -970,23 +1185,24 @@ Page({
         cordOptionId: this.data.cordOptionId,
         sequence: this.data.sequence,
       })
-      if (revision !== this.designRevision) return
+      if (this.editorDisposed || revision !== this.designRevision || requestId !== this.quoteRequestId) return
       this.applyQuote(quote)
       if (quote.quotable) {
         wx.showToast({ title: '权威报价已更新', icon: 'success' })
       }
     } catch (error) {
-      if (revision !== this.designRevision) return
+      if (this.editorDisposed || revision !== this.designRevision || requestId !== this.quoteRequestId) return
       this.setData({
         errorMessage: error instanceof Error ? error.message : '报价失败',
       })
     } finally {
-      this.setData({ quoting: false })
+      if (!this.editorDisposed && requestId === this.quoteRequestId) this.setData({ quoting: false })
     }
   },
 
   goSchemes() {
-    wx.navigateTo({ url: '/pages/diy/schemes' })
+    if (this.data.saving || this.data.checkingOut) return
+    navigateOnce(this, { url: '/pages/diy/schemes' })
   },
 
   refreshDerivedState(
@@ -996,14 +1212,55 @@ Page({
       persistDraft: boolean
       selectedIndex?: number
       redraw?: boolean
+      recordHistory?: boolean
+      configuration?: Partial<Pick<EditorSnapshot, 'wristCircumferenceMm' | 'fitType' | 'cordOptionId'>>
     },
   ) {
-    if (options.persistDraft && (this.data.saving || this.data.checkingOut)) return
-    if (options.persistDraft && this.config && sequence.length > this.config.rule.maxBeadCount) {
+    if (this.editorDisposed || (options.persistDraft && this.editingBlocked())) return
+    if (options.persistDraft && options.recordHistory !== false) {
+      const unavailableIds = Array.from(new Set(sequence)).filter((id) => {
+        const item = this.data.catalog.find((candidate) => candidate.id === id)
+        return !item || item.unavailable
+      })
+      if (unavailableIds.some((id) => sequence.filter((value) => value === id).length
+        > this.data.sequence.filter((value) => value === id).length)) {
+        wx.showToast({ title: '下架珠子不能新增或增加数量', icon: 'none' })
+        return
+      }
+    }
+    if (options.persistDraft && options.recordHistory !== false && this.config && sequence.length > this.config.rule.maxBeadCount) {
       wx.showToast({ title: `最多添加 ${this.config.rule.maxBeadCount} 颗珠子`, icon: 'none' })
       return
     }
-    if (!options.authoritative) this.designRevision += 1
+    const before = this.editorSnapshot()
+    const recordHistory = options.persistDraft && options.recordHistory !== false
+    if (recordHistory) {
+      if (!this.editHistory) this.editHistory = createHistory(before)
+      // Selecting a bead is not a history action, but undo should restore that selection.
+      this.editHistory.replaceCurrent(before)
+    }
+    if (options.configuration) {
+      const wristCircumferenceMm = options.configuration.wristCircumferenceMm ?? this.data.wristCircumferenceMm
+      const fitType = options.configuration.fitType ?? this.data.fitType
+      const cordOptionId = options.configuration.cordOptionId ?? this.data.cordOptionId
+      this.setData({
+        wristCircumferenceMm,
+        wristCircumferenceText: formatWristLabel(wristCircumferenceMm),
+        wristOptionIndex: closestIndex(this.data.wristOptions, wristCircumferenceMm),
+        fitType,
+        fitTypeIndex: Math.max(0, FIT_TYPES.indexOf(fitType)),
+        cordOptionId,
+        cordOptionIndex: Math.max(0, this.data.cordOptions.findIndex((item) => item.id === cordOptionId)),
+      })
+    }
+    if (!options.authoritative) {
+      this.designRevision += 1
+      this.quoteRequestId += 1
+      this.cancelReplacement()
+      // Invalidate captures immediately; a queued redraw may still be one frame away.
+      this.compactPreviewCapturedRevision = -1
+      this.setData({ quoting: false, compactPreviewUrl: '' })
+    }
     const summary = this.buildLocalSummary(sequence, options.authoritative)
     const selectedIndex = options.selectedIndex === undefined
       ? normalizeSelectedIndex(this.data.selectedIndex, sequence)
@@ -1022,8 +1279,85 @@ Page({
       quoteIssues: options.authoritative ? this.data.quoteIssues : [],
       authoritative: options.authoritative,
     })
-    if (options.persistDraft) writeDraftCache(this.currentDraft())
-    if (options.redraw !== false) this.drawBracelet()
+    if (recordHistory && !sameDesign(before, this.editorSnapshot())) {
+      this.editHistory!.push(this.editorSnapshot())
+    }
+    this.setData({ canUndo: this.editHistory?.canUndo() || false, canRedo: this.editHistory?.canRedo() || false })
+    const materialWarnings = this.materialWarningsFor(sequence)
+    this.setData({ materialWarnings })
+    if (recordHistory && materialWarnings.some((warning) => warning.includes('库存不足'))) {
+      wx.showToast({ title: '当前设计有材料库存不足，请查看提示', icon: 'none' })
+    }
+    if (options.persistDraft) this.scheduleDraftWrite()
+    if (options.redraw !== false) {
+      if (options.persistDraft) this.scheduleCanvasRedraw()
+      else this.drawBracelet()
+    }
+    this.schedulePreviewPreparation()
+  },
+
+  scheduleDraftWrite() {
+    this.draftDirty = true
+    if (this.draftWriteTimer !== null) return
+    this.draftWriteTimer = setTimeout(() => {
+      this.draftWriteTimer = null
+      this.flushDraftCache()
+    }, DRAFT_WRITE_INTERVAL_MS)
+  },
+
+  flushDraftCache() {
+    if (this.draftWriteTimer !== null) clearTimeout(this.draftWriteTimer)
+    this.draftWriteTimer = null
+    if (!this.draftDirty) return
+    try {
+      writeDraftCache(this.currentDraft())
+      this.draftDirty = false
+    } catch { /* 缓存写入失败时保留脏标记，退出或下次编辑时再试。 */ }
+  },
+
+  clearSavedDraft(savedDraft: DraftCache) {
+    if (this.draftWriteTimer !== null) clearTimeout(this.draftWriteTimer)
+    this.draftWriteTimer = null
+    this.draftDirty = false
+    try {
+      const cached = readDraftCache()
+      if (cached && JSON.stringify(cached) === JSON.stringify(savedDraft)) {
+        wx.removeStorageSync(DRAFT_CACHE_KEY)
+      }
+    }
+    catch { /* 服务端保存已经成功，不将缓存清理失败当成保存失败。 */ }
+  },
+
+  previewSnapshot(): PreviewSnapshot {
+    const ids = new Set(this.data.sequence)
+    return {
+      sequence: [...this.data.sequence],
+      catalog: this.data.catalog.filter((item) => ids.has(item.id)).map((item) => ({ ...item })),
+      visualConfig: this.config?.visualConfig ? { ...this.config.visualConfig } : undefined,
+      cordColor: this.currentCord()?.colorHex,
+    }
+  },
+
+  schedulePreviewPreparation() {
+    this.cancelPreviewPreparation()
+    if (!this.editorActive || this.editorHidden || !this.config?.visualConfig
+      || !this.data.sequence.length || this.data.saving || this.data.checkingOut) return
+    this.previewPrepareTimer = setTimeout(() => {
+      this.previewPrepareTimer = null
+      const snapshot = this.previewSnapshot()
+      const key = JSON.stringify(snapshot)
+      if (this.preparedPreview?.key === key) return
+      const promise = this.exportPreview(snapshot)
+      this.preparedPreview = { key, promise }
+      void promise.catch(() => {
+        if (this.preparedPreview?.promise === promise) this.preparedPreview = null
+      })
+    }, EXPORT_PREPARE_IDLE_MS)
+  },
+
+  cancelPreviewPreparation() {
+    if (this.previewPrepareTimer !== null) clearTimeout(this.previewPrepareTimer)
+    this.previewPrepareTimer = null
   },
 
   buildLocalSummary(
@@ -1162,7 +1496,7 @@ Page({
   },
 
   drawBracelet() {
-    if (!this.editorActive) return
+    if (!this.editorActive || this.editorHidden) return
     if (
       this.canvasNode
       && this.canvasContext
@@ -1286,6 +1620,7 @@ Page({
     }
     const generation = this.editorGeneration
     const revision = this.canvasRenderRevision
+    const designRevision = this.designRevision
     const capture = new Promise<string>((resolve, reject) => {
       wx.canvasToTempFilePath({
         canvas,
@@ -1297,6 +1632,7 @@ Page({
             && generation === this.editorGeneration
             && canvas === this.canvasNode
             && revision === this.canvasRenderRevision
+            && designRevision === this.designRevision
           ) {
             this.compactPreviewCapturedRevision = revision
             this.setData({ compactPreviewUrl: response.tempFilePath })
@@ -1341,8 +1677,9 @@ Page({
   },
 
   scheduleCompactPreviewCapture() {
+    this.cancelCompactPreviewCapture()
     if (
-      this.compactPreviewCaptureTimer !== null
+      this.editorHidden
       || this.compactPreviewCapturePromise
       || !this.canvasNode
       || this.canvasImageQueue.length > 0
@@ -1353,9 +1690,9 @@ Page({
     }
     this.compactPreviewCaptureTimer = setTimeout(() => {
       this.compactPreviewCaptureTimer = null
-      if (!this.editorActive) return
+      if (!this.editorActive || this.editorHidden) return
       void this.captureCompactPreview().catch(() => undefined)
-    }, CANVAS_REDRAW_FRAME_MS)
+    }, COMPACT_PREVIEW_IDLE_MS)
   },
 
   cancelCompactPreviewCapture() {
@@ -1457,14 +1794,18 @@ Page({
     this.scheduleCanvasRedraw(request.canvas, request.generation)
   },
 
-  scheduleCanvasRedraw(canvas: CanvasNode, generation: number) {
+  scheduleCanvasRedraw(canvas?: CanvasNode | null, generation?: number) {
+    const targetCanvas = canvas === undefined ? this.canvasNode : canvas
+    const targetGeneration = generation === undefined ? this.editorGeneration : generation
+    if (!this.editorActive || this.editorHidden) return
     if (this.canvasRedrawTimer !== null) return
     this.canvasRedrawTimer = setTimeout(() => {
       this.canvasRedrawTimer = null
       if (
         !this.editorActive
-        || generation !== this.editorGeneration
-        || canvas !== this.canvasNode
+        || this.editorHidden
+        || targetGeneration !== this.editorGeneration
+        || targetCanvas !== this.canvasNode
       ) {
         return
       }
@@ -1476,21 +1817,6 @@ Page({
     if (this.canvasRedrawTimer === null) return
     clearTimeout(this.canvasRedrawTimer)
     this.canvasRedrawTimer = null
-  },
-
-  async uploadPreviewSafely(schemeId: number) {
-    try {
-      const filePath = await this.exportPreview()
-      const saved = await uploadSchemePreview(schemeId, filePath)
-      this.setData({ schemeVersion: saved.version })
-      wx.removeStorageSync(PREVIEW_PENDING_KEY)
-    } catch {
-      wx.setStorageSync(
-        PREVIEW_PENDING_KEY,
-        JSON.stringify({ schemeId, previewPending: true }),
-      )
-      wx.showToast({ title: '方案已保存，预览稍后重试', icon: 'none' })
-    }
   },
 
   createExportCanvas(): CanvasNode {
@@ -1523,14 +1849,16 @@ Page({
   renderExportCanvas(
     canvas: CanvasNode,
     exportImages: Record<number, CanvasImage>,
+    suppliedSnapshot?: PreviewSnapshot,
   ) {
-    const visualConfig = this.config?.visualConfig
+    const snapshot = suppliedSnapshot || this.previewSnapshot()
+    const visualConfig = snapshot.visualConfig
     if (!visualConfig) {
       throw new Error('方案预览尚未准备好，请稍后重试')
     }
-    const catalogMap = this.catalogMap()
+    const catalogMap = Object.fromEntries(snapshot.catalog.map((item) => [item.id, item]))
     const points = layoutBracelet(
-      this.data.sequence,
+      snapshot.sequence,
       catalogMap,
       { width: EXPORT_CANVAS_SIZE, height: EXPORT_CANVAS_SIZE },
     ).map((point) => ({
@@ -1540,8 +1868,8 @@ Page({
     const plan = buildBraceletRenderPlan(
       points,
       visualConfig,
-      this.data.selectedIndex,
-      { cordColor: this.currentCord()?.colorHex },
+      -1,
+      { cordColor: snapshot.cordColor },
     )
     const context = canvas.getContext('2d')
     renderBraceletCanvas(
@@ -1557,11 +1885,13 @@ Page({
 
   loadExportImages(
     canvas: CanvasNode,
+    suppliedSnapshot?: PreviewSnapshot,
   ): Promise<Record<number, CanvasImage>> {
+    const snapshot = suppliedSnapshot || this.previewSnapshot()
     const catalogMap = Object.fromEntries(
-      this.data.catalog.map((item) => [item.id, item]),
+      snapshot.catalog.map((item) => [item.id, item]),
     ) as Record<number, CatalogItem>
-    const items = Array.from(new Set(this.data.sequence))
+    const items = Array.from(new Set(snapshot.sequence))
       .map((skuId) => catalogMap[skuId])
       .filter((item): item is CatalogItem => Boolean(item))
     const exportImages: Record<number, CanvasImage> = {}
@@ -1668,10 +1998,11 @@ Page({
     })
   },
 
-  async exportPreview(): Promise<string> {
+  async exportPreview(suppliedSnapshot?: PreviewSnapshot): Promise<string> {
+    const snapshot = suppliedSnapshot || this.previewSnapshot()
     const canvas = this.createExportCanvas()
-    const exportImages = await this.loadExportImages(canvas)
-    this.renderExportCanvas(canvas, exportImages)
+    const exportImages = await this.loadExportImages(canvas, snapshot)
+    this.renderExportCanvas(canvas, exportImages, snapshot)
     return new Promise((resolve, reject) => {
       wx.canvasToTempFilePath({
         canvas,
@@ -1695,6 +2026,14 @@ function blankDraft(): DraftCache {
     sequence: [],
     selectedIndex: -1,
   }
+}
+
+function sameDesign(left: EditorSnapshot, right: EditorSnapshot): boolean {
+  return left.wristCircumferenceMm === right.wristCircumferenceMm
+    && left.fitType === right.fitType
+    && left.cordOptionId === right.cordOptionId
+    && left.sequence.length === right.sequence.length
+    && left.sequence.every((skuId, index) => skuId === right.sequence[index])
 }
 
 function readDraftCache(): DraftCache | null {
@@ -1733,6 +2072,9 @@ function toCatalogItem(bead: PublicBead): CatalogItem {
     color: bead.color,
     diameterMm: bead.diameterMm,
     salePriceCents: yuanToCents(bead.salePrice),
+    availableQty: typeof bead.availableQty === 'number' && Number.isSafeInteger(bead.availableQty)
+      && bead.availableQty >= 0 ? bead.availableQty : null,
+    unavailable: false,
     ...visualImageFields(bead),
     colorHex: colorFromText(`${bead.material}${bead.color}${bead.name}`),
     isFavorite: false,

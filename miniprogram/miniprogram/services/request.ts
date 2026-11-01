@@ -1,6 +1,5 @@
 import {
   ensureGuestToken,
-  guestSessionManager,
   refreshGuestToken,
 } from './session'
 
@@ -84,8 +83,7 @@ export function request<T>(
           return
         }
         if (shouldRefreshCustomerSession(path, response.statusCode, retried)) {
-          guestSessionManager.invalidate()
-          refreshGuestToken()
+          refreshGuestToken(header.Authorization?.replace(/^Bearer /, ''))
             .then(() => request<T>(path, options, true))
             .then(resolve, reject)
           return
@@ -119,8 +117,7 @@ export function upload<T>(
       header: { Authorization: `Bearer ${token}` },
       success(response) {
         if (shouldRefreshCustomerSession(path, response.statusCode, retried)) {
-          guestSessionManager.invalidate()
-          refreshGuestToken()
+          refreshGuestToken(token)
             .then(() => upload<T>(path, filePath, name, true))
             .then(resolve, reject)
           return

@@ -2,9 +2,7 @@ package com.diybracelet.mall.order.application;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.diybracelet.mall.catalog.api.dto.PageResponse;
-import com.diybracelet.mall.customer.domain.CouponTemplate;
 import com.diybracelet.mall.customer.domain.CustomerCoupon;
-import com.diybracelet.mall.customer.infrastructure.CouponTemplateMapper;
 import com.diybracelet.mall.customer.infrastructure.CustomerCouponMapper;
 import com.diybracelet.mall.diy.domain.CordOption;
 import com.diybracelet.mall.diy.domain.DiyScheme;
@@ -39,6 +37,10 @@ import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Collection;
+import java.util.Objects;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /** 后台订单查询、制作、发货与审计服务。 */
 @Service
@@ -52,7 +54,6 @@ public class AdminOrderService {
     private final CordOptionMapper cordOptionMapper;
     private final AssetFileMapper assetFileMapper;
     private final CustomerCouponMapper customerCouponMapper;
-    private final CouponTemplateMapper couponTemplateMapper;
     private final InventoryReservationService inventoryReservationService;
 
     public AdminOrderService(
@@ -65,7 +66,6 @@ public class AdminOrderService {
             CordOptionMapper cordOptionMapper,
             AssetFileMapper assetFileMapper,
             CustomerCouponMapper customerCouponMapper,
-            CouponTemplateMapper couponTemplateMapper,
             InventoryReservationService inventoryReservationService
     ) {
         this.orderMapper = orderMapper;
@@ -77,7 +77,6 @@ public class AdminOrderService {
         this.cordOptionMapper = cordOptionMapper;
         this.assetFileMapper = assetFileMapper;
         this.customerCouponMapper = customerCouponMapper;
-        this.couponTemplateMapper = couponTemplateMapper;
         this.inventoryReservationService = inventoryReservationService;
     }
 
@@ -99,8 +98,7 @@ public class AdminOrderService {
                     .orderByDesc(CustomerOrder::getId);
         }
         pageQuery.last("limit " + size + " offset " + offset);
-        List<AdminOrderResponse> items = orderMapper.selectList(pageQuery)
-                .stream().map(this::toResponse).toList();
+        List<AdminOrderResponse> items = listResponses(orderMapper.selectList(pageQuery));
         return new PageResponse<>(items, total, page, size);
     }
 
@@ -203,7 +201,7 @@ public class AdminOrderService {
         }
         addOperation(
                 orderId, "PAYMENT_REMINDER", "ADMIN", "后台管理员",
-                "发送付款提醒", LocalDateTime.now()
+                "记录付款提醒操作（未接入消息发送）", LocalDateTime.now()
         );
         return get(orderId);
     }
@@ -220,7 +218,7 @@ public class AdminOrderService {
         inventoryReservationService.release(orderId, quantities(items));
         restoreCoupon(order);
         LocalDateTime cancelledAt = LocalDateTime.now();
-        if (orderMapper.markCancelled(orderId, cancelledAt) != 1) {
+        if (orderMapper.markCancelled(orderId, cancelledAt, "ADMIN_CANCELLED") != 1) {
             throw stateConflict("取消订单失败，订单状态已变化");
         }
         addOperation(
@@ -290,10 +288,10 @@ public class AdminOrderService {
         }
         if (notBlank(filters.paymentMethod())) {
             String method = filters.paymentMethod().trim().toUpperCase();
-            if ("WECHAT".equals(method)) {
+            if ("WECHAT".equals(method) || "MOCK".equals(method)) {
                 query.exists("select 1 from payment_record payment "
                         + "where payment.order_id = customer_order.id "
-                        + "and payment.channel in ('MOCK', 'WECHAT') "
+                        + "and payment.channel = '" + method + "' "
                         + "and payment.status = 'SUCCESS'");
             }
         }
@@ -337,9 +335,64 @@ public class AdminOrderService {
                 ? null : assetFileMapper.selectById(scheme.getPreviewAssetId());
         List<OrderOperationLog> operations =
                 operationMapper.selectByOrderId(order.getId());
+        return toResponse(order, items, fulfillment, payment, scheme, cord, preview,
+                operations, couponName(order.getCouponId()));
+    }
+
+    /** 分页内关联数据按表批量读取，保留详情结构和操作时间顺序。 */
+    private List<AdminOrderResponse> listResponses(List<CustomerOrder> orders) {
+        if (orders.isEmpty()) return List.of();
+        List<Long> orderIds = orders.stream().map(CustomerOrder::getId).toList();
+        Map<Long, List<OrderItem>> items = itemMapper.selectList(new LambdaQueryWrapper<OrderItem>()
+                .in(OrderItem::getOrderId, orderIds).orderByAsc(OrderItem::getSortOrder, OrderItem::getId))
+                .stream().collect(Collectors.groupingBy(OrderItem::getOrderId));
+        Map<Long, FulfillmentTask> tasks = index(fulfillmentMapper.selectList(
+                new LambdaQueryWrapper<FulfillmentTask>().in(FulfillmentTask::getOrderId, orderIds)),
+                FulfillmentTask::getOrderId);
+        Map<Long, PaymentRecord> payments = index(paymentMapper.selectList(
+                new LambdaQueryWrapper<PaymentRecord>().in(PaymentRecord::getOrderId, orderIds)),
+                PaymentRecord::getOrderId);
+        Map<Long, List<OrderOperationLog>> operations = operationMapper.selectList(
+                new LambdaQueryWrapper<OrderOperationLog>().in(OrderOperationLog::getOrderId, orderIds)
+                        .orderByAsc(OrderOperationLog::getOccurredAt, OrderOperationLog::getId))
+                .stream().collect(Collectors.groupingBy(OrderOperationLog::getOrderId));
+        Map<Long, DiyScheme> schemes = loadRelated(orders, CustomerOrder::getDiySchemeId,
+                schemeMapper::selectBatchIds, DiyScheme::getId);
+        Map<Long, CordOption> cords = loadRelated(schemes.values(), DiyScheme::getCordOptionId,
+                cordOptionMapper::selectBatchIds, CordOption::getId);
+        Map<Long, AssetFile> previews = loadRelated(schemes.values(), DiyScheme::getPreviewAssetId,
+                assetFileMapper::selectBatchIds, AssetFile::getId);
+        Map<Long, CustomerCoupon> coupons = loadRelated(orders, CustomerOrder::getCouponId,
+                customerCouponMapper::selectBatchIds, CustomerCoupon::getId);
+        return orders.stream().map(order -> {
+            DiyScheme scheme = schemes.get(order.getDiySchemeId());
+            CustomerCoupon coupon = coupons.get(order.getCouponId());
+            String name = order.getCouponId() == null ? null : coupon == null ? "优惠券" : coupon.getCouponName();
+            return toResponse(order, items.getOrDefault(order.getId(), List.of()),
+                    tasks.get(order.getId()), payments.get(order.getId()), scheme,
+                    scheme == null ? null : cords.get(scheme.getCordOptionId()),
+                    scheme == null ? null : previews.get(scheme.getPreviewAssetId()),
+                    operations.getOrDefault(order.getId(), List.of()), name);
+        }).toList();
+    }
+
+    private <S, T> Map<Long, T> loadRelated(Collection<S> source, Function<S, Long> foreignKey,
+                                         Function<List<Long>, List<T>> loader, Function<T, Long> key) {
+        List<Long> ids = source.stream().map(foreignKey).filter(Objects::nonNull).distinct().toList();
+        return ids.isEmpty() ? java.util.Collections.emptyMap() : index(loader.apply(ids), key);
+    }
+
+    private <T> Map<Long, T> index(List<T> values, Function<T, Long> key) {
+        return values.stream().collect(Collectors.toMap(key, Function.identity()));
+    }
+
+    private AdminOrderResponse toResponse(
+            CustomerOrder order, List<OrderItem> items, FulfillmentTask fulfillment,
+            PaymentRecord payment, DiyScheme scheme, CordOption cord, AssetFile preview,
+            List<OrderOperationLog> operations, String couponName
+    ) {
         int beadCount = items.stream()
                 .mapToInt(OrderItem::getQuantity).sum();
-        String couponName = couponName(order.getCouponId());
         return new AdminOrderResponse(
                 order.getId(),
                 order.getOrderNo(),
@@ -409,9 +462,7 @@ public class AdminOrderService {
         if (customerCouponId == null) return null;
         CustomerCoupon coupon = customerCouponMapper.selectById(customerCouponId);
         if (coupon == null) return "优惠券";
-        CouponTemplate template =
-                couponTemplateMapper.selectById(coupon.getCouponTemplateId());
-        return template == null ? "优惠券" : template.getName();
+        return coupon.getCouponName();
     }
 
     private Map<Long, Integer> quantities(List<OrderItem> items) {

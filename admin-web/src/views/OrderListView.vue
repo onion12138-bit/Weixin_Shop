@@ -1,6 +1,9 @@
 <script setup lang="ts">
+// 筛选请求仅采纳最新响应；订单统计与列表数据按同一次查询更新。
 import DataTooltip from '../components/DataTooltip.vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { csvCell } from '../utils/csv'
+import { settleBatch } from '../utils/batch'
 import { ApiError } from '../api/http'
 import ListPagination from '../components/ListPagination.vue'
 import OverflowText from '../components/OverflowText.vue'
@@ -111,6 +114,8 @@ function readableError(error: unknown): string {
 }
 
 function showToast(message: string, tone: 'success' | 'error' = 'success'): void {
+  // 页面离开后的请求结果不再创建提示计时器。
+  if (disposed) return
   toastMessage.value = message
   toastTone.value = tone
   if (toastTimer !== null) clearTimeout(toastTimer)
@@ -169,9 +174,11 @@ async function runAction(
   action: () => Promise<AdminOrder>,
   message: string,
 ): Promise<boolean> {
+  if (disposed || workingOrderId.value !== null || batchWorking.value) return false
   workingOrderId.value = order.id
   try {
     await action()
+    if (disposed) return false
     showToast(message)
     await loadOrders()
     return true
@@ -186,7 +193,7 @@ async function runAction(
 function remindPayment(order: AdminOrder): void {
   void runAction(
     order, () => remindAdminOrderPayment(order.id),
-    `订单 ${order.orderNo} 的付款提醒已记录`,
+    `订单 ${order.orderNo} 的付款提醒操作已记录，尚未发送消息`,
   )
 }
 
@@ -253,6 +260,7 @@ function clearSelection(): void {
 }
 
 async function completeSelectedProduction(): Promise<void> {
+  if (disposed || batchWorking.value || workingOrderId.value !== null) return
   const targets = selectedProductionOrders.value
   if (!targets.length) {
     showToast('所选订单中没有“制作中”的订单', 'error')
@@ -260,9 +268,13 @@ async function completeSelectedProduction(): Promise<void> {
   }
   if (!window.confirm(`确认将所选 ${targets.length} 个订单标记为完成制作？`)) return
   batchWorking.value = true
-  const results = await Promise.allSettled(
-    targets.map((order) => completeOrderProduction(order.id)),
+  const results = await settleBatch(
+    targets.map((order) => () => {
+      if (disposed) throw new Error('页面已关闭，取消未开始的操作')
+      return completeOrderProduction(order.id)
+    }),
   )
+  if (disposed) return
   batchWorking.value = false
   const succeededIds = new Set(targets
     .filter((_, index) => results[index].status === 'fulfilled')
@@ -298,6 +310,7 @@ function closeBatchShipping(): void {
 }
 
 async function submitBatchShipping(): Promise<void> {
+  if (disposed || batchWorking.value || workingOrderId.value !== null) return
   const incomplete = batchShippingOrders.value.filter((order) => {
     const draft = batchShippingDrafts.value[order.id]
     return !draft?.logisticsCompany.trim() || !draft?.trackingNo.trim()
@@ -311,10 +324,17 @@ async function submitBatchShipping(): Promise<void> {
   }
   batchWorking.value = true
   const targets = [...batchShippingOrders.value]
-  const results = await Promise.allSettled(targets.map((order) => {
+  const results = await settleBatch(targets.map((order) => {
     const draft = batchShippingDrafts.value[order.id]
-    return shipAdminOrder(order.id, draft.logisticsCompany.trim(), draft.trackingNo.trim())
+    // 排队前固定提交内容，等待中的订单不读取随后被用户修改的输入框。
+    const company = draft.logisticsCompany.trim()
+    const trackingNo = draft.trackingNo.trim()
+    return () => {
+      if (disposed) throw new Error('页面已关闭，取消未开始的操作')
+      return shipAdminOrder(order.id, company, trackingNo)
+    }
   }))
+  if (disposed) return
   batchWorking.value = false
   const succeededIds = new Set(targets
     .filter((_, index) => results[index].status === 'fulfilled')
@@ -372,10 +392,6 @@ async function exportOrders(): Promise<void> {
   }
 }
 
-function csvCell(value: unknown): string {
-  return `"${String(value ?? '').replaceAll('"', '""')}"`
-}
-
 onMounted(() => loadOrders())
 onBeforeUnmount(() => {
   disposed = true
@@ -409,7 +425,7 @@ onBeforeUnmount(() => {
         <label><span>结束日期</span><input v-model="filters.endDate" type="date" /></label>
         <label><span>最低金额</span><input v-model="filters.minAmount" type="number" min="0" placeholder="0.00" /></label>
         <label><span>最高金额</span><input v-model="filters.maxAmount" type="number" min="0" placeholder="不限" /></label>
-        <label><span>支付方式</span><select v-model="filters.paymentMethod"><option value="">全部方式</option><option value="WECHAT">微信支付</option></select></label>
+        <label><span>支付方式</span><select v-model="filters.paymentMethod"><option value="">全部方式</option><option value="MOCK">模拟支付</option><option value="WECHAT">微信支付</option></select></label>
         <label><span>下单时间排序</span><select v-model="filters.sortDirection"><option value="desc">降序（最新优先）</option><option value="asc">升序（最早优先）</option></select></label>
       </div>
       <div class="filter-actions">
@@ -476,7 +492,7 @@ onBeforeUnmount(() => {
               <td>
                 <div class="row-actions">
                   <button class="text-button" @click="emit('open', order.id)">查看详情</button>
-                  <button v-if="order.status === 'PENDING_PAYMENT'" class="text-button" :disabled="workingOrderId === order.id" @click="remindPayment(order)">提醒付款</button>
+                  <button v-if="order.status === 'PENDING_PAYMENT'" class="text-button" title="仅记录操作，尚未接入消息发送" :disabled="workingOrderId === order.id" @click="remindPayment(order)">记录付款提醒</button>
                   <button v-if="order.status === 'PENDING_PAYMENT'" class="text-button danger-text" :disabled="workingOrderId === order.id" @click="cancelOrder(order)">取消</button>
                   <button v-if="order.status === 'IN_PRODUCTION'" class="text-button" @click="emit('open', order.id)">打印 BOM</button>
                   <button v-if="order.status === 'IN_PRODUCTION'" class="text-button" data-test="complete-production" :disabled="workingOrderId === order.id" @click="completeProduction(order)">完成制作</button>

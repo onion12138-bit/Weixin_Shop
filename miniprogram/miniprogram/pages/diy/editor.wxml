@@ -35,6 +35,7 @@
               bindtouchstart="onCanvasTouchStart"
               bindtouchmove="onCanvasTouchMove"
               bindtouchend="onCanvasTouchEnd"
+              bindtouchcancel="onCanvasTouchCancel"
             />
             <image
               wx:if="{{!previewExpanded && compactPreviewUrl}}"
@@ -58,10 +59,35 @@
       <view wx:if="{{!loading}}" class="selected-actions">
         <text wx:if="{{selectedIndex >= 0}}">第 {{selectedNumber}} 颗</text>
         <text wx:else>共 {{totalBeadCount}} 颗 · 未选珠子</text>
-        <button disabled="{{selectedIndex < 0}}" bindtap="decreaseSelectedSku">−</button>
-        <button disabled="{{selectedIndex < 0}}" bindtap="increaseSelectedSku">＋</button>
-        <button disabled="{{selectedIndex < 0}}" bindtap="replaceSelected">替换</button>
-        <button disabled="{{selectedIndex < 0}}" bindtap="removeSelected">删除</button>
+        <button disabled="{{selectedIndex < 0 || saving || checkingOut}}" bindtap="decreaseSelectedSku">−</button>
+        <button disabled="{{selectedIndex < 0 || saving || checkingOut}}" bindtap="increaseSelectedSku">＋</button>
+        <button disabled="{{selectedIndex < 0 || saving || checkingOut}}" bindtap="replaceSelected">替换</button>
+        <button disabled="{{selectedIndex < 0 || saving || checkingOut}}" bindtap="removeSelected">删除</button>
+      </view>
+
+      <view wx:if="{{!loading}}" class="history-actions">
+        <text>可撤销最近 50 步</text>
+        <button disabled="{{!canUndo || saving || checkingOut}}" bindtap="undoEdit">撤销</button>
+        <button disabled="{{!canRedo || saving || checkingOut}}" bindtap="redoEdit">重做</button>
+      </view>
+
+      <view wx:if="{{replacementIndex >= 0}}" class="replacement-panel">
+        <text class="replacement-title">替换第 {{replacementIndex + 1}} 颗 · {{replacementOriginalName}}</text>
+        <text wx:if="{{!replacementCandidateId}}">请在下方选择要换成的珠子</text>
+        <block wx:else>
+          <text>换成：{{replacementCandidateName}}</text>
+          <text>{{replacementChangeText}}</text>
+          <text wx:if="{{replacementStockText}}" class="material-warning">{{replacementStockText}}</text>
+          <text>最终金额与适配结果以结算校验为准</text>
+        </block>
+        <view class="replacement-actions">
+          <button bindtap="cancelReplacement">取消</button>
+          <button disabled="{{!replacementCandidateId || saving || checkingOut}}" bindtap="confirmReplacement">确认替换</button>
+        </view>
+      </view>
+
+      <view wx:if="{{materialWarnings.length}}" class="material-warnings">
+        <text wx:for="{{materialWarnings}}" wx:key="*this">{{item}}</text>
       </view>
 
       <block wx:if="{{!catalogInitialLoading}}">
@@ -88,8 +114,9 @@
 
         <view class="tray-heading">
           <view>
-            <text>挑选珠子</text>
-            <text>点击珠子即可加入手串</text>
+            <text>{{replacementIndex >= 0 ? '选择替换珠子' : '挑选珠子'}}</text>
+            <text>{{replacementIndex >= 0 ? '选择后查看变化，再确认替换' : '点击珠子即可加入手串'}}</text>
+            <text>库存仅供参考，尚未预留，下单时再次校验</text>
           </view>
         </view>
       </block>
@@ -113,13 +140,14 @@
           <view
             wx:for="{{visibleCatalog}}"
             wx:key="id"
-            class="bead-card expanded"
+            class="bead-card expanded {{replacementCandidateId === item.id ? 'replacement-candidate' : ''}}"
           >
-            <button class="bead-add" disabled="{{loading || saving || checkingOut}}" data-id="{{item.id}}" bindtap="addCatalogBead">
+            <button class="bead-add" disabled="{{loading || saving || checkingOut || item.unavailable}}" data-id="{{item.id}}" bindtap="addCatalogBead">
               <image wx:if="{{item.trayImageUrl}}" class="tray-bead tray-bead-image" src="{{item.trayImageUrl}}" mode="aspectFit" data-id="{{item.id}}" data-visual-key="{{item.visualVersion}}:{{item.trayImageUrl}}" binderror="onTrayImageError" />
               <view wx:else class="tray-bead" style="background: {{item.colorHex}};" />
               <text class="bead-name">{{item.name}}</text>
               <text class="bead-meta">{{item.diameterMm}} mm · ¥{{item.salePriceCents / 100}}</text>
+              <text class="bead-meta">{{item.unavailable ? '已下架 · 可删除或换出' : item.availableQty !== null ? '当前可用 ' + item.availableQty + ' 颗' : '库存待校验'}}</text>
             </button>
             <button class="tray-heart {{item.isFavorite ? 'active' : ''}}" data-id="{{item.id}}" bindtap="toggleFavorite">{{item.isFavorite ? '♥' : '♡'}}</button>
           </view>

@@ -14,7 +14,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Customer-JWT-only endpoints for availability and one recommendation. */
+
+/** 顾客身份验证后的 AI 状态查询和推荐接口。 */
 @RestController
 @RequestMapping("/api/app/recommendations")
 public class AppRecommendationController {

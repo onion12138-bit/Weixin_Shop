@@ -21,16 +21,16 @@ describe('DIY editor visual contract', () => {
   it('keeps all selected-bead actions visible but disabled before selection', () => {
     expect(editorMarkup).toContain('<view wx:if="{{!loading}}" class="selected-actions">')
     expect(editorMarkup).toMatch(
-      /disabled="{{selectedIndex < 0}}" bindtap="decreaseSelectedSku"/,
+      /disabled="{{selectedIndex < 0 \|\| saving \|\| checkingOut}}" bindtap="decreaseSelectedSku"/,
     )
     expect(editorMarkup).toMatch(
-      /disabled="{{selectedIndex < 0}}" bindtap="increaseSelectedSku"/,
+      /disabled="{{selectedIndex < 0 \|\| saving \|\| checkingOut}}" bindtap="increaseSelectedSku"/,
     )
     expect(editorMarkup).toMatch(
-      /disabled="{{selectedIndex < 0}}" bindtap="replaceSelected"/,
+      /disabled="{{selectedIndex < 0 \|\| saving \|\| checkingOut}}" bindtap="replaceSelected"/,
     )
     expect(editorMarkup).toMatch(
-      /disabled="{{selectedIndex < 0}}" bindtap="removeSelected"/,
+      /disabled="{{selectedIndex < 0 \|\| saving \|\| checkingOut}}" bindtap="removeSelected"/,
     )
   })
 

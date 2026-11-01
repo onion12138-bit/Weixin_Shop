@@ -2,6 +2,7 @@ package com.diybracelet.mall.support;
 
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.test.context.TestPropertySource;
 import org.testcontainers.containers.MySQLContainer;
 
 /**
@@ -12,6 +13,7 @@ import org.testcontainers.containers.MySQLContainer;
  * 无法暴露的 MySQL JSON、外键、排序和精度问题。</p>
  */
 @SpringBootTest
+@TestPropertySource(properties = "app.orders.expiry-enabled=false")
 public abstract class MySqlIntegrationTest {
 
     /**

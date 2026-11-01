@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// 列表和详情分别维护请求序号，防止旧响应覆盖当前筛选结果。
 import DataTooltip from '../components/DataTooltip.vue'
 import OverflowText from '../components/OverflowText.vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'

@@ -19,8 +19,15 @@ mybatis-plus:
     map-underscore-to-camel-case: true
 
 app:
+  orders:
+    # 新建订单使用此期限；历史待支付单由 V18 统一给予 30 分钟宽限。
+    payment-timeout: ${ORDER_PAYMENT_TIMEOUT:PT30M}
+    expiry-scan-delay: ${ORDER_EXPIRY_SCAN_DELAY:PT30S}
+    expiry-enabled: ${ORDER_EXPIRY_ENABLED:true}
   ai:
     encryption-key: ${AI_CONFIG_ENCRYPTION_KEY:}
+    # 单进程最多同时调用的模型请求数；超限立即返回，避免慢上游挤占业务线程。
+    max-concurrent-requests: ${AI_MAX_CONCURRENT_REQUESTS:4}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
   auth:
@@ -41,6 +48,8 @@ app:
       root: ${FILE_STORAGE_LOCAL_ROOT:storage/catalog}
 
 server:
+  # 演示身份和支付仅供本地使用；真机联调需显式指定受信任局域网地址。
+  address: ${BACKEND_ADDRESS:127.0.0.1}
   port: ${BACKEND_PORT:8081}
 
 management:

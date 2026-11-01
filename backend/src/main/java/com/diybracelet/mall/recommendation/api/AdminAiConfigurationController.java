@@ -19,7 +19,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Admin-only HTTP contract for the singleton DeepSeek configuration. */
+
+/** 仅管理员可访问的 DeepSeek 模型与密钥配置接口。 */
 @RestController
 @RequestMapping("/api/admin/ai/config")
 public class AdminAiConfigurationController {

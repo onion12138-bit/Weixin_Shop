@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// 客户资料按页展示，手机号搜索防抖并丢弃过期请求结果。
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ApiError, resolveApiResourceUrl } from '../api/http'
 import OverflowText from '../components/OverflowText.vue'
@@ -52,9 +53,46 @@ const customerSearching = ref(false)
 let phoneSearchTimer: ReturnType<typeof setTimeout> | null = null
 let latestPhoneRequest = 0
 let latestAddressRequest = 0
+let latestBenefitsRequest = 0
 let savingCoupon = false
 let sendingCoupon = false
+let latestGrantRequest = 0
 let disposed = false
+const pendingGrantKey = 'diy_admin_pending_coupon_grant_v1'
+type GrantIntent = { templateId: number; payload: Parameters<typeof grantCouponsBatch>[1] }
+const pendingGrant = ref<GrantIntent | null>(null)
+
+/** 同一浏览器标签内持久化待确认发券，刷新后仍使用原批次与接收者。 */
+function restoreGrantIntent(): void {
+  const raw = sessionStorage.getItem(pendingGrantKey)
+  if (!raw) return
+  const intent = JSON.parse(raw) as GrantIntent
+  if (!Number.isSafeInteger(intent.templateId) || !intent.payload
+    || !/^[A-Za-z0-9_-]{16,80}$/.test(intent.payload.batchId)
+    || !['ALL', 'SELECTED'].includes(intent.payload.recipientMode)
+    || !Array.isArray(intent.payload.customerIdentityIds)) {
+    throw new Error('待确认发券记录无法读取，请联系管理员核对批次结果')
+  }
+  pendingGrant.value = intent
+  showPendingGrant()
+}
+
+function showPendingGrant(): void {
+  const intent = pendingGrant.value
+  if (!intent) return
+  grantTemplateId.value = intent.templateId
+  recipientMode.value = intent.payload.recipientMode === 'ALL' ? 'ALL' : 'MULTIPLE'
+  selectedCustomerIds.value = [...intent.payload.customerIdentityIds]
+  grantNote.value = intent.payload.note
+}
+
+function clearGrantIntent(batchId: string): void {
+  const raw = sessionStorage.getItem(pendingGrantKey)
+  const saved = raw ? JSON.parse(raw) as GrantIntent : null
+  // An older page/request may finish after a newer page has already started another batch.
+  if (saved?.payload?.batchId === batchId) sessionStorage.removeItem(pendingGrantKey)
+  if (pendingGrant.value?.payload.batchId === batchId) pendingGrant.value = null
+}
 
 const filteredCustomers = computed(() => {
   const query = customerKeyword.value.trim().toLowerCase()
@@ -114,18 +152,21 @@ function avatarUrl(value: string | null): string {
 }
 
 async function loadBenefits(): Promise<void> {
+  if (disposed) return
+  const requestId = ++latestBenefitsRequest
   loading.value = true
   errorMessage.value = ''
   try {
     const [customerItems, couponItems] = await Promise.all([
       listCustomers(), listCouponTemplates(),
     ])
+    if (requestId !== latestBenefitsRequest) return
     customers.value = customerItems
     coupons.value = couponItems
   } catch (error) {
-    errorMessage.value = readableError(error)
+    if (requestId === latestBenefitsRequest) errorMessage.value = readableError(error)
   } finally {
-    loading.value = false
+    if (requestId === latestBenefitsRequest) loading.value = false
   }
 }
 
@@ -168,6 +209,7 @@ watch(() => addressCustomer.value?.id, () => {
 }, { flush: 'sync' })
 
 async function toggleAddress(address: AdminCustomerAddress): Promise<void> {
+  if (disposed || workingId.value !== null) return
   workingId.value = address.id
   errorMessage.value = ''
   successMessage.value = ''
@@ -232,6 +274,8 @@ async function saveCoupon(): Promise<void> {
 }
 
 function openGrant(coupon: CouponTemplate): void {
+  if (sendingCoupon) return
+  if (pendingGrant.value) { showPendingGrant(); return }
   invalidatePhoneSearch()
   grantTemplateId.value = coupon.id
   grantNote.value = ''
@@ -243,6 +287,7 @@ function openGrant(coupon: CouponTemplate): void {
 }
 
 function closeGrant(): void {
+  if (sendingCoupon) return
   invalidatePhoneSearch()
   grantTemplateId.value = null
   phoneResults.value = []
@@ -250,6 +295,7 @@ function closeGrant(): void {
 }
 
 function selectCustomer(id: number): void {
+  if (pendingGrant.value || sendingCoupon) return
   if (recipientMode.value === 'SINGLE') {
     selectedCustomerIds.value = [id]
     return
@@ -260,6 +306,7 @@ function selectCustomer(id: number): void {
 }
 
 function removeSelectedCustomer(id: number): void {
+  if (pendingGrant.value || sendingCoupon) return
   selectedCustomerIds.value = selectedCustomerIds.value.filter((item) => item !== id)
 }
 
@@ -329,29 +376,67 @@ async function sendCoupon(): Promise<void> {
     return
   }
   sendingCoupon = true
+  const requestId = ++latestGrantRequest
+  let intent = pendingGrant.value
+  let completed = false
   workingId.value = grantTemplateId.value
   errorMessage.value = ''
   successMessage.value = ''
   try {
-    const result = await grantCouponsBatch(grantTemplateId.value, {
-      recipientMode: recipientMode.value === 'ALL' ? 'ALL' : 'SELECTED',
-      customerIdentityIds: selectedCustomerIds.value,
-      note: grantNote.value.trim(),
-    })
+    if (!intent) {
+      intent = {
+        templateId: grantTemplateId.value,
+        payload: {
+          batchId: crypto.randomUUID(),
+          recipientMode: recipientMode.value === 'ALL' ? 'ALL' : 'SELECTED',
+          customerIdentityIds: [...selectedCustomerIds.value],
+          note: grantNote.value.trim(),
+        },
+      }
+      // 无法持久化时不提交，避免结果未知却失去重试凭据。
+      sessionStorage.setItem(pendingGrantKey, JSON.stringify(intent))
+      pendingGrant.value = intent
+    }
+    const result = await grantCouponsBatch(intent.templateId, intent.payload)
+    clearGrantIntent(intent.payload.batchId)
+    if (disposed) return
     successMessage.value = `优惠券发送完成：成功 ${result.grantedCount} 位${result.skippedCount ? `，跳过 ${result.skippedCount} 位` : ''}`
-    closeGrant()
-    coupons.value = await listCouponTemplates()
+    completed = true
   } catch (error) {
-    errorMessage.value = readableError(error)
+    // 业务拒绝已回滚；网络/服务器错误或批次冲突的结果仍需用原请求确认。
+    if (intent && error instanceof ApiError && [400, 404, 409].includes(error.status)
+      && ['COMMON_BAD_REQUEST', 'COMMON_NOT_FOUND', 'COMMON_CONFLICT'].includes(error.code)) {
+      clearGrantIntent(intent.payload.batchId)
+    }
+    if (!disposed) errorMessage.value = readableError(error)
   } finally {
-    sendingCoupon = false
-    workingId.value = null
+    if (!disposed) {
+      sendingCoupon = false
+      workingId.value = null
+    }
+  }
+  if (!completed || disposed) return
+  closeGrant()
+  // Refresh is a separate read. Its failure must never clear a subsequent grant intent
+  // or release the subsequent request's sending guard.
+  try {
+    const refreshed = await listCouponTemplates()
+    if (!disposed && requestId === latestGrantRequest) coupons.value = refreshed
+  } catch (error) {
+    if (!disposed && requestId === latestGrantRequest) {
+      errorMessage.value = `发券已成功，列表刷新失败：${readableError(error)}`
+    }
   }
 }
 
-onMounted(() => loadBenefits())
+onMounted(async () => {
+  await loadBenefits()
+  if (disposed) return
+  try { restoreGrantIntent() } catch (error) { errorMessage.value = readableError(error) }
+})
 onBeforeUnmount(() => {
   disposed = true
+  latestBenefitsRequest++
   latestAddressRequest++
   invalidatePhoneSearch()
 })
@@ -454,10 +539,11 @@ onBeforeUnmount(() => {
     <div v-if="grantTemplateId" class="modal-backdrop grant-backdrop" @click.self="closeGrant">
       <section class="grant-modal" role="dialog" aria-modal="true" aria-label="发送优惠券">
         <div class="panel-title"><div><p class="section-kicker">SEND BENEFIT</p><h2>发送优惠券</h2></div><button class="link-button" @click="closeGrant">关闭</button></div>
+        <p v-if="pendingGrant" class="notice" role="status">上一批发券结果待确认。接收范围与备注已锁定，请重试确认，避免重复发放。</p>
         <div class="recipient-tabs" aria-label="发送范围">
-          <button :class="{ active: recipientMode === 'SINGLE' }" @click="recipientMode = 'SINGLE'">单个发送</button>
-          <button :class="{ active: recipientMode === 'MULTIPLE' }" @click="recipientMode = 'MULTIPLE'">多选发送</button>
-          <button :class="{ active: recipientMode === 'ALL' }" @click="recipientMode = 'ALL'">全量发送</button>
+          <button :disabled="!!pendingGrant || sendingCoupon" :class="{ active: recipientMode === 'SINGLE' }" @click="recipientMode = 'SINGLE'">单个发送</button>
+          <button :disabled="!!pendingGrant || sendingCoupon" :class="{ active: recipientMode === 'MULTIPLE' }" @click="recipientMode = 'MULTIPLE'">多选发送</button>
+          <button :disabled="!!pendingGrant || sendingCoupon" :class="{ active: recipientMode === 'ALL' }" @click="recipientMode = 'ALL'">全量发送</button>
         </div>
 
         <template v-if="recipientMode !== 'ALL'">
@@ -479,10 +565,10 @@ onBeforeUnmount(() => {
             <button v-for="customer in selectedCustomers" :key="customer.id" @click="removeSelectedCustomer(customer.id)">{{ customer.nickname }} · {{ customer.phone }} ×</button>
           </div>
         </template>
-        <div v-else class="all-customer-warning"><strong>将发送给全部有效客户</strong><span>系统会在服务端分批处理，不加载完整客户名单，适用于大量客户。</span></div>
+        <div v-else class="all-customer-warning"><strong>将发送给全部有效客户</strong><span>以首次提交时的有效客户为准，同一批次重试不会重复发放。</span></div>
 
-        <label>发券备注<input v-model="grantNote" maxlength="120" placeholder="可选，例如：客服关怀" /></label>
-        <button class="primary-button" data-test="send-coupon" :disabled="workingId === grantTemplateId || (recipientMode !== 'ALL' && !selectedCustomerIds.length)" @click="sendCoupon">{{ recipientMode === 'ALL' ? '确认全量发送' : `确认发送${selectedCustomerIds.length ? `（${selectedCustomerIds.length} 位）` : ''}` }}</button>
+        <label>发券备注<input :disabled="!!pendingGrant || sendingCoupon" v-model="grantNote" maxlength="120" placeholder="可选，例如：客服关怀" /></label>
+        <button class="primary-button" data-test="send-coupon" :disabled="workingId === grantTemplateId || (recipientMode !== 'ALL' && !selectedCustomerIds.length)" @click="sendCoupon">{{ pendingGrant ? '重试确认本批结果' : recipientMode === 'ALL' ? '确认全量发送' : `确认发送${selectedCustomerIds.length ? `（${selectedCustomerIds.length} 位）` : ''}` }}</button>
       </section>
     </div>
   </section>

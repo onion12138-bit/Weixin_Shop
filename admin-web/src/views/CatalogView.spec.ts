@@ -665,4 +665,47 @@ describe('CatalogView', () => {
     expect(uploadCatalogFile).toHaveBeenCalledWith(image)
     expect(wrapper.text()).toContain('素材 #5902 已选择')
   })
+
+  it.each([
+    { tab: 'beads', create: 'create-bead', dropzone: 'cover-dropzone' },
+    { tab: 'packages', create: 'create-package', dropzone: 'package-cover-dropzone' },
+  ])('ignores an old cover upload after reopening the $tab editor', async ({ tab, create, dropzone }) => {
+    let resolveUpload!: (value: Awaited<ReturnType<typeof uploadCatalogFile>>) => void
+    vi.mocked(uploadCatalogFile).mockReturnValueOnce(new Promise((resolve) => { resolveUpload = resolve }))
+    const wrapper = mount(CatalogView)
+    await flushPromises()
+    await wrapper.get(`[data-test="tab-${tab}"]`).trigger('click')
+    await flushPromises()
+    await wrapper.get(`[data-test="${create}"]`).trigger('click')
+    await flushPromises()
+    await wrapper.get(`[data-test="${dropzone}"]`).trigger('drop', {
+      dataTransfer: { files: [new File(['image'], 'old.png', { type: 'image/png' })] },
+    })
+    await wrapper.get('[aria-label="关闭"]').trigger('click')
+    await wrapper.get(`[data-test="${create}"]`).trigger('click')
+    await flushPromises()
+
+    resolveUpload({ id: 5999, storageKey: 'old.png', originalName: 'old.png',
+      contentType: 'image/png', sizeBytes: 5, publicUrl: '/api/public/files/old.png' })
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('#5999')
+    expect(wrapper.find('img[src$="old.png"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('does not add stock twice when the same form is submitted before the first request finishes', async () => {
+    let resolveStock!: (value: Awaited<ReturnType<typeof addAdminBeadInventory>>) => void
+    vi.mocked(addAdminBeadInventory).mockReturnValueOnce(new Promise((resolve) => { resolveStock = resolve }))
+    const wrapper = mount(CatalogView)
+    await flushPromises()
+    await wrapper.get('[data-test="add-inventory-2001"]').trigger('click')
+    const form = wrapper.get('.compact-drawer form')
+    await form.trigger('submit')
+    await form.trigger('submit')
+    expect(addAdminBeadInventory).toHaveBeenCalledTimes(1)
+    resolveStock({ beadSkuId: 2001, addedQuantity: 100, availableQty: 300, reservedQty: 0, soldQty: 0 })
+    await flushPromises()
+    wrapper.unmount()
+  })
 })

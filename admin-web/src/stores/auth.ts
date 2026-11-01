@@ -14,13 +14,13 @@ const state = reactive({
 /**
  * 小型单页后台的共享认证状态。
  *
- * 当前只有登录页和商品页，无需引入额外状态库；该组合式 store 保持 API 清晰，
- * 未来接入 Pinia 时调用方可以维持相同的 login/logout 语义。
+ * 所有业务页面共用请求层的令牌状态，401 和主动退出都立即回到登录页。
  */
 export function useAuthStore() {
   const isAuthenticated = computed(() => Boolean(state.token))
 
   async function login(username: string, password: string): Promise<void> {
+    if (state.loading) return
     state.loading = true
     try {
       const result = await loginAdmin(username, password)

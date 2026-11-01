@@ -1,3 +1,4 @@
+/** 把布局和视觉配置转换为绘制计划，让预览导出与编辑画布共用样式规则。 */
 import type {
   BeadLayoutPoint,
   BraceletVisualConfig,

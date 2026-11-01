@@ -1,3 +1,4 @@
+/** 封装方案保存与报价；预览携带保存版本，防止迟到图片覆盖新设计。 */
 import {
   absolutePublicUrl,
   request,
@@ -155,9 +156,13 @@ export function deleteScheme(id: number): Promise<boolean> {
 export async function uploadSchemePreview(
   id: number,
   filePath: string,
+  version?: number,
 ): Promise<DiySchemeResponse> {
+  const path = version === undefined
+    ? `/app/diy/schemes/${id}/preview`
+    : `/app/diy/schemes/${id}/previews/${version}`
   return normalizeScheme(
-    await upload<DiySchemeResponse>(`/app/diy/schemes/${id}/preview`, filePath),
+    await upload<DiySchemeResponse>(path, filePath),
   )
 }
 

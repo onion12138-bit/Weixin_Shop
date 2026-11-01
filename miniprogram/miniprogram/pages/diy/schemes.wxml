@@ -5,8 +5,8 @@
       <text class="header-title">我的 DIY 方案</text>
     </view>
     <view class="header-actions">
-      <button bindtap="openOrders">我的订单</button>
-      <button bindtap="createScheme">新建设计</button>
+      <button disabled="{{deletingId > 0}}" bindtap="openOrders">我的订单</button>
+      <button disabled="{{deletingId > 0}}" bindtap="createScheme">新建设计</button>
     </view>
   </view>
 
@@ -45,9 +45,9 @@
         </view>
         <text wx:if="{{item.previewPending}}" class="preview-pending">预览图待重试，不影响方案恢复</text>
         <view class="scheme-actions">
-          <button class="checkout" data-id="{{item.id}}" bindtap="createOrder">去下单</button>
-          <button data-id="{{item.id}}" bindtap="openScheme">继续编辑</button>
-          <button class="delete" data-id="{{item.id}}" bindtap="deleteScheme">删除</button>
+          <button disabled="{{deletingId > 0}}" class="checkout" data-id="{{item.id}}" bindtap="createOrder">去下单</button>
+          <button disabled="{{deletingId > 0}}" data-id="{{item.id}}" bindtap="openScheme">继续编辑</button>
+          <button disabled="{{deletingId > 0}}" loading="{{deletingId === item.id}}" class="delete" data-id="{{item.id}}" bindtap="deleteScheme">删除</button>
         </view>
       </view>
     </view>

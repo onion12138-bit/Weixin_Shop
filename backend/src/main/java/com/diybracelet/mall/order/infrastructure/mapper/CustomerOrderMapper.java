@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
 import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 /**
@@ -15,6 +16,18 @@ import java.util.List;
  */
 @Mapper
 public interface CustomerOrderMapper extends BaseMapper<CustomerOrder> {
+
+    @Select("select id from customer_identity where id = #{customerId} for update")
+    Long lockCheckoutCustomer(@Param("customerId") Long customerId);
+
+    @Select("select * from customer_order where customer_identity_id = #{customerId} and checkout_token = #{token} for update")
+    CustomerOrder selectByCheckoutTokenForUpdate(@Param("customerId") Long customerId, @Param("token") String token);
+
+    @Select("select * from customer_order where customer_identity_id = #{customerId} and checkout_token = #{token}")
+    CustomerOrder selectByCheckoutToken(@Param("customerId") Long customerId, @Param("token") String token);
+
+    @Select("select id from customer_order where status = 'PENDING_PAYMENT' and expires_at <= #{now} order by expires_at, id limit 100")
+    List<Long> selectExpiredIds(@Param("now") Instant now);
 
     /**
      * 按订单和顾客锁定订单行，既校验资源归属，也串行化支付与取消操作。
@@ -90,13 +103,15 @@ public interface CustomerOrderMapper extends BaseMapper<CustomerOrder> {
             update customer_order
             set status = 'CANCELLED',
                 cancelled_at = #{cancelledAt},
+                closed_reason = #{reason},
                 version = version + 1
             where id = #{orderId}
               and status = 'PENDING_PAYMENT'
             """)
     int markCancelled(
             @Param("orderId") Long orderId,
-            @Param("cancelledAt") LocalDateTime cancelledAt
+            @Param("cancelledAt") LocalDateTime cancelledAt,
+            @Param("reason") String reason
     );
 
     /** 制作完成后进入待发货。 */

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+// 密钥只保存在当前页面内存；掩码和已保存明文不作为新密钥重复提交。
 import { computed, onMounted, reactive, ref } from 'vue'
 import {
   clearAiApiKey,

@@ -15,7 +15,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Administrator-only list, detail, and deletion endpoints for model-call traces. */
+
+/** 仅管理员可访问的 AI 调用日志查询和删除接口。 */
 @Validated
 @RestController
 @RequestMapping("/api/admin/ai/logs")

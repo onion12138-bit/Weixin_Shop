@@ -53,4 +53,51 @@ describe('installInputClearButtons', () => {
     expect(document.querySelectorAll('.global-input-clear')).toHaveLength(1)
     observer.disconnect()
   })
+
+  it('coalesces repeated scroll events into one layout measurement per frame', async () => {
+    document.body.innerHTML = '<input value="测试" />'
+    const frames: FrameRequestCallback[] = []
+    const schedule = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
+      frames.push(cb)
+      return frames.length
+    })
+    const observer = installInputClearButtons(document)
+    await new Promise<void>((resolve) => queueMicrotask(resolve))
+    const measure = vi.spyOn(document.querySelector('input')!, 'getBoundingClientRect')
+    for (let i = 0; i < 20; i++) window.dispatchEvent(new Event('scroll'))
+    expect(schedule).toHaveBeenCalledTimes(1)
+    expect(measure).not.toHaveBeenCalled()
+    frames[0](0)
+    expect(measure).toHaveBeenCalledTimes(1)
+    observer.disconnect()
+    vi.restoreAllMocks()
+  })
+
+  it('removes old listeners so a detached field can be enhanced again safely', async () => {
+    const input = document.createElement('input')
+    input.value = '保存内容'
+    document.body.append(input)
+    const observer = installInputClearButtons(document)
+    input.remove()
+    await new Promise<void>((resolve) => queueMicrotask(resolve))
+    expect(input.dataset.clearButtonReady).toBeUndefined()
+    document.body.append(input)
+    await new Promise<void>((resolve) => queueMicrotask(resolve))
+    const changed = vi.fn()
+    input.addEventListener('input', changed)
+    document.querySelector<HTMLButtonElement>('.global-input-clear')!.click()
+    expect(changed).toHaveBeenCalledTimes(1)
+    observer.disconnect()
+    expect(input.dataset.clearButtonReady).toBeUndefined()
+  })
+
+  it('does not clear a field that became read-only after installation', () => {
+    document.body.innerHTML = '<input value="不可更改" />'
+    const observer = installInputClearButtons(document)
+    const input = document.querySelector('input')!
+    input.readOnly = true
+    document.querySelector<HTMLButtonElement>('.global-input-clear')!.click()
+    expect(input.value).toBe('不可更改')
+    observer.disconnect()
+  })
 })

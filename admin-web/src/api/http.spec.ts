@@ -6,6 +6,7 @@ import {
   getAccessToken,
   request,
   requestBlob,
+  resolveApiResourceUrl,
 } from './http'
 
 const auth = useAuthStore()
@@ -63,6 +64,13 @@ describe.each([
     expect(auth.isAuthenticated.value).toBe(false)
   })
 
+  it('never stores authenticated responses in the browser HTTP cache', async () => {
+    await login('active-token')
+    fetchStub.mockResolvedValueOnce(envelope({ id: 1 }))
+    await sendRequest()
+    expect(fetchStub).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({ cache: 'no-store' }))
+  })
+
   it('invalidates the session even when a 401 response is not JSON', async () => {
     await login('expired-token')
     fetchStub.mockResolvedValueOnce(new Response('<html>upstream details</html>', { status: 401 }))
@@ -114,6 +122,20 @@ describe.each([
     expect((error as ApiError).traceId).toBeUndefined()
     expect(auth.isAuthenticated.value).toBe(true)
     expect(getAccessToken()).toBe('valid-token')
+  })
+})
+
+describe('resource URL safety', () => {
+  it.each(['javascript:alert(1)', ' JAVAscript:alert(1)', 'java\nscript:alert(1)',
+    'data:text/html,<script>alert(1)</script>', 'file:///etc/passwd', 'blob:https://example.com/id',
+    'https://admin:secret@example.com/image.png', 'https://[invalid'])('rejects unsafe or malformed URLs: %s', (url) => {
+    expect(resolveApiResourceUrl(url)).toBe('')
+  })
+
+  it('resolves relative paths and preserves HTTP image sources', () => {
+    expect(resolveApiResourceUrl('/api/public/files/image.png')).toBe('http://localhost:8081/api/public/files/image.png')
+    expect(resolveApiResourceUrl('https://cdn.example.com/image.png')).toBe('https://cdn.example.com/image.png')
+    expect(resolveApiResourceUrl('')).toBe('')
   })
 })
 

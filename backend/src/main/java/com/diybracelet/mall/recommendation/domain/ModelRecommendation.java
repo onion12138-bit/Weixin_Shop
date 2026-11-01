@@ -2,7 +2,8 @@ package com.diybracelet.mall.recommendation.domain;
 
 import java.util.List;
 
-/** Strict provider result containing material choices but no size or price. */
+
+/** 模型返回的材质组合，不接受模型提供的尺寸或价格。 */
 public record ModelRecommendation(
     PreferenceAnalysis preferenceAnalysis,
     List<Plan> plans

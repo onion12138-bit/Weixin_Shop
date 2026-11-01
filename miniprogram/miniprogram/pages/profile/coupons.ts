@@ -1,3 +1,4 @@
+/** 加载当前访客优惠券，并根据状态区分可用、已用与过期展示。 */
 import { listCoupons, type CustomerCoupon } from '../../services/account'
 import { ApiError } from '../../services/request'
 

@@ -1,3 +1,4 @@
+import { navigateOnce, resetNavigation } from '../../utils/navigation'
 import { getProfile } from '../../services/account'
 
 Page({
@@ -7,6 +8,7 @@ Page({
   },
 
   onShow() {
+    resetNavigation(this)
     void getProfile().then((profile) => {
       this.setData({
         nickname: profile.nickname,
@@ -18,10 +20,10 @@ Page({
   },
 
   openHome() {
-    wx.redirectTo({
+    navigateOnce(this, {
       url: '/pages/home/index',
       fail: () => this.showUnavailable(),
-    })
+    }, 'redirectTo')
   },
 
   openRecommendation() {
@@ -64,7 +66,7 @@ Page({
   },
 
   navigate(url: string) {
-    wx.navigateTo({
+    navigateOnce(this, {
       url,
       fail: () => this.showUnavailable(),
     })

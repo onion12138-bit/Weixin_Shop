@@ -8,13 +8,15 @@ const emit = defineEmits<{
 }>()
 
 const auth = useAuthStore()
+// 凭据由管理员或密码管理器填写，前端构建产物不预置账号密码。
 const form = reactive({
-  username: 'admin',
-  password: 'Admin@123',
+  username: '',
+  password: '',
 })
 const errorMessage = ref('')
 
 async function submit(): Promise<void> {
+  if (auth.state.loading) return
   errorMessage.value = ''
   try {
     await auth.login(form.username.trim(), form.password)
@@ -43,7 +45,7 @@ async function submit(): Promise<void> {
       <div>
         <p class="section-kicker">ADMIN CONSOLE</p>
         <h2 id="login-title">登录管理后台</h2>
-        <p class="muted">使用本地演示管理员账号进入商品目录。</p>
+        <p class="muted">使用管理员账号登录工作台。</p>
       </div>
 
       <form @submit.prevent="submit">
@@ -75,7 +77,7 @@ async function submit(): Promise<void> {
       </form>
 
       <p class="login-hint">
-        当前为本地产品阶段，账号可通过后端环境变量修改。
+        请使用部署时配置的管理员账号。
       </p>
     </section>
   </main>
